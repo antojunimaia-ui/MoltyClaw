@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
+require('dotenv').config();
 
 // Inicializa o cliente WhatsApp com salvamento de sessão
 const client = new Client({
@@ -39,6 +40,15 @@ client.on('message', async msg => {
     if (msg.from.includes("@g.us")) {
         // Ignora grupos
         return;
+    }
+
+    const permittedNumbers = process.env.WHATSAPP_ALLOWED_NUMBERS;
+    if (permittedNumbers && permittedNumbers.trim() !== '') {
+        const allowedList = permittedNumbers.split(',').map(n => n.trim() + '@c.us');
+        if (!allowedList.includes(msg.from)) {
+            console.log(`[Segurança] Ignorando contato não autorizado: ${msg.from}`);
+            return;
+        }
     }
 
     // Mostra o texto quem enviou
