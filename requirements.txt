@@ -1,0 +1,11 @@
+python-telegram-bot
+playwright
+mistralai
+python-dotenv
+colorama
+rich
+imap_tools
+spotipy
+youtube-transcript-api
+discord.py
+aiohttp
