@@ -51,19 +51,19 @@ Atualmente possuímos três braços totalmente integrados e funcionais que podem
 1. 📱 **WhatsApp (Sessão Criptografada via QR Code)**:
    - **Como funciona:** Um sub-servidor Headless intercepta mensagens via Node.js e orquestra a comunicação bidirecional de mensagens no WhatsApp com a Python Engine.
    - **O que ele faz:** O MoltyClaw intercepta mensagens do seu WhatsApp conectadas e fornece respostas imediatas com base no modelo do Mistral aliado a acesso web orgânico direto da palma da sua mão.
-   - **Disparo Ativo (`WHATSAPP_SEND`):** Permite que a IA envie mensagens ativamente para números de telefone. Só é ativado quando você escolhe inicializar a base do WhatsApp.
+   - **Disparo Ativo (`WHATSAPP_SEND`):** A maioria dos bots hoje em dia é "passivo" (só responde se alguém chamar). O MoltyClaw pode **tomar iniciativa**! Peça no terminal *"Molty, mande uma mensagem pro meu chefe avisando que estou doente hoje"* e a IA atirará a notificação sozinha pro WhatsApp dele. O recurso só é liberado na mente da IA quando você inicializa o Launcher com o WhatsApp ligado.
    - **Segurança Nativa (Whitelist):** Conta com suporte à `WHATSAPP_ALLOWED_NUMBERS` no `.env`. Você escolhe se a IA vai falar com todos do seu contato, ou apenas com os números previamente autorizados por você.
 
 2. 🎧 **Discord (Bot App Protocol)**:
    - **Como funciona:** Um robô construído na API oficial de bibliotecas do Discord usando Python que opera conectado sob intenções restritas de ler canais e atuar como um membro da sua comunidade.
    - **O que ele faz:** Foi programado para não atrapalhar servidores (ignorando discussões alheias). Ele só acorda, pensa, e envia respostas caso alguém **o mencione** (`@MoltyClaw ...`) em canais públicos ou envie uma **Mensagem Direta (*DM*)**. Enquanto pesquisa a resposta das ferramentas na infraestrutura do Windows, ele exibe elegantemente a barra "*digitando...*" na tela das DMs do app para imersão extrema de chat.
-   - **Disparo Ativo (`DISCORD_SEND`):** Permite que o MoltyClaw dispare chamadas ativas de DM pelo Discord informando o ID.
+   - **Disparo Ativo (`DISCORD_SEND`):** Assim como no celular, o bot pode bater na DM do seu amigo sozinho! Fale *"Mande o resumo dessa pesquisa em uma DM pro ID do discord X e avise que eu pedi"* e ele atirará ativamente o conteúdo na Privada do usuário.
    - **Segurança Nativa (Whitelist):** Conta com suporte à `DISCORD_ALLOWED_USERS` no `.env` mapeando "User IDs" do Discord.
 
 3. ✈️ **Telegram (Python-Telegram-Bot)**:
    - **Como funciona:** O MoltyClaw se conecta ao protocolo super rápido do Telegram utilizando o token fornecido via BotFather.
    - **O que ele faz:** Ele funciona perfeitamente em DM respondendo às suas pesquisas interativas e também se sai perfeitamente em Grupos (onde só atuará de forma independente caso seja explicitamente respondido ou mencionado, não interrompendo conversas paralelas). Manda a mensagem em pedaços contínuos se o resultado do MoltyClaw passar do limite de texto da plataforma.
-   - **Disparo Ativo (`TELEGRAM_SEND`):** A IA conseguirá atirar mensagens de telegram em particular se for comandada para ids/usernames.
+   - **Disparo Ativo (`TELEGRAM_SEND`):** Quer que o bot pesquise informações enquanto você toma café e entregue o "relatório" pro seu parceiro ou grupo de trabalho? Ordene que ele dispare a ferramenta com as informações mastigadas num DM pelo `@username` de quem importa, totalmente de graça.
    - **Segurança Nativa (Whitelist):** Conta com suporte à `TELEGRAM_ALLOWED_USERS` no `.env`, avaliado pelo ID de Usuário interno ou pelo `@username` do cliente para bloquear intrometidos.
 
 ---
