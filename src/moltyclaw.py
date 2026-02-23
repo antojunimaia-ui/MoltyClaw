@@ -34,7 +34,7 @@ class MoltyClaw:
         self.browser = None
         self.context = None
         self.page = None
-        import os
+        
         active_features = []
         if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
             active_features.append('"WHATSAPP_SEND" (param: "numero sem plus, com DDI e ddd | texto (ex: 5511999999999 | O mestre está com febre)")')
