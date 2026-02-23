@@ -34,7 +34,15 @@ class MoltyClaw:
         self.browser = None
         self.context = None
         self.page = None
-        
+        import os
+        active_features = []
+        if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
+            active_features.append('"WHATSAPP_SEND" (param: "numero sem plus, com DDI e ddd | texto (ex: 5511999999999 | O mestre está com febre)")')
+        if os.environ.get("MOLTY_DISCORD_ACTIVE"):
+            active_features.append('"DISCORD_SEND" (param: "id_usuario_ou_chat | texto")')
+        if os.environ.get("MOLTY_TELEGRAM_ACTIVE"):
+            active_features.append('"TELEGRAM_SEND" (param: "id_ou_username | texto")')
+
         self.history = [
             ChatMessage(
                 role="system",
@@ -71,6 +79,7 @@ Ações suportadas no JSON:
 "SPOTIFY_SEARCH" (param: nome do artista ou música)
 "SPOTIFY_ADD_QUEUE" (param: URI da música)
 "YOUTUBE_SUMMARIZE" (param: link_do_video)
+{chr(10).join(active_features)}
 
 IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de memória te dirá os arquivos, use MEMORY_GET para lê-los. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY no texto da resposta."""
             )
@@ -344,6 +353,58 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
         except Exception as e:
             return f"Erro Módulo Spotify ({action}): {e}"
 
+    async def execute_social_send(self, action: str, param: str) -> str:
+        parts = param.split("|", 1)
+        if len(parts) != 2:
+            return "Erro: Formato inválido. Use [destination | text]"
+        
+        target = parts[0].strip()
+        text = parts[1].strip()
+        
+        try:
+            import aiohttp
+            if action == "TELEGRAM_SEND":
+                import os
+                token = os.getenv("TELEGRAM_TOKEN")
+                if not token: return "Erro: TELEGRAM_TOKEN ausente."
+                url = f"https://api.telegram.org/bot{token}/sendMessage"
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json={"chat_id": target, "text": text}) as resp:
+                        if resp.status == 200: return f"Mensagem enviada com sucesso no Telegram para {target}."
+                        return f"Erro do Telegram API (HTTP {resp.status}): {await resp.text()}"
+                        
+            elif action == "DISCORD_SEND":
+                import os
+                token = os.getenv("DISCORD_TOKEN")
+                if not token: return "Erro: DISCORD_TOKEN ausente."
+                # We can't directly POST to user by ID. We must open DM channel first.
+                url_dm = "https://discord.com/api/v10/users/@me/channels"
+                headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
+                async with aiohttp.ClientSession(headers=headers) as session:
+                    # Create DM channel
+                    async with session.post(url_dm, json={"recipient_id": target}) as resp_dm:
+                        if resp_dm.status != 200: return f"Erro abrindo DM Discord: {await resp_dm.text()}"
+                        dm_data = await resp_dm.json()
+                        channel_id = dm_data["id"]
+                        
+                        url_msg = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+                        async with session.post(url_msg, json={"content": text}) as resp_msg:
+                            if resp_msg.status == 200: return f"Mensagem enviada no Discord com sucesso."
+                            return f"Erro Discord (HTTP {resp_msg.status}): {await resp_msg.text()}"
+                            
+            elif action == "WHATSAPP_SEND":
+                # Roteria a mensagem para porta 8081 local que o Node deve estar escutando
+                async with aiohttp.ClientSession() as session:
+                    # Formata o numero com @c.us caso a IA não tenha posto
+                    if not target.endswith("@c.us"):
+                        target = target.replace("+", "").replace("-", "").replace(" ", "") + "@c.us"
+                    async with session.post("http://localhost:8081/send_whatsapp", json={"to": target, "message": text}) as resp:
+                        if resp.status == 200: return "Mensagem engatilhada e enviada via WhatsApp Bridge Node."
+                        return f"O Bridge do WhatsApp reportou erro ou nao esta rodando na porta 8081. (HTTP {resp.status})"
+                        
+        except Exception as e:
+            return f"Exceção interna no módulo Social: {e}"
+
     async def execute_youtube_action(self, action: str, param: str) -> str:
         try:
             if action == "YOUTUBE_SUMMARIZE":
@@ -527,6 +588,14 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description=f"Comunicando com Spotify API...", total=None)
                             result = await self.execute_spotify_action(action, param)
+                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
+                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        
+                    elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND"]:
+                        if not silent: console.print(f"\n[info]🌐 Módulo Social Envio ({action}):[/info] Destino -> {param.split('|')[0] if '|' in param else param}")
+                        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                            progress.add_task(description=f"Comunicando com provedor social...", total=None)
+                            result = await self.execute_social_send(action, param)
                         self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         

@@ -95,3 +95,33 @@ client.on('message', async msg => {
 // Dispara conexão (abre o Chromium em background)
 console.log("Iniciando WPPConnect...");
 client.initialize();
+
+// Sub-servidor local para disparos ativos vindo do Python
+const http = require('http');
+const bridgeServer = http.createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/send_whatsapp') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const { to, message } = JSON.parse(body);
+                // "to" vira formato obrigatório e aceitável do node
+                await client.sendMessage(to, message);
+                console.log(`[API Bridge] Mensagem Ativa disparada para: ${to}`);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ status: 'success' }));
+            } catch (error) {
+                console.error("[API Bridge] Falha ao enviar msg ativamente:", error.message);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ status: 'error', reason: error.message }));
+            }
+        });
+    } else {
+        res.writeHead(404);
+        res.end();
+    }
+});
+
+bridgeServer.listen(8081, () => {
+    console.log('📡 WhatsApp Bridge REST API ouvindo na porta 8081 para disparos ativos!');
+});

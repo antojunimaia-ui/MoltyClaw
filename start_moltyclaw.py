@@ -97,6 +97,9 @@ if __name__ == "__main__":
         sys.exit(0)
         
     if "4" in choices:
+        os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
+        os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
+        os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
         active_threads.extend(run_whatsapp())
         time.sleep(1) # Intervalo seguro
         active_threads.extend(run_discord())
@@ -104,12 +107,15 @@ if __name__ == "__main__":
         active_threads.extend(run_telegram())
     else:
         if "1" in choices:
+            os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
             active_threads.extend(run_whatsapp())
             time.sleep(1)
         if "2" in choices:
+            os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
             active_threads.extend(run_discord())
             time.sleep(1)
         if "3" in choices:
+            os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
             active_threads.extend(run_telegram())
             time.sleep(1)
         
