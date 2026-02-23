@@ -46,6 +46,13 @@ class MoltyClawDiscordBot(discord.Client):
         if message.author == self.user:
             return
             
+        allowed_users = os.getenv("DISCORD_ALLOWED_USERS", "")
+        if allowed_users.strip():
+            allowed_list = [u.strip() for u in allowed_users.split(",")]
+            if str(message.author.id) not in allowed_list:
+                console.print(f"[bold yellow][Segurança] Ignorando Discord de não autorizado: {message.author} ({message.author.id})[/bold yellow]")
+                return
+            
         # O MoltyClaw vai responder se for mencionado numa sala ou se for numa Mensagem Direta (DM) com alguém.
         # Assim ele não fica tentando responder o server de Discord inteiro o tempo todo.
         if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
@@ -61,14 +68,29 @@ class MoltyClawDiscordBot(discord.Client):
                     # Chama o motor inteligência artificial que consome ferramentas
                     reply = await self.agent.ask(user_text)
                     
+                    import re
+                    media_path = None
+                    match = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
+                    if match:
+                        media_path = match.group(1)
+                        reply = reply.replace(match.group(0), "").strip()
+                        
                     # O Discord tem um limite de 2000 caracteres pra mensagem
-                    # Se for maior que isso (geralmente resultados de leitura web não filtrados), a gente corta
                     if len(reply) > 2000:
                         chunks = [reply[i:i+1900] for i in range(0, len(reply), 1900)]
                         for chunk in chunks:
                             await message.channel.send(chunk)
+                        if media_path and os.path.exists(media_path):
+                            await message.channel.send(file=discord.File(media_path))
                     else:
-                        await message.channel.send(reply)
+                        if media_path and os.path.exists(media_path):
+                            if reply:
+                                await message.channel.send(reply, file=discord.File(media_path))
+                            else:
+                                await message.channel.send(file=discord.File(media_path))
+                        elif reply:
+                            await message.channel.send(reply)
+                        
                         
                 except Exception as e:
                     console.print(f"\n[bold red]Erro processando chat do Discord: {e}[/bold red]\n{traceback.format_exc()}")
@@ -88,6 +110,9 @@ if __name__ == "__main__":
         
         # Seta o loop do windows pra evitar bug de subprocess assíncrono
         if os.name == 'nt':
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             
         client.run(DISCORD_TOKEN)

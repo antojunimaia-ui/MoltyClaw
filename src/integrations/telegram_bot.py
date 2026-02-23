@@ -44,6 +44,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message.from_user.is_bot:
         return
 
+    allowed_users = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+    if allowed_users.strip():
+        allowed_list = [u.strip() for u in allowed_users.split(",")]
+        user_id = str(update.message.from_user.id)
+        username = update.message.from_user.username or ""
+        if user_id not in allowed_list and username.replace("@", "") not in [u.replace("@", "") for u in allowed_list]:
+            console.print(f"[bold yellow][Segurança] Ignorando Telegram de não autorizado: {username} ({user_id})[/bold yellow]")
+            return
+
     user_text = update.message.text.strip()
     is_group = update.message.chat.type in ['group', 'supergroup']
     
@@ -67,13 +76,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         reply = await agent.ask(user_text)
         
+        import re
+        media_path = None
+        match = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
+        if match:
+            media_path = match.group(1)
+            reply = reply.replace(match.group(0), "").strip()
+        
         # Telegram tem limite de 4096 caracteres. Quebrando em chunks se necessário.
         if len(reply) > 4000:
             chunks = [reply[i:i+4000] for i in range(0, len(reply), 4000)]
             for chunk in chunks:
                 await update.message.reply_text(chunk)
+            if media_path and os.path.exists(media_path):
+                with open(media_path, 'rb') as f:
+                    await update.message.reply_photo(photo=f)
         else:
-            await update.message.reply_text(reply)
+            if media_path and os.path.exists(media_path):
+                with open(media_path, 'rb') as f:
+                    if reply:
+                        await update.message.reply_photo(photo=f, caption=reply)
+                    else:
+                        await update.message.reply_photo(photo=f)
+            elif reply:
+                await update.message.reply_text(reply)
             
     except Exception as e:
         console.print(f"\n[bold red]Erro processando chat do Telegram: {e}[/bold red]\n{traceback.format_exc()}")
@@ -85,7 +111,10 @@ if __name__ == '__main__':
         console.print("[yellow]Fale com o @BotFather no Telegram para criar seu app e adicione o Token no .env![/yellow]")
     else:
         if os.name == 'nt':
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             
         # Cria e constrói a aplicação do Telegram Python Bot
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()

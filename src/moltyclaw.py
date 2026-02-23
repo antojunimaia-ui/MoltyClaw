@@ -56,6 +56,8 @@ Ações suportadas no JSON:
 "CLICK" (param: seletor css)
 "TYPE" (param: "seletor | texto")
 "READ_PAGE" (param: "")
+"INSPECT_PAGE" (param: "")
+"SCREENSHOT" (param: "")
 "CMD" (param: comando de terminal)
 "READ_EMAILS" (param: limite)
 "SEND_EMAIL" (param: destinatario | assunto | corpo)
@@ -150,6 +152,38 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                 # Avalia o innerText do body inteiro e pega algo cru e facil da IA ler
                 content = await self.page.evaluate("document.body.innerText")
                 return f"CONTEÚDO TEXTUAL DA PÁGINA ATUAL (truncado): {content[:4000]}"
+                
+            elif action == "INSPECT_PAGE":
+                js_code = """() => {
+                    const elements = document.querySelectorAll('a, button, input');
+                    let result = [];
+                    elements.forEach(el => {
+                        let text = (el.innerText || el.value || el.placeholder || el.name || '').replace(/\\n/g, ' ').trim();
+                        text = text.substring(0, 50);
+                        if (!text && el.tagName.toLowerCase() !== 'input') return;
+                        
+                        let selector = el.tagName.toLowerCase();
+                        if (el.id) selector += '#' + el.id;
+                        if (el.className && typeof el.className === 'string') {
+                            const classes = el.className.split(' ').filter(c => c).join('.');
+                            if (classes) selector += '.' + classes;
+                        }
+                        
+                        if (result.length < 80) {
+                            result.push(`[${selector}] -> ${text || 'input/vazio'}`);
+                        }
+                    });
+                    return result.join('\\n');
+                }"""
+                content = await self.page.evaluate(js_code)
+                return f"ELEMENTOS INTERATIVOS DA PÁGINA (máx 80):\n{content}"
+                
+            elif action == "SCREENSHOT":
+                import os
+                import time
+                path_str = f"screenshot_{int(time.time())}.png"
+                await self.page.screenshot(path=path_str, full_page=False)
+                return f"Screenshot capturado com sucesso. Se o usuário pediu a imagem, você DEVE dizer essa exata frase no meio do seu texto de volta para ele: [SCREENSHOT_TAKEN: {path_str}]"
                 
         except Exception as e:
             return f"Erro durante a execução da ferramenta '{action}': {e}"
@@ -468,7 +502,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado CMD] -> {result}"))
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
-                    elif action in ["GOTO", "CLICK", "TYPE", "READ_PAGE"]:
+                    elif action in ["GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
                         if not silent: console.print(f"\n[info]🌐 Executando Browser ({action}):[/info] {param}")
                         result = await self.run_browser_action(action, param)
                         self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
@@ -513,7 +547,9 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             return response_chunks
             
         except Exception as e:
-            console.print(f"[error]Erro ao comunicar com Mistral: {e}[/error]")
+            err_msg = f"Erro ao comunicar com Mistral: {e}"
+            console.print(f"[error]{err_msg}[/error]")
+            return err_msg
 
 async def interactive_shell():
     console.clear()
@@ -560,5 +596,8 @@ async def interactive_shell():
 
 if __name__ == "__main__":
     if os.name == 'nt':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     asyncio.run(interactive_shell())

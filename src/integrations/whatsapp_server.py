@@ -37,7 +37,18 @@ async def handle_whatsapp_message(request):
         # Pede pro MoltyClaw responder (reaproveitamos tudo que ele ja tem de navegador/terminal)
         reply = await agent.ask(message)
         
-        return web.json_response({"reply": reply})
+        import re
+        media_path = None
+        match = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
+        if match:
+            media_path = match.group(1)
+            reply = reply.replace(match.group(0), "").strip()
+            
+        response_data = {"reply": reply}
+        if media_path and os.path.exists(media_path):
+            response_data["media"] = os.path.abspath(media_path)
+            
+        return web.json_response(response_data)
     except Exception as e:
         console.print(f"[bold red]Erro processando mensagem: {e}[/bold red]\n{traceback.format_exc()}")
         return web.json_response({"reply": "Desculpe, tive um problema interno ao processar sua mensagem."}, status=500)
@@ -50,7 +61,10 @@ app.router.add_post('/whatsapp', handle_whatsapp_message)
 
 if __name__ == '__main__':
     if os.name == 'nt':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     
     console.clear()
     console.print(Panel.fit(

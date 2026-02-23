@@ -22,8 +22,9 @@ O MoltyClaw não é um chatbot comum. Ele entende o seu pedido, elabora um plano
 O MoltyClaw possui um navegador persistente embutido. Quando você pede algo sobre a internet:
 
 - **`GOTO`**: Ele abre links e lê páginas reais (evitando alucinações de dados).
-- **`READ_PAGE`**: Ele faz a raspagem de texto da página aberta para entender o conteúdo.
+- **`READ_PAGE`** e **`INSPECT_PAGE`**: Fazem a raspagem de texto da página aberta para entender o conteúdo, ou listam fisicamente todos os botões e inputs interativos invisíveis.
 - **`CLICK` e `TYPE`**: O MoltyClaw pode **clicar** fisicamente em botões e **preencher** formulários autonomamente!
+- **`SCREENSHOT`**: Ele pode bater uma foto (screenshot) do que está visualizando no navegador e disparar pra você no chat do bate-papo!
 
 ### ⚙️ Execução de Terminal
 
@@ -55,10 +56,12 @@ Atualmente possuímos três braços totalmente integrados e funcionais que podem
 2. 🎧 **Discord (Bot App Protocol)**:
    - **Como funciona:** Um robô construído na API oficial de bibliotecas do Discord usando Python que opera conectado sob intenções restritas de ler canais e atuar como um membro da sua comunidade.
    - **O que ele faz:** Foi programado para não atrapalhar servidores (ignorando discussões alheias). Ele só acorda, pensa, e envia respostas caso alguém **o mencione** (`@MoltyClaw ...`) em canais públicos ou envie uma **Mensagem Direta (*DM*)**. Enquanto pesquisa a resposta das ferramentas na infraestrutura do Windows, ele exibe elegantemente a barra "*digitando...*" na tela das DMs do app para imersão extrema de chat.
+   - **Segurança Nativa (Whitelist):** Conta com suporte à `DISCORD_ALLOWED_USERS` no `.env` mapeando "User IDs" do Discord.
 
 3. ✈️ **Telegram (Python-Telegram-Bot)**:
    - **Como funciona:** O MoltyClaw se conecta ao protocolo super rápido do Telegram utilizando o token fornecido via BotFather.
    - **O que ele faz:** Ele funciona perfeitamente em DM respondendo às suas pesquisas interativas e também se sai perfeitamente em Grupos (onde só atuará de forma independente caso seja explicitamente respondido ou mencionado, não interrompendo conversas paralelas). Manda a mensagem em pedaços contínuos se o resultado do MoltyClaw passar do limite de texto da plataforma.
+   - **Segurança Nativa (Whitelist):** Conta com suporte à `TELEGRAM_ALLOWED_USERS` no `.env`, avaliado pelo ID de Usuário interno ou pelo `@username` do cliente para bloquear intrometidos.
 
 ---
 
@@ -90,6 +93,8 @@ Este projeto se divide em uma base principal em Python e uma ponte em Node.js (e
    SPOTIFY_CLIENT_SECRET=seu_client_secret_aqui
    SPOTIFY_REDIRECT_URI=http://localhost:8080
    WHATSAPP_ALLOWED_NUMBERS=5511999999999,5511888888888
+   DISCORD_ALLOWED_USERS=123456789012345678,987654321098765432
+   TELEGRAM_ALLOWED_USERS=seu_usuario_aqui,12345678
    ```
 
 3. Instale as dependências essenciais do mundo Python:

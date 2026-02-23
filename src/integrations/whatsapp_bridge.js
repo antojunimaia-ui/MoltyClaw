@@ -67,12 +67,23 @@ client.on('message', async msg => {
         });
 
         const iaReply = response.data.reply;
+        const mediaPath = response.data.media;
 
         // Desloga da API local o que MoltyClaw resolveu falar
-        console.log(`🤖 Resposta do MoltyClaw: ${iaReply || "Resposta vazia."}`);
+        console.log(`🤖 Resposta do MoltyClaw: ${iaReply || (mediaPath ? "Enviando arquivo de mídia..." : "Resposta vazia.")}`);
 
         // Devolve o texto final lá no WhatsApp
-        msg.reply(iaReply || "Tive um problema processando o texto...");
+        if (mediaPath) {
+            const { MessageMedia } = require('whatsapp-web.js');
+            const media = MessageMedia.fromFilePath(mediaPath);
+            if (iaReply && iaReply.trim() !== "") {
+                msg.reply(media, undefined, { caption: iaReply });
+            } else {
+                msg.reply(media);
+            }
+        } else {
+            msg.reply(iaReply || "Tive um problema processando o texto...");
+        }
         await chat.clearState();
 
     } catch (error) {
