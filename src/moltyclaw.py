@@ -71,6 +71,7 @@ Ações suportadas no JSON:
 "INSPECT_PAGE" (param: "")
 "SCREENSHOT" (param: "")
 "CMD" (param: comando de terminal)
+"DDG_SEARCH" (param: "sua busca no duckduckgo sem precisar usar browser")
 "READ_EMAILS" (param: limite)
 "SEND_EMAIL" (param: destinatario | assunto | corpo)
 "DELETE_EMAIL" (param: id_do_email)
@@ -690,6 +691,26 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             progress.add_task(description="Aguardando OS...", total=None)
                             result = await self.execute_terminal_command(param)
                         self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado CMD] -> {result}"))
+                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        
+                    elif action == "DDG_SEARCH":
+                        console.print(f"\n[info]🦆 Executando Busca Nativa ({action}):[/info] {param}")
+                        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                            progress.add_task(description="Pesquisando na DuckDuckGo API...", total=None)
+                            
+                            try:
+                                from ddgs import DDGS
+                                results = DDGS().text(param, max_results=5)
+                                if not results:
+                                    result = "Nenhum resultado encontrado."
+                                else:
+                                    result = "Resultados da Busca:\n"
+                                    for idx, r in enumerate(results):
+                                        result += f"{idx+1}. [{r['title']}]({r['href']})\nResumo: {r['body']}\n\n"
+                            except Exception as e:
+                                result = f"Erro na API DuckDuckGo: {str(e)}"
+                                
+                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado DDG_SEARCH] -> {result}"))
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action in ["GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
