@@ -45,7 +45,7 @@ class MoltyClaw:
         if os.environ.get("MOLTY_TWITTER_ACTIVE"):
             active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
         
-        active_features.append('"VOICE_REPLY" (param: "texto curto de reposta em voz | numero zap_ID discord_ou_ID telegram SE voce quiser enviar ativamente para alguem em vez de só responder o chat atual")')
+        active_features.append('"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")')
 
         self.history = [
             ChatMessage(
@@ -808,7 +808,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             return await self.ask(None, is_tool_response=True, silent=silent)
                         
                         if audio_path.exists():
-                            if target and target.strip().upper() != "SEU_ZAP_ID_AQUI":
+                            if target and target.strip().upper() not in ["SEU_ZAP_ID_AQUI", "TELEGRAM", "DISCORD", "WHATSAPP", "AQUI", "AQUI MESMO"]:
                                 # A IA mandou um Target junto... Isso significa que ela quer tentar ENVIAR pra frente ativamente
                                 dest = target
                                 dest_clean = dest.replace("+", "").replace("-", "").replace(" ", "")
