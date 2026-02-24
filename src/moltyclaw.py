@@ -808,9 +808,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             return await self.ask(None, is_tool_response=True, silent=silent)
                         
                         if audio_path.exists():
-                            if target:
+                            if target and target.strip().upper() != "SEU_ZAP_ID_AQUI":
                                 # A IA mandou um Target junto... Isso significa que ela quer tentar ENVIAR pra frente ativamente
-                                # Vamos descobrir de onde a mensagem original veio pra usar a ponte primária
                                 dest = target
                                 dest_clean = dest.replace("+", "").replace("-", "").replace(" ", "")
                                 if len(dest_clean) > 10 and dest_clean.isdigit(): # Maioria numero Zap
@@ -823,6 +822,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                                 self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado envio de VOZ ativo para {target}] -> {result}"))
                                 return await self.ask(None, is_tool_response=True, silent=silent)
                             else:
+                                # Se ela não usou o parametro extra target ou errou colocando o placeholder, apenas retorne pra thread original e a ponte Node ou Discord vai subir.
                                 return f"[AUDIO_REPLY: {audio_path.absolute()}]"
                         else:
                             console.print(f"[bold red]Erro edge-tts nativo:[/bold red] Arquivo não foi criado fisicamente no disco.")
