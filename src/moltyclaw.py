@@ -122,11 +122,11 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             
             # Applica o stealth pro google maldito não bugar a pesquisa com Captcha
             try:
-                from playwright_stealth import stealth_async
-                await stealth_async(self.page)
+                from playwright_stealth import Stealth
+                await Stealth().apply_stealth_async(self.context)
                 console.print(f"[info][{self.name}] 🥷 Stealth Anti-Bot Mode Ativado no Browser![/info]")
-            except ImportError:
-                console.print(f"[warning][{self.name}] playwright-stealth ausente. O navegador operará em modo normal (suscetível a Captcha).[/warning]")
+            except ImportError as e:
+                console.print(f"[warning][{self.name}] playwright-stealth ausente ou com problema ({e}). O navegador operará em modo normal (suscetível a Captcha).[/warning]")
                 
             console.print(f"[info][{self.name}] Navegador interno persistente inicializado![/info]")
         except Exception as e:
