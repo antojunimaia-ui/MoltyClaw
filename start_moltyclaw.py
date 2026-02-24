@@ -88,6 +88,19 @@ if __name__ == "__main__":
         border_style="cyan"
     ))
     
+    console.print("\n[bold yellow] Escolha do Provedor de IA:[/bold yellow]")
+    console.print("1. [bold cyan]Mistral AI[/bold cyan] (MISTRAL_API_KEY)")
+    console.print("2. [bold magenta]OpenRouter[/bold magenta] (OPENROUTER_API_KEY)")
+    
+    provider_choice = Prompt.ask("Selecione o provedor", choices=["1", "2"], default="1")
+    
+    if provider_choice == "2":
+        os.environ["MOLTY_PROVIDER"] = "openrouter"
+    else:
+        os.environ["MOLTY_PROVIDER"] = "mistral"
+        
+    console.print("\n[bold cyan] Quais braços do agente deseja iniciar?[/bold cyan]")
+    
     console.print("1. [bold green]WhatsApp[/bold green] (Abre Server Python + Bridge Node.js)")
     console.print("2. [bold blue]Discord[/bold blue] (Abre Bot Discord)")
     console.print("3. [bold cyan]Telegram[/bold cyan] (Abre Bot Telegram)")

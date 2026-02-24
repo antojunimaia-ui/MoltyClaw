@@ -99,8 +99,10 @@ Este projeto se divide em uma base principal em Python e uma ponte em Node.js (e
 2. Crie ou configure o seu arquivo `.env` na raiz da pasta:
 
    ```env
-   # Inteligência Analítica
+   # Inteligência Analítica (Escolha na inicialização via bash)
    MISTRAL_API_KEY=sua_chave_mistral_aqui
+   OPENROUTER_API_KEY=sua_chave_openrouter_aqui
+   OPENROUTER_MODEL=google/gemini-2.5-flash
    
    # Tokens dos Robôs
    DISCORD_TOKEN=seu_token_discord_aqui_opcional

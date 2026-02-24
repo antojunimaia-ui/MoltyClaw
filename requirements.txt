@@ -12,3 +12,4 @@ aiohttp
 tweepy
 edge-tts
 playwright-stealth
+openai

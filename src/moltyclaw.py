@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from mistralai.async_client import MistralAsyncClient
 from mistralai.models.chat_completion import ChatMessage
 
+from openai import AsyncOpenAI
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -28,7 +30,11 @@ console = Console(theme=custom_theme)
 class MoltyClaw:
     def __init__(self, name="MoltyClaw"):
         self.name = name
-        self.api_key = os.getenv("MISTRAL_API_KEY")
+        
+        # Le a variavel de ambiente passada pelo Launcher
+        self.provider = os.getenv("MOLTY_PROVIDER", "mistral")
+        
+        self.api_key = os.getenv("MISTRAL_API_KEY") if self.provider == "mistral" else os.getenv("OPENROUTER_API_KEY")
         
         self.playwright = None
         self.browser = None
@@ -48,9 +54,7 @@ class MoltyClaw:
         active_features.append('"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")')
 
         self.history = [
-            ChatMessage(
-                role="system",
-                content=f"""Você é o {self.name}, um agente autônomo com um NAVEGADOR COMPLETO ao seu dispor.
+            {"role": "system", "content": f"""Você é o {self.name}, um agente autônomo com um NAVEGADOR COMPLETO ao seu dispor.
 Você PODE usar a internet e o terminal para obter informações ou interagir com sites (clicar, digitar, extrair dados).
 
 REGRA DE OURO PARA BATE-PAPO: Se o usuário apenas disser "olá", "tudo bem" ou fizer uma pergunta cujo conhecimento você já possui na sua cabeça, responda NORMALMENTE e diretamente em texto, SEM USAR O BLOCO <tool>! 
@@ -86,15 +90,23 @@ Ações suportadas no JSON:
 "YOUTUBE_SUMMARIZE" (param: link_do_video)
 {chr(10).join(active_features)}
 
-IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de memória te dirá os arquivos, use MEMORY_GET para lê-los. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY no texto da resposta."""
-            )
+IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de memória te dirá os arquivos, use MEMORY_GET para lê-los. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY no texto da resposta."""}
         ]
         
         if not self.api_key:
-            console.print(f"[{self.name}] [warning]Aviso: MISTRAL_API_KEY não encontrada.[/warning]")
+            console.print(f"[{self.name}] [warning]Aviso: Chave de API para provedor {self.provider} não encontrada ({'MISTRAL_API_KEY' if self.provider == 'mistral' else 'OPENROUTER_API_KEY'}).[/warning]")
             self.mistral_client = None
+            self.openai_client = None
         else:
-            self.mistral_client = MistralAsyncClient(api_key=self.api_key)
+            if self.provider == "mistral":
+                self.mistral_client = MistralAsyncClient(api_key=self.api_key)
+                self.openai_client = None
+            else:
+                self.mistral_client = None
+                self.openai_client = AsyncOpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=self.api_key,
+                )
 
     async def init_browser(self):
         """Inicializa o navegador persistente."""
@@ -564,12 +576,12 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                     memory_data = "\n--- MEMÓRIA DE LONGO PRAZO ---\n" + content + "\n[IMPORTANTE: Use os fatos acima de forma implícita e natural. NÃO comente que você está lendo da memória de longo prazo, apenas saiba as informações.]\n"
                 
         # Mantém a original e apenda a memória carregada no início do boot
-        base_prompt = self.history[0].content.split("\n--- MEMÓRIA")[0]
-        self.history[0] = ChatMessage(role="system", content=base_prompt + memory_data)
+        base_prompt = self.history[0]["content"].split("\n--- MEMÓRIA")[0]
+        self.history[0] = {"role": "system", "content": base_prompt + memory_data}
 
     async def check_compaction(self):
         """Mecanismo de Flush Stealth (OpenClaw) - Compactação da janela de contexto"""
-        char_count = sum(len(msg.content) for msg in self.history if msg.content)
+        char_count = sum(len(msg.get("content", "")) for msg in self.history if msg.get("content"))
         
         if char_count > 15000:  # Limite de segurança arbitrário para flush
             console.print("[dim yellow][SISTEMA] Iniciando flush de memória silencioso (Compaction)...[/dim yellow]")
@@ -580,7 +592,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             
             compaction_prompt = "A sessão está no limite de contexto. Você DEVE armazenar TODO O CONHECIMENTO CRUCIAL recém-aprendido nesta sessão usando MEMORY_SAVE_LONG_TERM ou MEMORY_SAVE_DAILY. Se não houver nada importante de longo prazo a guardar, responda única e puramente com o texto: NO_REPLY."
             
-            self.history.append(ChatMessage(role="user", content=compaction_prompt))
+            self.history.append({"role": "user", "content": compaction_prompt})
             await self.ask(None, is_tool_response=True, silent=True)
             
             # Reverte o histórico e destrói todos os delírios e respostas de background geradas na compactação
@@ -590,8 +602,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             recent_msgs = self.history[1:][-4:]
             for msg in recent_msgs:
                 # Trunca respostas gigantes do sistema das interações velhas para salvar peso
-                if msg.content and "[SISTEMA:" in msg.content and len(msg.content) > 1000:
-                    msg.content = msg.content[:1000] + "\n... [RESULTADO TRUNCADO PELO SISTEMA PARA POUPAR RAM]"
+                if msg.get("content") and "[SISTEMA:" in msg["content"] and len(msg["content"]) > 1000:
+                    msg["content"] = msg["content"][:1000] + "\n... [RESULTADO TRUNCADO PELO SISTEMA PARA POUPAR RAM]"
                 new_history.append(msg)
                 
             self.history = new_history
@@ -630,12 +642,12 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             return ""
 
     async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False):
-        if not self.mistral_client:
-            console.print("[warning]Mistral AI não configurado.[/warning]")
+        if not self.mistral_client and not self.openai_client:
+            console.print("[warning]Nenhuma IA (Mistral ou OpenRouter) configurada.[/warning]")
             return
             
         if prompt:
-            self.history.append(ChatMessage(role="user", content=prompt))
+            self.history.append({"role": "user", "content": prompt})
             
         # Avalia sempre que o usuario manda uma mensagem real se precisa flushear contexto
         if not is_tool_response and not silent:
@@ -647,34 +659,45 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
         
         try:
             response_chunks = ""
-            async_response = self.mistral_client.chat_stream(
-                model="mistral-large-latest",
-                messages=self.history
-            )
+            
+            if self.provider == "mistral":
+                converted_history = [ChatMessage(role=msg["role"], content=msg["content"]) for msg in self.history]
+                async_response = self.mistral_client.chat_stream(
+                    model="mistral-large-latest",
+                    messages=converted_history
+                )
+            else:
+                model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash") # Modelo rapido para o openrouter como fallback
+                async_response = await self.openai_client.chat.completions.create(
+                    model=model_name,
+                    messages=self.history,
+                    stream=True
+                )
             
             in_tool_mode = False
             buffer_txt = ""
             
-            async for chunk in async_response:
-                text = chunk.choices[0].delta.content
-                if text:
-                    response_chunks += text
-                    # Esconde o bloco <tool> inteiro do usuário usando buffer inteligente
-                    for char in text:
-                        buffer_txt += char
-                        if not in_tool_mode:
-                            if "<tool>".startswith(buffer_txt):
-                                if buffer_txt == "<tool>":
-                                    in_tool_mode = True
+            if hasattr(async_response, '__aiter__'):  # if stream is async generator
+                async for chunk in async_response:
+                    text = chunk.choices[0].delta.content if hasattr(chunk.choices[0].delta, 'content') else None
+                    if text:
+                        response_chunks += text
+                        # Esconde o bloco <tool> inteiro do usuário usando buffer inteligente
+                        for char in text:
+                            buffer_txt += char
+                            if not in_tool_mode:
+                                if "<tool>".startswith(buffer_txt):
+                                    if buffer_txt == "<tool>":
+                                        in_tool_mode = True
+                                        buffer_txt = ""
+                                else:
+                                    if not silent:
+                                        print(buffer_txt, end="", flush=True)
                                     buffer_txt = ""
                             else:
-                                if not silent:
-                                    print(buffer_txt, end="", flush=True)
-                                buffer_txt = ""
-                        else:
-                            if buffer_txt.endswith("</tool>"):
-                                in_tool_mode = False
-                                buffer_txt = ""
+                                if buffer_txt.endswith("</tool>"):
+                                    in_tool_mode = False
+                                    buffer_txt = ""
             
             if not is_tool_response and not silent:
                 print()
@@ -682,7 +705,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                 print()
                 
             if "NO_REPLY" in response_chunks:
-                self.history.append(ChatMessage(role="assistant", content=response_chunks)) 
+                self.history.append({"role": "assistant", "content": response_chunks}) 
                 return "Resumo efetuado."
             
             # Extrai e valida o JSON dentro de <tool>
@@ -690,7 +713,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             tool_match = re.search(r'<tool>\s*(.*?)\s*</tool>', response_chunks, re.DOTALL)
             
             # Adiciona a resposta do assistente no histórico DENTRO de try ANTES das novas chamadas de tool ou do retorno final
-            self.history.append(ChatMessage(role="assistant", content=response_chunks))
+            self.history.append({"role": "assistant", "content": response_chunks})
             
             if tool_match:
                 try:
@@ -708,7 +731,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description="Aguardando OS...", total=None)
                             result = await self.execute_terminal_command(param)
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado CMD] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado CMD] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action == "DDG_SEARCH":
@@ -728,13 +751,13 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             except Exception as e:
                                 result = f"Erro na API DuckDuckGo: {str(e)}"
                                 
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado DDG_SEARCH] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado DDG_SEARCH] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action in ["GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
                         if not silent: console.print(f"\n[info]🌐 Executando Browser ({action}):[/info] {param}")
                         result = await self.run_browser_action(action, param)
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action in ["READ_EMAILS", "SEND_EMAIL", "DELETE_EMAIL"]:
@@ -742,13 +765,13 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description=f"Logando no Google Servers...", total=None)
                             result = await self.execute_gmail_action(action, param)
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action.startswith("MEMORY_"):
                         if not silent: console.print(f"\n[info]🧠 Módulo MEMORY ({action}):[/info] {param}")
                         result = await self.run_memory_action(action, param)
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action.startswith("SPOTIFY_"):
@@ -756,7 +779,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description=f"Comunicando com Spotify API...", total=None)
                             result = await self.execute_spotify_action(action, param)
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND", "X_POST"]:
@@ -768,7 +791,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description=f"Comunicando com provedor social...", total=None)
                             result = await self.execute_social_send(action, param)
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action.startswith("YOUTUBE_"):
@@ -776,7 +799,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description=f"Baixando modelo temporal de Legendas do YouTube (CC)...", total=None)
                             result = await self.execute_youtube_action(action, param)
-                        self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action == "VOICE_REPLY":
@@ -804,7 +827,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         except Exception as e:
                             err_str = str(e)
                             console.print(f"[bold red]Erro edge-tts nativo:[/bold red] {err_str}")
-                            self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO TTS] Falha ao gerar o arquivo mp3. Erro: {err_str}"))
+                            self.history.append({"role": "user", "content": f"[SISTEMA: ERRO TTS] Falha ao gerar o arquivo mp3. Erro: {err_str}"})
                             return await self.ask(None, is_tool_response=True, silent=silent)
                         
                         if audio_path.exists():
@@ -819,20 +842,20 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                                 else: # Telegram ou afins
                                     result = await self.execute_social_send("TELEGRAM_SEND", f"{dest} | | {audio_path.absolute()}")
                                     
-                                self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado envio de VOZ ativo para {target}] -> {result}"))
+                                self.history.append({"role": "user", "content": f"[SISTEMA: Resultado envio de VOZ ativo para {target}] -> {result}"})
                                 return await self.ask(None, is_tool_response=True, silent=silent)
                             else:
                                 # Se ela não usou o parametro extra target ou errou colocando o placeholder, apenas retorne pra thread original e a ponte Node ou Discord vai subir.
                                 return f"[AUDIO_REPLY: {audio_path.absolute()}]"
                         else:
                             console.print(f"[bold red]Erro edge-tts nativo:[/bold red] Arquivo não foi criado fisicamente no disco.")
-                            self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO TTS] Falha desconhecida. O arquivo mp3 não foi criado."))
+                            self.history.append({"role": "user", "content": f"[SISTEMA: ERRO TTS] Falha desconhecida. O arquivo mp3 não foi criado."})
                             return await self.ask(None, is_tool_response=True, silent=silent)
                         
                 except Exception as e:
                     err_msg = f"Erro no Parse do JSON da Tool: {str(e)} no bloco: {tool_match.group(1)}"
                     console.print(f"\n[error]{err_msg}[/error]")
-                    self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO] {err_msg}. Corrija o JSON!"))
+                    self.history.append({"role": "user", "content": f"[SISTEMA: ERRO] {err_msg}. Corrija o JSON!"})
                     return await self.ask(None, is_tool_response=True, silent=silent)
                 
             return response_chunks
