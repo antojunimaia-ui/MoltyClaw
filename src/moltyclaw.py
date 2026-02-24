@@ -101,6 +101,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
                 headless=False,
+                channel="msedge",
                 ignore_default_args=["--enable-automation"],
                 args=[
                     '--disable-blink-features=AutomationControlled',
@@ -112,7 +113,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                 ]
             )
             self.context = await self.browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0",
                 viewport={"width": 1366, "height": 768},
                 device_scale_factor=1,
                 has_touch=False,
