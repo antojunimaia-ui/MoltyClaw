@@ -733,9 +733,10 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                                 # A IA mandou um Target junto... Isso significa que ela quer tentar ENVIAR pra frente ativamente
                                 # Vamos descobrir de onde a mensagem original veio pra usar a ponte primária
                                 dest = target
-                                if len(dest) > 10 and dest[0].isdigit(): # Maioria numero Zap
+                                dest_clean = dest.replace("+", "").replace("-", "").replace(" ", "")
+                                if len(dest_clean) > 10 and dest_clean.isdigit(): # Maioria numero Zap
                                     result = await self.execute_social_send("WHATSAPP_SEND", f"{dest} | | {audio_path.absolute()}")
-                                elif len(dest) == 18 and dest.isdigit(): # Maioria ID discord
+                                elif len(dest_clean) in [18, 19] and dest_clean.isdigit(): # Maioria ID discord
                                     result = await self.execute_social_send("DISCORD_SEND", f"{dest} | | {audio_path.absolute()}")
                                 else: # Telegram ou afins
                                     result = await self.execute_social_send("TELEGRAM_SEND", f"{dest} | | {audio_path.absolute()}")
