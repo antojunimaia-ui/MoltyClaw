@@ -99,12 +99,35 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
         """Inicializa o navegador persistente."""
         try:
             self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=False)
+            self.browser = await self.playwright.chromium.launch(
+                headless=False,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-infobars',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-extensions'
+                ]
+            )
             self.context = await self.browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 720}
+                viewport={"width": 1280, "height": 720},
+                device_scale_factor=1,
+                has_touch=False,
+                is_mobile=False,
+                locale='pt-BR',
+                timezone_id='America/Sao_Paulo'
             )
             self.page = await self.context.new_page()
+            
+            # Applica o stealth pro google maldito não bugar a pesquisa com Captcha
+            try:
+                from playwright_stealth import stealth_async
+                await stealth_async(self.page)
+                console.print(f"[info][{self.name}] 🥷 Stealth Anti-Bot Mode Ativado no Browser![/info]")
+            except ImportError:
+                console.print(f"[warning][{self.name}] playwright-stealth ausente. O navegador operará em modo normal (suscetível a Captcha).[/warning]")
+                
             console.print(f"[info][{self.name}] Navegador interno persistente inicializado![/info]")
         except Exception as e:
             console.print(f"[error]Erro ao iniciar navegador: {e}[/error]")

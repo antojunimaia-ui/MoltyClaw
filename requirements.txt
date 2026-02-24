@@ -11,3 +11,4 @@ discord.py
 aiohttp
 tweepy
 edge-tts
+playwright-stealth
