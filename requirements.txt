@@ -10,3 +10,4 @@ youtube-transcript-api
 discord.py
 aiohttp
 tweepy
+edge-tts

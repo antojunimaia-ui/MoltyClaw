@@ -60,6 +60,25 @@ class MoltyClawDiscordBot(discord.Client):
             # Pega o texto da mensagem e remove a marcação de arroba (@MoltyClaw)
             user_text = message.content.replace(f'<@{self.user.id}>', '').strip()
             
+            # Checa attachments de audio
+            for attachment in message.attachments:
+                if attachment.content_type and ('audio' in attachment.content_type or attachment.filename.endswith('.ogg')):
+                    import time
+                    from pathlib import Path
+                    temp_dir = Path("temp")
+                    temp_dir.mkdir(exist_ok=True)
+                    file_path = temp_dir / f"discord_audio_{int(time.time())}.ogg"
+                    await attachment.save(file_path)
+                    
+                    console.print("[info]🎧 Áudio do Discord detectado, transcrevendo...[/info]")
+                    transcribed = await self.agent.transcribe_audio(str(file_path))
+                    if transcribed:
+                        user_text += f"\n(Áudio Anexado Transcrito do Usuário): '{transcribed}'"
+                        console.print(f"[bold yellow]Transcrição:[/] {transcribed}")
+            
+            if not user_text:
+                return
+            
             console.print(f"\n[bold magenta]📩 Mensagem Discord ({message.author}):[/bold magenta] {user_text}")
             
             # Coloca a interface do Discord mostrando o indicativo "MoltyClaw está digitando..."
@@ -70,10 +89,17 @@ class MoltyClawDiscordBot(discord.Client):
                     
                     import re
                     media_path = None
-                    match = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
-                    if match:
-                        media_path = match.group(1)
-                        reply = reply.replace(match.group(0), "").strip()
+                    audio_reply_path = None
+                    
+                    match_img = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
+                    if match_img:
+                        media_path = match_img.group(1)
+                        reply = reply.replace(match_img.group(0), "").strip()
+                        
+                    match_aud = re.search(r'\[AUDIO_REPLY:\s*(.*?)\]', reply)
+                    if match_aud:
+                        audio_reply_path = match_aud.group(1)
+                        reply = reply.replace(match_aud.group(0), "").strip()
                         
                     # O Discord tem um limite de 2000 caracteres pra mensagem
                     if len(reply) > 2000:
@@ -90,6 +116,10 @@ class MoltyClawDiscordBot(discord.Client):
                                 await message.channel.send(file=discord.File(media_path))
                         elif reply:
                             await message.channel.send(reply)
+                            
+                        # Manda o áudio narrado se existir
+                        if audio_reply_path and os.path.exists(audio_reply_path):
+                            await message.channel.send(file=discord.File(audio_reply_path))
                         
                         
                 except Exception as e:

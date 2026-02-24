@@ -44,6 +44,8 @@ class MoltyClaw:
             active_features.append('"TELEGRAM_SEND" (param: "id_ou_username | texto")')
         if os.environ.get("MOLTY_TWITTER_ACTIVE"):
             active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
+        
+        active_features.append('"VOICE_REPLY" (param: "texto curto que o robo deve falar em voz alta de volta pro usuario via arquivo de audio")')
 
         self.history = [
             ChatMessage(
@@ -507,6 +509,36 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             
             console.print("[dim green][SISTEMA] Contexto compactado e truncado de forma limpa![/dim green]")
 
+    async def transcribe_audio(self, audio_path: str) -> str:
+        """Envia o arquivo para a Mistral API para transcrição via voxtral-mini-latest"""
+        api_key = os.getenv("MISTRAL_API_KEY")
+        if not api_key:
+            return ""
+            
+        console.print(f"[info]🎙️ Transcrevendo áudio recebido via Mistral Voxtral...[/info]")
+        try:
+            import aiohttp
+            url = "https://api.mistral.ai/v1/audio/transcriptions"
+            headers = {"Authorization": f"Bearer {api_key}"}
+            
+            with open(audio_path, 'rb') as f:
+                form = aiohttp.FormData()
+                form.add_field('model', 'voxtral-mini-latest')
+                # Precisamos passar com a chave 'file'
+                form.add_field('file', f, filename=os.path.basename(audio_path))
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, headers=headers, data=form) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data.get("text", "")
+                        else:
+                            console.print(f"[error]Erro na API de Transcrição: {await response.text()}[/error]")
+                            return ""
+        except Exception as e:
+            console.print(f"[error]Exceção ao transcrever áudio: {e}[/error]")
+            return ""
+
     async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False):
         if not self.mistral_client:
             console.print("[warning]Mistral AI não configurado.[/warning]")
@@ -636,6 +668,25 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             result = await self.execute_youtube_action(action, param)
                         self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
                         return await self.ask(None, is_tool_response=True, silent=silent)
+                        
+                    elif action == "VOICE_REPLY":
+                        if not silent: console.print(f"\n[info]🎙️ Módulo TTS (Gerando Voz):[/info] {param[:30]}...")
+                        import time
+                        from pathlib import Path
+                        temp_dir = Path("temp")
+                        temp_dir.mkdir(exist_ok=True)
+                        audio_path = temp_dir / f"molty_reply_{int(time.time())}.mp3"
+                        # Utilizando edge-tts local via subprocesso para evitar block do loop de evento
+                        import subprocess
+                        import sys
+                        process = subprocess.Popen([sys.executable, "-m", "edge_tts", "--voice", "pt-BR-AntonioNeural", "--text", param, "--write-media", str(audio_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        process.communicate()
+                        
+                        if audio_path.exists():
+                            return f"[AUDIO_REPLY: {audio_path.absolute()}]"
+                        else:
+                            self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO TTS] Falha ao gerar o arquivo mp3."))
+                            return await self.ask(None, is_tool_response=True, silent=silent)
                         
                 except Exception as e:
                     err_msg = f"Erro no Parse do JSON da Tool: {str(e)} no bloco: {tool_match.group(1)}"

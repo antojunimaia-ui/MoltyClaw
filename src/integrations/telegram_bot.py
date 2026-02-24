@@ -37,7 +37,31 @@ async def stop_agent() -> None:
         await agent.close_browser()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.message.text:
+    if not update.message: return
+    
+    user_text = ""
+    if update.message.text:
+        user_text = update.message.text.strip()
+    elif update.message.voice or update.message.audio:
+        audio_file = update.message.voice or update.message.audio
+        file = await context.bot.get_file(audio_file.file_id)
+        
+        import time
+        from pathlib import Path
+        temp_dir = Path("temp")
+        temp_dir.mkdir(exist_ok=True)
+        file_path = temp_dir / f"telegram_audio_{int(time.time())}.ogg"
+        await file.download_to_drive(file_path)
+        
+        console.print("[info]🎧 Áudio do Telegram recebido, transcrevendo...[/info]")
+        transcribed = await agent.transcribe_audio(str(file_path))
+        if transcribed:
+            user_text = f"(Áudio Transcrito do Usuário): '{transcribed}'"
+            console.print(f"[bold yellow]Transcrição:[/] {transcribed}")
+        else:
+            user_text = "(Áudio Recebido, ininteligível)"
+            
+    if not user_text:
         return
 
     # Evita que o bot responda a si mesmo (raro no telegram, mas por prevenção)
@@ -53,7 +77,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             console.print(f"[bold yellow][Segurança] Ignorando Telegram de não autorizado: {username} ({user_id})[/bold yellow]")
             return
 
-    user_text = update.message.text.strip()
     is_group = update.message.chat.type in ['group', 'supergroup']
     
     # Se for um grupo, o bot só responde se for mencionado com @moltyclaw (ou se responderem a ele)
@@ -78,10 +101,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         import re
         media_path = None
-        match = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
-        if match:
-            media_path = match.group(1)
-            reply = reply.replace(match.group(0), "").strip()
+        audio_reply_path = None
+        
+        match_img = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
+        if match_img:
+            media_path = match_img.group(1)
+            reply = reply.replace(match_img.group(0), "").strip()
+            
+        match_aud = re.search(r'\[AUDIO_REPLY:\s*(.*?)\]', reply)
+        if match_aud:
+            audio_reply_path = match_aud.group(1)
+            reply = reply.replace(match_aud.group(0), "").strip()
         
         # Telegram tem limite de 4096 caracteres. Quebrando em chunks se necessário.
         if len(reply) > 4000:
@@ -100,6 +130,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         await update.message.reply_photo(photo=f)
             elif reply:
                 await update.message.reply_text(reply)
+                
+            if audio_reply_path and os.path.exists(audio_reply_path):
+                with open(audio_reply_path, 'rb') as f:
+                    await update.message.reply_voice(voice=f)
             
     except Exception as e:
         console.print(f"\n[bold red]Erro processando chat do Telegram: {e}[/bold red]\n{traceback.format_exc()}")

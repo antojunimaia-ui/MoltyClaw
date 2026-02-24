@@ -68,21 +68,28 @@ client.on('message', async msg => {
 
         const iaReply = response.data.reply;
         const mediaPath = response.data.media;
+        const audioReplyPath = response.data.audio_reply;
 
         // Desloga da API local o que MoltyClaw resolveu falar
-        console.log(`🤖 Resposta do MoltyClaw: ${iaReply || (mediaPath ? "Enviando arquivo de mídia..." : "Resposta vazia.")}`);
+        console.log(`🤖 Resposta do MoltyClaw: ${iaReply || (mediaPath ? "Enviando arquivo de mídia..." : (audioReplyPath ? "Enviando audio..." : "Resposta vazia."))}`);
 
         // Devolve o texto final lá no WhatsApp
         if (mediaPath) {
             const { MessageMedia } = require('whatsapp-web.js');
             const media = MessageMedia.fromFilePath(mediaPath);
             if (iaReply && iaReply.trim() !== "") {
-                msg.reply(media, undefined, { caption: iaReply });
+                await msg.reply(media, undefined, { caption: iaReply });
             } else {
-                msg.reply(media);
+                await msg.reply(media);
             }
-        } else {
-            msg.reply(iaReply || "Tive um problema processando o texto...");
+        } else if (iaReply && iaReply.trim() !== "") {
+            await msg.reply(iaReply);
+        }
+
+        if (audioReplyPath) {
+            const { MessageMedia } = require('whatsapp-web.js');
+            const media = MessageMedia.fromFilePath(audioReplyPath);
+            await msg.reply(media, undefined, { sendAudioAsVoice: true });
         }
         await chat.clearState();
 

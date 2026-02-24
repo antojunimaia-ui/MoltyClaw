@@ -34,19 +34,40 @@ async def handle_whatsapp_message(request):
         
         console.print(f"\n[bold blue]📩 Nova mensagem do WhatsApp ({sender}):[/bold blue] {message}")
         
+        if message and message.startswith("[AUDIO_FILE: ") and message.endswith("]"):
+            media_path = message.replace("[AUDIO_FILE: ", "").replace("]", "").strip()
+            if os.path.exists(media_path):
+                console.print(f"[info]🎧 Áudio detectado, extraindo texto via Voxtral API...[/info]")
+                transcribed = await agent.transcribe_audio(media_path)
+                if transcribed:
+                    message = f"(Áudio Transcrito do Usuário): '{transcribed}'"
+                    console.print(f"[bold yellow]Transcrição:[/] {transcribed}")
+                else:
+                    message = "(Áudio enviado pelo usuário, mas ininteligível ou falha na transcrição)"
+                    
         # Pede pro MoltyClaw responder (reaproveitamos tudo que ele ja tem de navegador/terminal)
         reply = await agent.ask(message)
         
         import re
         media_path = None
-        match = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
-        if match:
-            media_path = match.group(1)
-            reply = reply.replace(match.group(0), "").strip()
+        audio_reply_path = None
+        
+        match_img = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
+        if match_img:
+            media_path = match_img.group(1)
+            reply = reply.replace(match_img.group(0), "").strip()
+            
+        match_aud = re.search(r'\[AUDIO_REPLY:\s*(.*?)\]', reply)
+        if match_aud:
+            audio_reply_path = match_aud.group(1)
+            reply = reply.replace(match_aud.group(0), "").strip()
             
         response_data = {"reply": reply}
         if media_path and os.path.exists(media_path):
             response_data["media"] = os.path.abspath(media_path)
+            
+        if audio_reply_path and os.path.exists(audio_reply_path):
+            response_data["audio_reply"] = os.path.abspath(audio_reply_path)
             
         return web.json_response(response_data)
     except Exception as e:
