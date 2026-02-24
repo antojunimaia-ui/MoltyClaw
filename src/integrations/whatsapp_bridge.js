@@ -111,9 +111,25 @@ const bridgeServer = http.createServer((req, res) => {
         req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
-                const { to, message } = JSON.parse(body);
+                const { to, message, mediaPath } = JSON.parse(body);
                 // "to" vira formato obrigatório e aceitável do node
-                await client.sendMessage(to, message);
+                if (mediaPath) {
+                    const { MessageMedia } = require('whatsapp-web.js');
+                    const media = MessageMedia.fromFilePath(mediaPath);
+                    const isAudio = mediaPath.endsWith('.mp3') || mediaPath.endsWith('.ogg');
+                    const options = {};
+                    if (isAudio) options.sendAudioAsVoice = true;
+                    if (message && message.trim() !== "") options.caption = message;
+
+                    if (Object.keys(options).length > 0) {
+                        await client.sendMessage(to, media, options);
+                    } else {
+                        await client.sendMessage(to, media);
+                    }
+                } else if (message && message.trim() !== "") {
+                    await client.sendMessage(to, message);
+                }
+
                 console.log(`[API Bridge] Mensagem Ativa disparada para: ${to}`);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'success' }));

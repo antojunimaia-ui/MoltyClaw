@@ -37,11 +37,11 @@ class MoltyClaw:
         
         active_features = []
         if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
-            active_features.append('"WHATSAPP_SEND" (param: "numero sem plus, com DDI e ddd | texto (ex: 5511999999999 | O mestre está com febre)")')
+            active_features.append('"WHATSAPP_SEND" (param: "numero | opcional texto | opcional caminho arquivo absoluto")')
         if os.environ.get("MOLTY_DISCORD_ACTIVE"):
-            active_features.append('"DISCORD_SEND" (param: "id_usuario_ou_chat | texto")')
+            active_features.append('"DISCORD_SEND" (param: "id_usuario_ou_chat | opcional texto | opcional caminho arquivo absoluto")')
         if os.environ.get("MOLTY_TELEGRAM_ACTIVE"):
-            active_features.append('"TELEGRAM_SEND" (param: "id_ou_username | texto")')
+            active_features.append('"TELEGRAM_SEND" (param: "id_ou_username | opcional texto | opcional caminho arquivo absoluto")')
         if os.environ.get("MOLTY_TWITTER_ACTIVE"):
             active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
         
@@ -382,12 +382,13 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             except Exception as ex:
                 return f"Erro na API do Twitter (X) v2: {ex}"
 
-        parts = param.split("|", 1)
-        if len(parts) != 2:
-            return "Erro: Formato inválido. Use [destination | text]"
-        
+        parts = param.split("|")
         target = parts[0].strip()
-        text = parts[1].strip()
+        text = parts[1].strip() if len(parts) > 1 else ""
+        file_path = parts[2].strip() if len(parts) > 2 else ""
+        
+        if not text and not file_path:
+            return "Erro: Formato inválido. Use [destination | text opcional | file_path opcional]. Providencie pelo menos text ou file."
         
         try:
             import aiohttp
@@ -395,38 +396,74 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                 import os
                 token = os.getenv("TELEGRAM_TOKEN")
                 if not token: return "Erro: TELEGRAM_TOKEN ausente."
-                url = f"https://api.telegram.org/bot{token}/sendMessage"
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(url, json={"chat_id": target, "text": text}) as resp:
-                        if resp.status == 200: return f"Mensagem enviada com sucesso no Telegram para {target}."
-                        return f"Erro do Telegram API (HTTP {resp.status}): {await resp.text()}"
+                    if file_path and os.path.exists(file_path):
+                        ext = file_path.lower().split(".")[-1]
+                        if ext in ["mp3", "ogg", "wav"]:
+                            url = f"https://api.telegram.org/bot{token}/sendVoice"
+                            file_field = "voice"
+                        elif ext in ["png", "jpg", "jpeg", "webp"]:
+                            url = f"https://api.telegram.org/bot{token}/sendPhoto"
+                            file_field = "photo"
+                        else:
+                            url = f"https://api.telegram.org/bot{token}/sendDocument"
+                            file_field = "document"
+                            
+                        form = aiohttp.FormData()
+                        form.add_field("chat_id", target)
+                        if text: form.add_field("caption", text)
+                        form.add_field(file_field, open(file_path, "rb"), filename=os.path.basename(file_path))
+                        
+                        async with session.post(url, data=form) as resp:
+                            if resp.status == 200: return f"Arquivo/Mensagem enviada com sucesso no Telegram para {target}."
+                            return f"Erro do Telegram API (HTTP {resp.status}): {await resp.text()}"
+                    else:
+                        url = f"https://api.telegram.org/bot{token}/sendMessage"
+                        async with session.post(url, json={"chat_id": target, "text": text}) as resp:
+                            if resp.status == 200: return f"Mensagem enviada com sucesso no Telegram para {target}."
+                            return f"Erro do Telegram API (HTTP {resp.status}): {await resp.text()}"
                         
             elif action == "DISCORD_SEND":
-                import os
+                import os, json
                 token = os.getenv("DISCORD_TOKEN")
                 if not token: return "Erro: DISCORD_TOKEN ausente."
-                # We can't directly POST to user by ID. We must open DM channel first.
                 url_dm = "https://discord.com/api/v10/users/@me/channels"
                 headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
-                async with aiohttp.ClientSession(headers=headers) as session:
-                    # Create DM channel
-                    async with session.post(url_dm, json={"recipient_id": target}) as resp_dm:
+                async with aiohttp.ClientSession() as session:
+                    # Tenta abrir DM
+                    async with session.post(url_dm, headers=headers, json={"recipient_id": target}) as resp_dm:
                         if resp_dm.status != 200: return f"Erro abrindo DM Discord: {await resp_dm.text()}"
                         dm_data = await resp_dm.json()
                         channel_id = dm_data["id"]
-                        
                         url_msg = f"https://discord.com/api/v10/channels/{channel_id}/messages"
-                        async with session.post(url_msg, json={"content": text}) as resp_msg:
-                            if resp_msg.status == 200: return f"Mensagem enviada no Discord com sucesso."
-                            return f"Erro Discord (HTTP {resp_msg.status}): {await resp_msg.text()}"
+                        
+                        if file_path and os.path.exists(file_path):
+                            form = aiohttp.FormData()
+                            payload = {}
+                            if text: payload["content"] = text
+                            form.add_field("payload_json", json.dumps(payload), content_type="application/json")
+                            form.add_field("files[0]", open(file_path, "rb"), filename=os.path.basename(file_path))
+                            
+                            headers_file = {"Authorization": f"Bot {token}"}
+                            
+                            async with session.post(url_msg, headers=headers_file, data=form) as resp_msg:
+                                if resp_msg.status == 200: return f"Arquivo/Mensagem enviada no Discord com sucesso."
+                                return f"Erro Discord (HTTP {resp_msg.status}): {await resp_msg.text()}"
+                        else:
+                            async with session.post(url_msg, headers=headers, json={"content": text}) as resp_msg:
+                                if resp_msg.status == 200: return f"Mensagem enviada no Discord com sucesso."
+                                return f"Erro Discord (HTTP {resp_msg.status}): {await resp_msg.text()}"
                             
             elif action == "WHATSAPP_SEND":
-                # Roteria a mensagem para porta 8081 local que o Node deve estar escutando
                 async with aiohttp.ClientSession() as session:
-                    # Formata o numero com @c.us caso a IA não tenha posto
                     if not target.endswith("@c.us"):
                         target = target.replace("+", "").replace("-", "").replace(" ", "") + "@c.us"
-                    async with session.post("http://localhost:8081/send_whatsapp", json={"to": target, "message": text}) as resp:
+                        
+                    payload = {"to": target, "message": text}
+                    if file_path and os.path.exists(file_path):
+                        payload["mediaPath"] = os.path.abspath(file_path)
+                        
+                    async with session.post("http://localhost:8081/send_whatsapp", json=payload) as resp:
                         if resp.status == 200: return "Mensagem engatilhada e enviada via WhatsApp Bridge Node."
                         return f"O Bridge do WhatsApp reportou erro ou nao esta rodando na porta 8081. (HTTP {resp.status})"
                         
