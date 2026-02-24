@@ -45,7 +45,7 @@ class MoltyClaw:
         if os.environ.get("MOLTY_TWITTER_ACTIVE"):
             active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
         
-        active_features.append('"VOICE_REPLY" (param: "texto curto que o robo deve falar em voz alta de volta pro usuario via arquivo de audio")')
+        active_features.append('"VOICE_REPLY" (param: "texto curto de reposta em voz | numero zap_ID discord_ou_ID telegram SE voce quiser enviar ativamente para alguem em vez de só responder o chat atual")')
 
         self.history = [
             ChatMessage(
@@ -707,7 +707,16 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
                     elif action == "VOICE_REPLY":
-                        if not silent: console.print(f"\n[info]🎙️ Módulo TTS (Gerando Voz):[/info] {param[:30]}...")
+                        parts = param.split("|", 1)
+                        text = parts[0].strip()
+                        target = parts[1].strip() if len(parts) > 1 else None
+                        
+                        if not silent: 
+                            if target:
+                                console.print(f"\n[info]🎙️ Módulo TTS (Gerando e Enviando Voz):[/info] Destino -> {target}")
+                            else:
+                                console.print(f"\n[info]🎙️ Módulo TTS (Gerando Voz):[/info] {text[:30]}...")
+                                
                         import time
                         from pathlib import Path
                         temp_dir = Path("temp")
@@ -716,11 +725,25 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         # Utilizando edge-tts local via subprocesso para evitar block do loop de evento
                         import subprocess
                         import sys
-                        process = subprocess.Popen([sys.executable, "-m", "edge_tts", "--voice", "pt-BR-AntonioNeural", "--text", param, "--write-media", str(audio_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        process = subprocess.Popen([sys.executable, "-m", "edge_tts", "--voice", "pt-BR-AntonioNeural", "--text", text, "--write-media", str(audio_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         process.communicate()
                         
                         if audio_path.exists():
-                            return f"[AUDIO_REPLY: {audio_path.absolute()}]"
+                            if target:
+                                # A IA mandou um Target junto... Isso significa que ela quer tentar ENVIAR pra frente ativamente
+                                # Vamos descobrir de onde a mensagem original veio pra usar a ponte primária
+                                dest = target
+                                if len(dest) > 10 and dest[0].isdigit(): # Maioria numero Zap
+                                    result = await self.execute_social_send("WHATSAPP_SEND", f"{dest} | | {audio_path.absolute()}")
+                                elif len(dest) == 18 and dest.isdigit(): # Maioria ID discord
+                                    result = await self.execute_social_send("DISCORD_SEND", f"{dest} | | {audio_path.absolute()}")
+                                else: # Telegram ou afins
+                                    result = await self.execute_social_send("TELEGRAM_SEND", f"{dest} | | {audio_path.absolute()}")
+                                    
+                                self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado envio de VOZ ativo para {target}] -> {result}"))
+                                return await self.ask(None, is_tool_response=True, silent=silent)
+                            else:
+                                return f"[AUDIO_REPLY: {audio_path.absolute()}]"
                         else:
                             self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO TTS] Falha ao gerar o arquivo mp3."))
                             return await self.ask(None, is_tool_response=True, silent=silent)
