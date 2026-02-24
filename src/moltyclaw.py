@@ -722,11 +722,17 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         temp_dir = Path("temp")
                         temp_dir.mkdir(exist_ok=True)
                         audio_path = temp_dir / f"molty_reply_{int(time.time())}.mp3"
-                        # Utilizando edge-tts local via subprocesso para evitar block do loop de evento
-                        import subprocess
-                        import sys
-                        process = subprocess.Popen([sys.executable, "-m", "edge_tts", "--voice", "pt-BR-AntonioNeural", "--text", text, "--write-media", str(audio_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        process.communicate()
+                        # Utilizando edge-tts nativamente via asyncio para evitar problemas de escape no subprocesso
+                        import edge_tts
+                        
+                        try:
+                            communicate = edge_tts.Communicate(text, "pt-BR-AntonioNeural")
+                            await communicate.save(str(audio_path))
+                        except Exception as e:
+                            err_str = str(e)
+                            console.print(f"[bold red]Erro edge-tts nativo:[/bold red] {err_str}")
+                            self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO TTS] Falha ao gerar o arquivo mp3. Erro: {err_str}"))
+                            return await self.ask(None, is_tool_response=True, silent=silent)
                         
                         if audio_path.exists():
                             if target:
@@ -746,7 +752,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             else:
                                 return f"[AUDIO_REPLY: {audio_path.absolute()}]"
                         else:
-                            self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO TTS] Falha ao gerar o arquivo mp3."))
+                            console.print(f"[bold red]Erro edge-tts nativo:[/bold red] Arquivo não foi criado fisicamente no disco.")
+                            self.history.append(ChatMessage(role="user", content=f"[SISTEMA: ERRO TTS] Falha desconhecida. O arquivo mp3 não foi criado."))
                             return await self.ask(None, is_tool_response=True, silent=silent)
                         
                 except Exception as e:
