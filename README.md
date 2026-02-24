@@ -66,6 +66,11 @@ Atualmente possuímos três braços totalmente integrados e funcionais que podem
    - **Disparo Ativo (`TELEGRAM_SEND`):** Quer que o bot pesquise informações enquanto você toma café e entregue o "relatório" pro seu parceiro ou grupo de trabalho? Ordene que ele dispare a ferramenta com as informações mastigadas num DM pelo `@username` de quem importa, totalmente de graça.
    - **Segurança Nativa (Whitelist):** Conta com suporte à `TELEGRAM_ALLOWED_USERS` no `.env`, avaliado pelo ID de Usuário interno ou pelo `@username` do cliente para bloquear intrometidos.
 
+4. 🐦 **X (antigo Twitter) (API v2)**:
+   - **Como funciona:** Um robô autônomo conectado aos endpoints oficiais do Twitter (v2) usando `tweepy`.
+   - **O que ele faz:** O MoltyClaw monitora sua timeline de menções. Toda vez que alguém der Reply ou Mencionar seu bot (`@SeuRobo`), ele lê o que a pessoa disse, junta com a internet (fazendo pesquisas se necessário), e atira um reply de volta com limite perfeito de 280 caracteres.
+   - **Disparo Ativo (`X_POST`):** Assim como o robô ajuda passivamente, se você o inicializar no seu computador, você pode mandar ele twittar o que quiser *sem abrir a aba do navegador*! Fale no próprio terminal ou pelo zap: "Gera um log de atualização do sistema sarcástico e tuíta lá" e ele acola sozinho sua postagem na rede.
+
 ---
 
 ## 🚀 Como Rodar

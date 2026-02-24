@@ -46,6 +46,8 @@ def get_color(name):
         return "blue"
     elif "TELEGRAM" in name:
         return "cyan"
+    elif "TWITTER" in name:
+        return "blue"
     return "cyan"
 
 def run_whatsapp():
@@ -72,6 +74,12 @@ def run_telegram():
     th_tel.start()
     return [th_tel]
 
+def run_twitter():
+    CMD_TWITTER = "python src/integrations/twitter_bot.py"
+    th_twt = threading.Thread(target=run_process, args=(CMD_TWITTER, "TWITTER-BOT"), daemon=True)
+    th_twt.start()
+    return [th_twt]
+
 if __name__ == "__main__":
     console.clear()
     console.print(Panel.fit(
@@ -83,8 +91,9 @@ if __name__ == "__main__":
     console.print("1. [bold green]WhatsApp[/bold green] (Abre Server Python + Bridge Node.js)")
     console.print("2. [bold blue]Discord[/bold blue] (Abre Bot Discord)")
     console.print("3. [bold cyan]Telegram[/bold cyan] (Abre Bot Telegram)")
-    console.print("4. [bold magenta]Todos[/bold magenta] (Acorda tudo de uma vez!)")
-    console.print("5. [bold red]Sair[/bold red]\n")
+    console.print("4. [bold blue]X/Twitter[/bold blue] (Abre Bot Twitter API v2)")
+    console.print("5. [bold magenta]Todos[/bold magenta] (Acorda tudo de uma vez!)")
+    console.print("6. [bold red]Sair[/bold red]\n")
     
     choice_str = Prompt.ask("Digite os números das suas escolhas (ex: 1 ou 1&&2)", default="1")
     
@@ -92,19 +101,22 @@ if __name__ == "__main__":
     
     choices = [c.strip() for c in choice_str.split("&&")]
     
-    if "5" in choices:
+    if "6" in choices:
         console.print("[dim]Desligando...[/dim]")
         sys.exit(0)
         
-    if "4" in choices:
+    if "5" in choices:
         os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
         os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
         os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
+        os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
         active_threads.extend(run_whatsapp())
         time.sleep(1) # Intervalo seguro
         active_threads.extend(run_discord())
         time.sleep(1)
         active_threads.extend(run_telegram())
+        time.sleep(1)
+        active_threads.extend(run_twitter())
     else:
         if "1" in choices:
             os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
@@ -117,6 +129,10 @@ if __name__ == "__main__":
         if "3" in choices:
             os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
             active_threads.extend(run_telegram())
+            time.sleep(1)
+        if "4" in choices:
+            os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
+            active_threads.extend(run_twitter())
             time.sleep(1)
         
     try:

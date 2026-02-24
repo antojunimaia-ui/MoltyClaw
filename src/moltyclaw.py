@@ -42,6 +42,8 @@ class MoltyClaw:
             active_features.append('"DISCORD_SEND" (param: "id_usuario_ou_chat | texto")')
         if os.environ.get("MOLTY_TELEGRAM_ACTIVE"):
             active_features.append('"TELEGRAM_SEND" (param: "id_ou_username | texto")')
+        if os.environ.get("MOLTY_TWITTER_ACTIVE"):
+            active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
 
         self.history = [
             ChatMessage(
@@ -354,6 +356,30 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             return f"Erro Módulo Spotify ({action}): {e}"
 
     async def execute_social_send(self, action: str, param: str) -> str:
+        if action == "X_POST":
+            text = param.strip()
+            if len(text) > 280:
+                text = text[:277] + "..."
+            
+            import os
+            import tweepy
+            try:
+                client = tweepy.Client(
+                    bearer_token=os.getenv("TWITTER_BEARER_TOKEN"),
+                    consumer_key=os.getenv("TWITTER_API_KEY"),
+                    consumer_secret=os.getenv("TWITTER_API_SECRET"),
+                    access_token=os.getenv("TWITTER_ACCESS_TOKEN"),
+                    access_token_secret=os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+                )
+                # Twitter I/O is blocked if keys are missing
+                if not os.getenv("TWITTER_API_KEY"):
+                    return "Erro: Token de Twitter ausente."
+                
+                client.create_tweet(text=text)
+                return "Tweet disparado ativamente com sucesso na timeline do X!"
+            except Exception as ex:
+                return f"Erro na API do Twitter (X) v2: {ex}"
+
         parts = param.split("|", 1)
         if len(parts) != 2:
             return "Erro: Formato inválido. Use [destination | text]"
@@ -591,8 +617,12 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         self.history.append(ChatMessage(role="user", content=f"[SISTEMA: Resultado {action}] -> {result}"))
                         return await self.ask(None, is_tool_response=True, silent=silent)
                         
-                    elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND"]:
-                        if not silent: console.print(f"\n[info]🌐 Módulo Social Envio ({action}):[/info] Destino -> {param.split('|')[0] if '|' in param else param}")
+                    elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND", "X_POST"]:
+                        if not silent: 
+                            if action == "X_POST":
+                                console.print(f"\n[info]🌐 Módulo Social Envio ({action}):[/info] Destino -> Twitter Timeline")
+                            else:
+                                console.print(f"\n[info]🌐 Módulo Social Envio ({action}):[/info] Destino -> {param.split('|')[0] if '|' in param else param}")
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description=f"Comunicando com provedor social...", total=None)
                             result = await self.execute_social_send(action, param)

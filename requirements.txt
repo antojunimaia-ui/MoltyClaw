@@ -9,3 +9,4 @@ spotipy
 youtube-transcript-api
 discord.py
 aiohttp
+tweepy
