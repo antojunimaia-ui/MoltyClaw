@@ -71,6 +71,13 @@ Atualmente possuímos três braços totalmente integrados e funcionais que podem
    - **O que ele faz:** O MoltyClaw monitora sua timeline de menções. Toda vez que alguém der Reply ou Mencionar seu bot (`@SeuRobo`), ele lê o que a pessoa disse, junta com a internet (fazendo pesquisas se necessário), e atira um reply de volta com limite perfeito de 280 caracteres.
    - **Disparo Ativo (`X_POST`):** Assim como o robô ajuda passivamente, se você o inicializar no seu computador, você pode mandar ele twittar o que quiser *sem abrir a aba do navegador*! Fale no próprio terminal ou pelo zap: "Gera um log de atualização do sistema sarcástico e tuíta lá" e ele acola sozinho sua postagem na rede.
 
+## 🎙️ Inteligência Cibernética: Audição e Cordas Vocais
+
+Para elevar o MoltyClaw ao próximo nível em termos de "Assistência Pessoal Total", habilitamos um sistema bimodal nativo de voz. O MoltyClaw nunca mais ficará surdo ou mudo para você:
+
+1. **A Audição (API Voxtral - Mistral):** O MoltyClaw é interceptador de Voice Notes! Esqueça precisar digitar tudo o que precisa. Mande áudios em MP3, OGG ou os famosos "Ptt's" do WhatsApp, que a engine re-encaminha para o motor de conversão Transcriber da própria Mistral AI, traduzindo o áudio limpo da sua voz e transformando a conversa no robô super dinâmica.
+2. **As Cordas Vocais (`VOICE_REPLY` & *Microsoft Edge TTS*):** E não é só ouvir! Molty consegue ter reações humanas através de vozes neurais realistas. Peça "Me mande a receita de macarrão em áudio" - Ele sintetiza e te re-encaminha como uma mensagem de voz nativa no próprio WhatsApp, Discord ou Telegram!
+
 ---
 
 ## 🚀 Como Rodar
