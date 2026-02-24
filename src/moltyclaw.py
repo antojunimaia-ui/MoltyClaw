@@ -203,28 +203,46 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                 
             elif action == "INSPECT_PAGE":
                 js_code = """() => {
-                    const elements = document.querySelectorAll('a, button, input');
-                    let result = [];
-                    elements.forEach(el => {
-                        let text = (el.innerText || el.value || el.placeholder || el.name || '').replace(/\\n/g, ' ').trim();
-                        text = text.substring(0, 50);
-                        if (!text && el.tagName.toLowerCase() !== 'input') return;
+                    try {
+                        document.querySelectorAll('[data-operant-id]').forEach(el => el.removeAttribute('data-operant-id'));
                         
-                        let selector = el.tagName.toLowerCase();
-                        if (el.id) selector += '#' + el.id;
-                        if (el.className && typeof el.className === 'string') {
-                            const classes = el.className.split(' ').filter(c => c).join('.');
-                            if (classes) selector += '.' + classes;
-                        }
-                        
-                        if (result.length < 80) {
-                            result.push(`[${selector}] -> ${text || 'input/vazio'}`);
-                        }
-                    });
-                    return result.join('\\n');
+                        const isVisible = (el) => {
+                            const rect = el.getBoundingClientRect();
+                            return rect.width > 0 && rect.height > 0 && 
+                                   rect.top >= 0 && rect.top <= window.innerHeight &&
+                                   rect.left >= 0 && rect.left <= window.innerWidth &&
+                                   window.getComputedStyle(el).visibility !== 'hidden' &&
+                                   window.getComputedStyle(el).display !== 'none';
+                        };
+
+                        const interactiveSelectors = [
+                            'a', 'button', 'input', 'select', 'textarea', 
+                            '[role="button"]', '[role="link"]', '[role="checkbox"]', 
+                            '[role="tab"]', '[role="textbox"]', '[onclick]', '[contenteditable="true"]'
+                        ];
+
+                        const elements = Array.from(document.querySelectorAll(interactiveSelectors.join(',')))
+                            .filter(isVisible)
+                            .slice(0, 80);
+
+                        let result = [];
+                        elements.forEach((el, index) => {
+                            const id = index + 1;
+                            el.setAttribute('data-operant-id', id);
+                            
+                            const tag = el.tagName.toLowerCase();
+                            const role = el.getAttribute('role') || el.type || tag;
+                            let text = (el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '').replace(/\\n/g, ' ').trim().substring(0, 60);
+                            
+                            if (!text && tag !== 'input') text = "vazio/ícone";
+                            
+                            result.push(`[data-operant-id="${id}"] -> <${tag} role="${role}"> ${text}`);
+                        });
+                        return result.join('\\n');
+                    } catch (e) { return "Erro no script: " + e.message; }
                 }"""
                 content = await self.page.evaluate(js_code)
-                return f"ELEMENTOS INTERATIVOS DA PÁGINA (máx 80):\n{content}"
+                return f"🔍 ELEMENTOS INTERATIVOS VISÍVEIS NA TELA (use os seletores [data-operant-id=\"X\"] para CLICK/TYPE):\n{content}"
                 
             elif action == "SCREENSHOT":
                 import os
