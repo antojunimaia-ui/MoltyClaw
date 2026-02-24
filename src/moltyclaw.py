@@ -101,23 +101,33 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
                 headless=False,
+                ignore_default_args=["--enable-automation"],
                 args=[
                     '--disable-blink-features=AutomationControlled',
                     '--disable-infobars',
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
-                    '--disable-extensions'
+                    '--disable-extensions',
+                    '--window-position=0,0'
                 ]
             )
             self.context = await self.browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 720},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                viewport={"width": 1366, "height": 768},
                 device_scale_factor=1,
                 has_touch=False,
                 is_mobile=False,
                 locale='pt-BR',
-                timezone_id='America/Sao_Paulo'
+                timezone_id='America/Sao_Paulo',
+                color_scheme='dark'
             )
+            
+            # Força a remoção profunda da assinatura webdriver do JS
+            await self.context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
             self.page = await self.context.new_page()
             
             # Applica o stealth pro google maldito não bugar a pesquisa com Captcha
