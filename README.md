@@ -17,14 +17,14 @@ Bem-vindo ao repositório do **MoltyClaw**, um agente autônomo superpoderoso qu
 
 O MoltyClaw não é um chatbot comum. Ele entende o seu pedido, elabora um plano, executa uma ou mais ferramentas e só depois volta para te dar a resposta.
 
-### 🌐 Automação Web Completa (Playwright)
+### 🌐 Automação Web Completa (Playwright Avançado)
 
-O MoltyClaw possui um navegador persistente embutido. Quando você pede algo sobre a internet:
+O MoltyClaw não apenas hospeda um navegador, como domina táticas Anti-Bot de nível empresarial (Stealth Bypass com Motor do Microsoft Edge) para evadir com sucesso barreiras ReCaptcha (Cloudflare, Google).
 
-- **`GOTO`**: Ele abre links e lê páginas reais (evitando alucinações de dados).
-- **`READ_PAGE`** e **`INSPECT_PAGE`**: Fazem a raspagem de texto da página aberta para entender o conteúdo, ou listam fisicamente todos os botões e inputs interativos invisíveis.
-- **`CLICK` e `TYPE`**: O MoltyClaw pode **clicar** fisicamente em botões e **preencher** formulários autonomamente!
-- **`SCREENSHOT`**: Ele pode bater uma foto (screenshot) do que está visualizando no navegador e disparar pra você no chat do bate-papo!
+- **`GOTO` e Busca Silenciosa (`DDG_SEARCH`)**: Ele abre links e processa dados. Quando banido temporariamente pelo Google, ele executa autonomamente a DuckDuckGo Search API em *background*.
+- **`READ_PAGE` e Visão Estrutural Dinâmica (`INSPECT_PAGE`)**: Faz a raspagem inteligente do texto atual. Seu sistema de visão utiliza **Mapeamento Lógico por DOM (Operant ID)**, marcando botões visíveis na tela matematicamente e devolvendo uma legenda ao robô para eliminar falhas de clique e alucinações de HTML.
+- **`CLICK` e `TYPE`**: Com a legenda de IDs do `INSPECT_PAGE`, o MoltyClaw pode **clicar cirurgicamente** em menus complexos e **preencher** formulários autonomamente!
+- **`SCREENSHOT`**: Ele pode capturar fotos perfeitas do seu monitor interno a qualquer momento e espalhar em mensagens diretas pelo chat.
 
 ### ⚙️ Execução de Terminal
 
@@ -99,24 +99,40 @@ Este projeto se divide em uma base principal em Python e uma ponte em Node.js (e
 2. Crie ou configure o seu arquivo `.env` na raiz da pasta:
 
    ```env
+   # Inteligência Analítica
    MISTRAL_API_KEY=sua_chave_mistral_aqui
+   
+   # Tokens dos Robôs
    DISCORD_TOKEN=seu_token_discord_aqui_opcional
    TELEGRAM_TOKEN=seu_token_telegram_aqui_opcional
+   
+   # Credenciais Google
    GMAIL_USER=seu_email@gmail.com
    GMAIL_APP_PASSWORD=sua_senha_segura_de_aplicativo_google
+   
+   # API do Spotify (opcional)
    SPOTIFY_CLIENT_ID=seu_client_id_aqui
    SPOTIFY_CLIENT_SECRET=seu_client_secret_aqui
    SPOTIFY_REDIRECT_URI=http://localhost:8080
+   
+   # Filtros de Segurança e Contatos Permitidos
    WHATSAPP_ALLOWED_NUMBERS=5511999999999,5511888888888
    DISCORD_ALLOWED_USERS=123456789012345678,987654321098765432
    TELEGRAM_ALLOWED_USERS=seu_usuario_aqui,12345678
+   
+   # Credenciais da API v2 do Twitter (X)
+   TWITTER_BEARER_TOKEN=seu_bearer_token
+   TWITTER_API_KEY=sua_api_key
+   TWITTER_API_SECRET=sua_api_secret
+   TWITTER_ACCESS_TOKEN=seu_access_token
+   TWITTER_ACCESS_TOKEN_SECRET=seu_access_token_secret
    ```
 
-3. Instale as dependências essenciais do mundo Python:
+3. Instale as dependências essenciais do mundo Python (incluindo motores stealth e agentes de busca offline):
 
    ```bash
    pip install -r requirements.txt
-   playwright install chrome
+   playwright install msedge
    ```
 
 4. Se quiser usar o módulo do WhatsApp, instale as dependências do protocolo (Node.js):
