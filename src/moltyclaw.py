@@ -71,6 +71,7 @@ Ações suportadas no JSON:
 "GOTO" (param: url)
 "CLICK" (param: seletor css)
 "TYPE" (param: "seletor | texto")
+"PRESS_ENTER" (param: "")
 "READ_PAGE" (param: "")
 "INSPECT_PAGE" (param: "")
 "SCREENSHOT" (param: "")
@@ -207,6 +208,11 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                 text = parts[1].strip()
                 await self.page.fill(selector, text, timeout=10000)
                 return f"Texto '{text}' digitado com sucesso no alvo '{selector}'"
+                
+            elif action == "PRESS_ENTER":
+                await self.page.keyboard.press("Enter")
+                await self.page.wait_for_timeout(2000)  # Aguarda animações ou submits após a tecla enter
+                return "Tecla 'Enter' pressionada com sucesso!"
                 
             elif action == "READ_PAGE":
                 # Avalia o innerText do body inteiro e pega algo cru e facil da IA ler
