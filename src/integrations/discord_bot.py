@@ -114,7 +114,11 @@ class MoltyClawDiscordBot(discord.Client):
             
             # Verifica se user e bot estao na mesma call, se sim, OBRIGA a tool de voz
             in_same_vc = False
+<<<<<<< HEAD
             if hasattr(message.author, 'voice') and message.author.voice and message.author.voice.channel:
+=======
+            if message.author.voice and message.author.voice.channel:
+>>>>>>> 9f116c5b9ea528f8175ec63bd7fccb0b279a0fac
                 for vc in self.voice_clients:
                     if vc.guild == message.guild and vc.is_connected() and vc.channel == message.author.voice.channel:
                         in_same_vc = True
