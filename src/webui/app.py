@@ -72,6 +72,68 @@ def chat():
         console.print(f"[bold red]Erro processando requisição API: {e}[/bold red]")
         return jsonify({"error": str(e)}), 500
 
+import subprocess
+active_processes = {}
+
+def start_integration(name):
+    cmd_map = {
+        "whatsapp": ["python src/integrations/whatsapp_server.py", "node src/integrations/whatsapp_bridge.js"],
+        "discord": ["python src/integrations/discord_bot.py"],
+        "telegram": ["python src/integrations/telegram_bot.py"],
+        "twitter": ["python src/integrations/twitter_bot.py"]
+    }
+    
+    if name not in cmd_map: return False
+    
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    if name == "whatsapp": env["MOLTY_WHATSAPP_ACTIVE"] = "1"
+    if name == "discord": env["MOLTY_DISCORD_ACTIVE"] = "1"
+    if name == "telegram": env["MOLTY_TELEGRAM_ACTIVE"] = "1"
+    if name == "twitter": env["MOLTY_TWITTER_ACTIVE"] = "1"
+    
+    procs = []
+    for cmd in cmd_map[name]:
+        p = subprocess.Popen(cmd, shell=True, env=env)
+        procs.append(p)
+    
+    active_processes[name] = procs
+    return True
+
+def stop_integration(name):
+    if name in active_processes:
+        for p in active_processes[name]:
+            p.terminate()
+        del active_processes[name]
+        return True
+    return False
+
+@app.route("/api/integrations", methods=["GET"])
+def get_integrations():
+    status = {
+        "whatsapp": "whatsapp" in active_processes and any(p.poll() is None for p in active_processes["whatsapp"]),
+        "discord": "discord" in active_processes and any(p.poll() is None for p in active_processes["discord"]),
+        "telegram": "telegram" in active_processes and any(p.poll() is None for p in active_processes["telegram"]),
+        "twitter": "twitter" in active_processes and any(p.poll() is None for p in active_processes["twitter"])
+    }
+    return jsonify(status)
+
+@app.route("/api/integrations/<action>", methods=["POST"])
+def toggle_integration(action):
+    data = request.json
+    name = data.get("name")
+    
+    if action == "start":
+        succ = start_integration(name)
+    elif action == "stop":
+        succ = stop_integration(name)
+    else:
+        return jsonify({"error": "Ação inválida"}), 400
+        
+    if succ:
+        return jsonify({"success": True})
+    return jsonify({"error": "Falha na operação"}), 500
+
 if __name__ == "__main__":
     console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI... Acesse: http://127.0.0.1:5000[/intense_cyan]")
     # Roda o dev test na porta 5000 acessível local

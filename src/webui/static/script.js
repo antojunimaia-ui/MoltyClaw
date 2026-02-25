@@ -128,3 +128,80 @@ async function checkStatus() {
 
 // Start polling
 checkStatus();
+
+// Tab Switching Logic
+function switchTab(tabId) {
+    // Hide all views
+    document.querySelectorAll('.view-content').forEach(view => {
+        view.style.display = 'none';
+        view.classList.remove('active');
+    });
+
+    // Remove active state from nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+
+    // Show selected view
+    const targetView = document.getElementById(`view-${tabId}`);
+    if (targetView) {
+        targetView.style.display = 'block';
+        targetView.classList.add('active');
+    }
+
+    // Set active state on nav item
+    const targetNav = document.getElementById(`nav-${tabId}`);
+    if (targetNav) {
+        targetNav.classList.add('active');
+    }
+
+    if (tabId === 'integrations') {
+        fetchIntegrations();
+    }
+}
+
+// Integrations Logic
+async function fetchIntegrations() {
+    try {
+        const res = await fetch('/api/integrations');
+        const data = await res.json();
+
+        // Update toggles based on status map
+        for (const [key, active] of Object.entries(data)) {
+            const toggle = document.getElementById(`toggle-${key}`);
+            if (toggle) toggle.checked = active;
+        }
+    } catch (e) {
+        console.error('Failed to fetch integrations', e);
+    }
+}
+
+async function toggleIntegration(name) {
+    const toggle = document.getElementById(`toggle-${name}`);
+    const action = toggle.checked ? 'start' : 'stop';
+
+    toggle.disabled = true; // Prevent spamming
+    try {
+        const res = await fetch(`/api/integrations/${action}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+
+        if (!res.ok) {
+            // Revert on fail
+            toggle.checked = !toggle.checked;
+            alert("Erro ao alterar o status do conector.");
+        }
+    } catch (e) {
+        toggle.checked = !toggle.checked;
+        console.error(e);
+    } finally {
+        toggle.disabled = false;
+        // Refetch to ensure state
+        setTimeout(fetchIntegrations, 1000);
+    }
+}
+
+// Initial fetch to sync states
+fetchIntegrations();
