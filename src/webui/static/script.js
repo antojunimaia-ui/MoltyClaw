@@ -68,16 +68,16 @@ function renderMarkdownWithMedia(text) {
     let safeHtml = DOMPurify.sanitize(marked.parse(text));
 
     // Converte chamadas de arquivo bruto de audio injetadas em tag real HTML5
-    safeHtml = safeHtml.replace(/\[AUDIO_REPLY:\s*([^\]]+)\]/g, (match, filename) => {
-        return `<div style="margin-top: 12px; margin-bottom: 8px;">
-            <audio controls style="width: 100%; max-width: 300px; height: 35px; border-radius: 8px;">
-                <source src="/temp/${filename.trim()}" type="audio/mpeg">
-                ${filename}
-            </audio>
+    let tempHtml = safeHtml.replace(/<p>\[AUDIO_REPLY:\s*([^\]]+)\]<\/p>/g, "[AUDIO_REPLY:$1]");
+    tempHtml = tempHtml.replace(/\[AUDIO_REPLY:\s*([^\]]+)\]/g, (match, filename) => {
+        return `<div class="audio-player-wrapper" style="margin-top: 15px; margin-bottom: 15px; padding: 15px; background: #f0f0f0; border-radius: 12px; border: 1px solid #ccc; display: block; width: 100%;">
+            <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px; color: #333;">🎙️ Áudio Gerado</div>
+            <audio controls style="width: 100%; display: block;" src="/temp/${filename.trim()}"></audio>
+            <div style="font-size: 10px; color: #666; margin-top: 8px; font-family: monospace;">📂 ${filename.trim()}</div>
         </div>`;
     });
 
-    return safeHtml;
+    return tempHtml;
 }
 
 async function sendMessage() {

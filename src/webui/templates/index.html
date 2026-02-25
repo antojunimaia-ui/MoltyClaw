@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MoltyClaw Gateway Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=3">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Marked.js for markdown rendering -->
@@ -162,7 +162,7 @@
     </div>
 
     <!-- Script at the bottom -->
-    <script src="/static/script.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=4"></script>
 </body>
 
 </html>
