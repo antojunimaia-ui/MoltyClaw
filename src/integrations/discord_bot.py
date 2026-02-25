@@ -58,22 +58,30 @@ class MoltyClawDiscordBot(discord.Client):
         
         # CHECAGEM DO COMANDO DE ENTRAR E SAIR DA CALL
         if message.content.lower().startswith('!call'):
-            if not message.author.voice:
+            if not hasattr(message.author, 'voice') or not message.author.voice:
                 await message.reply("Você precisa estar em um Canal de Voz para me chamar!")
                 return
             
             channel = message.author.voice.channel
             try:
-                vc = await channel.connect()
+                # O Discord em algumas redes demora pra bater o Handshake UDP do Voice, aumentando o timeout evita bug de entrar e cair
+                vc = await channel.connect(timeout=60.0)
                 console.print(f"[bold green]Entrei no canal de voz: {channel.name}[/bold green]")
-                await message.reply(f"MoltyClaw entrou na call **{channel.name}**! Me diga algo!")
+                
+                instrucoes = ("**Estou na Call! 🎧🎙️**\n"
+                              "> **Nota Técnica:** Eu não fico ouvindo sua voz viva 24h sem parar na call, pois isso derreteria o custo do projeto!\n\n"
+                              "**Como falar comigo:**\n"
+                              "1. Use o botão de `Mensagem de Voz` original aqui do Chat do Discord (Ícone de microfone ao lado do botão de Emoji).\n"
+                              "2. Grave o seu áudio falando pra mim e mande.\n"
+                              "3. Eu vou baixar o áudio em milissegundos, usar o **Voxtral** para ouvir o que você me pediu, e depois vou **REPRODUZIR a resposta FALANDO VIVO** bem alto aqui no canal de voz para todos escutarem!")
+                await message.reply(instrucoes)
             except Exception as e:
                 console.print(f"[bold red]Erro ao entrar no canal de voz: {e}[/bold red]")
-                await message.reply("Opa, rolou um problema ao entrar na call.")
+                await message.reply("Opa, rolou um problema (TimeOut) ao entrar na call.")
             return
 
         if message.content.lower().startswith('!disconnect'):
-            for vc in client.voice_clients:
+            for vc in self.voice_clients:
                 if vc.guild == message.guild:
                     await vc.disconnect()
                     await message.reply("Saí da call!")
@@ -104,7 +112,18 @@ class MoltyClawDiscordBot(discord.Client):
             if not user_text:
                 return
             
-            console.print(f"\n[bold magenta]📩 Mensagem Discord ({message.author}):[/bold magenta] {user_text}")
+            # Verifica se user e bot estao na mesma call, se sim, OBRIGA a tool de voz
+            in_same_vc = False
+            if hasattr(message.author, 'voice') and message.author.voice and message.author.voice.channel:
+                for vc in self.voice_clients:
+                    if vc.guild == message.guild and vc.is_connected() and vc.channel == message.author.voice.channel:
+                        in_same_vc = True
+                        break
+            
+            if in_same_vc:
+                user_text += "\n\n[INSTRUÇÃO DE SISTEMA: Você está na mesma sala de voz que o usuário no Discord! Seu áudio será roteado ativamente pra ele escutar! MUDANÇA DE ROTINA: USE A TOOL 'VOICE_REPLY' OBRIGATORIAMENTE PARA GERAR A SUA RESPOSTA EM ÁUDIO NESTE TURNO, DO CONTRÁRIO ELE SÓ VERÁ TEXTO CALADO E ACHARÁ QUE VOCÊ QUEBROU!]"
+
+            console.print(f"\n[bold magenta]📩 Mensagem Discord ({message.author}):[/bold magenta] {user_text[:200]}...")
             
             # Coloca a interface do Discord mostrando o indicativo "MoltyClaw está digitando..."
             async with message.channel.typing():
@@ -151,7 +170,11 @@ class MoltyClawDiscordBot(discord.Client):
                                     bot_in_voice = True
                                     if not vc.is_playing():
                                         console.print(f"[info]Falando a resposta no canal de voz...[/info]")
-                                        vc.play(discord.FFmpegPCMAudio(source=audio_reply_path))
+                                        # Corrige o caminho absoluto se ffpmeg nao estiver no PATH nativo da instancia Python
+                                        ffmpeg_path = r"C:\Users\Cliente\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe"
+                                        if not os.path.exists(ffmpeg_path):
+                                            ffmpeg_path = "ffmpeg"
+                                        vc.play(discord.FFmpegPCMAudio(source=audio_reply_path, executable=ffmpeg_path))
                                     else:
                                         await message.channel.send("(Nota: Molty já está falando algo no Voice Chat!)")
                                     break
