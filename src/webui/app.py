@@ -53,24 +53,73 @@ def index():
 def status():
     return jsonify({"ready": ready})
 
+from werkzeug.utils import secure_filename
+import queue
+import json
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     if not ready:
          return jsonify({"error": "Gateway MoltyClaw está ligando o Browser... Aguarde 5 segundos."}), 503
          
-    data = request.json
-    user_msg = data.get("message", "")
+    if request.is_json:
+        user_msg = request.json.get("message", "")
+    else:
+        user_msg = request.form.get("message", "")
+        
+    uploaded_file = request.files.get("file")
+    if uploaded_file and uploaded_file.filename:
+        os.makedirs("temp", exist_ok=True)
+        filename = secure_filename(uploaded_file.filename)
+        filepath = os.path.join("temp", f"webui_{filename}")
+        uploaded_file.save(filepath)
+        user_msg += f"\n\n[SISTEMA: O usuário acabou de te enviar via WebUI o seguinte arquivo. Caminho salvo com sucesso: {os.path.abspath(filepath)}]"
+        
+        ext = filename.split(".")[-1].lower()
+        if ext in ['mp3', 'ogg', 'wav', 'm4a']:
+            try:
+                # Roda a transcrição na thread do asyncio
+                fut = asyncio.run_coroutine_threadsafe(agent.transcribe_audio(filepath), loop)
+                text = fut.result(timeout=60)
+                if text:
+                    user_msg += f"\n(Áudio Anexado Transcrito usando Voxtral Mini): '{text}'"
+            except Exception as e:
+                console.print(f"[warning]Erro na transcrição de áudio: {e}[/warning]")
+
     if not user_msg:
         return jsonify({"error": "Mensagem vazia."}), 400
-        
-    try:
-        # Envia a thread local HTTP para a main thread assincrona do robô de forma limpa (Threadsafe)
-        future = asyncio.run_coroutine_threadsafe(agent.ask(user_msg, silent=False), loop)
-        reply = future.result(timeout=600)  # Tolerância de 10 min de timeout
-        return jsonify({"reply": reply})
-    except Exception as e:
-        console.print(f"[bold red]Erro processando requisição API: {e}[/bold red]")
-        return jsonify({"error": str(e)}), 500
+
+    q = queue.Queue()
+
+    async def stream_cb(token: str):
+        q.put(("token", token))
+
+    async def tool_cb(msg: str):
+        q.put(("tool", msg))
+
+    async def run_ask():
+        try:
+            await agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
+            q.put(("done", None))
+        except Exception as e:
+            q.put(("error", str(e)))
+
+    asyncio.run_coroutine_threadsafe(run_ask(), loop)
+
+    def generate():
+        while True:
+            evt_type, data = q.get()
+            if evt_type == "done":
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                break
+            elif evt_type == "error":
+                yield f"data: {json.dumps({'type': 'error', 'content': data})}\n\n"
+                break
+            else:
+                yield f"data: {json.dumps({'type': evt_type, 'content': data})}\n\n"
+
+    from flask import Response, stream_with_context
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 import subprocess
 active_processes = {}

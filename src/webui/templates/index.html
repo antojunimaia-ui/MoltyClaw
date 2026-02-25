@@ -81,8 +81,14 @@
                     </div>
                     <div class="input-actions">
                         <button class="btn-secondary" onclick="clearSession()">New session</button>
-                        <button class="btn-primary" id="send-btn" onclick="sendMessage()">Send <i
-                                class="fa-solid fa-paper-plane" style="margin-left:5px; font-size:12px;"></i></button>
+                        <input type="file" id="fileAttachment" style="display: none;" />
+                        <button class="icon-btn" onclick="document.getElementById('fileAttachment').click()"
+                            title="Anexar Arquivo">
+                            <i class="fa-solid fa-paperclip"></i>
+                        </button>
+                        <button id="sendBtn" class="btn-primary" onclick="sendMessage()">
+                            Send <i class="fa-solid fa-paper-plane" style="margin-left: 8px;"></i>
+                        </button>
                     </div>
                 </div>
             </div>

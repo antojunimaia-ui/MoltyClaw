@@ -647,7 +647,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             console.print(f"[error]Exceção ao transcrever áudio: {e}[/error]")
             return ""
 
-    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False):
+    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None):
         if not self.mistral_client and not self.openai_client:
             console.print("[warning]Nenhuma IA (Mistral ou OpenRouter) configurada.[/warning]")
             return
@@ -699,6 +699,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                                 else:
                                     if not silent:
                                         print(buffer_txt, end="", flush=True)
+                                    if stream_callback:
+                                        await stream_callback(buffer_txt)
                                     buffer_txt = ""
                             else:
                                 if buffer_txt.endswith("</tool>"):
@@ -738,7 +740,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             progress.add_task(description="Aguardando OS...", total=None)
                             result = await self.execute_terminal_command(param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado CMD] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[CMD] {param}")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action == "DDG_SEARCH":
                         console.print(f"\n[info]🦆 Executando Busca Nativa ({action}):[/info] {param}")
@@ -758,13 +761,15 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                                 result = f"Erro na API DuckDuckGo: {str(e)}"
                                 
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado DDG_SEARCH] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[SEARCH] {param}")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action in ["GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
                         if not silent: console.print(f"\n[info]🌐 Executando Browser ({action}):[/info] {param}")
                         result = await self.run_browser_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[{action}] {param[:30]}")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action in ["READ_EMAILS", "SEND_EMAIL", "DELETE_EMAIL"]:
                         console.print(f"\n[info]📧 Módulo GMAIL ({action}):[/info] {param}")
@@ -772,13 +777,15 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             progress.add_task(description=f"Logando no Google Servers...", total=None)
                             result = await self.execute_gmail_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[{action}]")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action.startswith("MEMORY_"):
                         if not silent: console.print(f"\n[info]🧠 Módulo MEMORY ({action}):[/info] {param}")
                         result = await self.run_memory_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[{action}]")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action.startswith("SPOTIFY_"):
                         if not silent: console.print(f"\n[info]🎵 Módulo SPOTIFY ({action}):[/info] {param}")
@@ -786,7 +793,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             progress.add_task(description=f"Comunicando com Spotify API...", total=None)
                             result = await self.execute_spotify_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[{action}]")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND", "X_POST"]:
                         if not silent: 
@@ -798,7 +806,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             progress.add_task(description=f"Comunicando com provedor social...", total=None)
                             result = await self.execute_social_send(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[{action}]")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action.startswith("YOUTUBE_"):
                         if not silent: console.print(f"\n[info]▶️ Módulo YOUTUBE ({action}):[/info] {param}")
@@ -806,7 +815,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             progress.add_task(description=f"Baixando modelo temporal de Legendas do YouTube (CC)...", total=None)
                             result = await self.execute_youtube_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
-                        return await self.ask(None, is_tool_response=True, silent=silent)
+                        if tool_callback: await tool_callback(f"[{action}]")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action == "VOICE_REPLY":
                         parts = param.split("|", 1)
@@ -834,7 +844,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                             err_str = str(e)
                             console.print(f"[bold red]Erro edge-tts nativo:[/bold red] {err_str}")
                             self.history.append({"role": "user", "content": f"[SISTEMA: ERRO TTS] Falha ao gerar o arquivo mp3. Erro: {err_str}"})
-                            return await self.ask(None, is_tool_response=True, silent=silent)
+                            return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                         if audio_path.exists():
                             if target and target.strip().upper() not in ["SEU_ZAP_ID_AQUI", "TELEGRAM", "DISCORD", "WHATSAPP", "AQUI", "AQUI MESMO"]:
@@ -849,20 +859,21 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                                     result = await self.execute_social_send("TELEGRAM_SEND", f"{dest} | | {audio_path.absolute()}")
                                     
                                 self.history.append({"role": "user", "content": f"[SISTEMA: Resultado envio de VOZ ativo para {target}] -> {result}"})
-                                return await self.ask(None, is_tool_response=True, silent=silent)
+                                if tool_callback: await tool_callback(f"[AUDIO_SENT_TO] {target}")
+                                return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                             else:
                                 # Se ela não usou o parametro extra target ou errou colocando o placeholder, apenas retorne pra thread original e a ponte Node ou Discord vai subir.
                                 return f"[AUDIO_REPLY: {audio_path.absolute()}]"
                         else:
                             console.print(f"[bold red]Erro edge-tts nativo:[/bold red] Arquivo não foi criado fisicamente no disco.")
                             self.history.append({"role": "user", "content": f"[SISTEMA: ERRO TTS] Falha desconhecida. O arquivo mp3 não foi criado."})
-                            return await self.ask(None, is_tool_response=True, silent=silent)
+                            return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                 except Exception as e:
                     err_msg = f"Erro no Parse do JSON da Tool: {str(e)} no bloco: {tool_match.group(1)}"
                     console.print(f"\n[error]{err_msg}[/error]")
                     self.history.append({"role": "user", "content": f"[SISTEMA: ERRO] {err_msg}. Corrija o JSON!"})
-                    return await self.ask(None, is_tool_response=True, silent=silent)
+                    return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                 
             return response_chunks
             

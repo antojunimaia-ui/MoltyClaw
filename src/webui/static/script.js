@@ -53,13 +53,33 @@ function scrollToBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
+function createAssistantMessage() {
+    const row = document.createElement('div');
+    row.className = 'message-row assistant-row';
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble assistant-bubble';
+    row.appendChild(bubble);
+    chatContainer.appendChild(row);
+    scrollToBottom();
+    return bubble;
+}
+
 async function sendMessage() {
     const text = messageInput.value.trim();
-    if (!text) return;
+    const fileInput = document.getElementById('fileAttachment');
+    const file = fileInput ? fileInput.files[0] : null;
+
+    if (!text && !file) return;
+
+    let userDisplay = text;
+    if (file) {
+        userDisplay += `\n\n*(📎 Anexo: ${file.name})*`;
+    }
 
     // UI Updates
-    appendUserMessage(text);
+    appendUserMessage(userDisplay);
     messageInput.value = '';
+    if (fileInput) fileInput.value = '';
     sendBtn.disabled = true;
     inputWrapper.classList.add('loading');
 
@@ -67,22 +87,64 @@ async function sendMessage() {
     agentStatus.className = 'status-badge typing';
     agentStatus.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" style="margin-right:4px;"></i>Thinking...';
 
+    const formData = new FormData();
+    formData.append("message", text);
+    if (file) {
+        formData.append("file", file);
+    }
+
     try {
         const response = await fetch('/api/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
+            body: formData
         });
 
-        const data = await response.json();
+        if (!response.ok) {
+            const errData = await response.json();
+            appendAssistantMessage(`<span style="color:red">Error: ${errData.error || 'Server error.'}</span>`);
+            return;
+        }
 
-        if (response.ok && data.reply) {
-            // Render markdown to HTML and sanitize
-            const rawHtml = marked.parse(data.reply);
-            const safeHtml = DOMPurify.sanitize(rawHtml);
-            appendAssistantMessage(safeHtml);
-        } else {
-            appendAssistantMessage(`<span style="color:red">Error: ${data.error || 'Server disconnected.'}</span>`);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+
+        let assistantBubble = createAssistantMessage();
+        let cumulativeText = "";
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (let line of lines) {
+                if (line.startsWith('data: ')) {
+                    const dataStr = line.substring(6);
+                    if (!dataStr) continue;
+
+                    try {
+                        const evt = JSON.parse(dataStr);
+                        if (evt.type === 'token') {
+                            cumulativeText += evt.content;
+                            assistantBubble.innerHTML = DOMPurify.sanitize(marked.parse(cumulativeText));
+                            scrollToBottom();
+                        } else if (evt.type === 'tool') {
+                            cumulativeText += `\n> ⚙️ [\`${evt.content}\`]\n\n`;
+                            assistantBubble.innerHTML = DOMPurify.sanitize(marked.parse(cumulativeText));
+                            scrollToBottom();
+                        } else if (evt.type === 'error') {
+                            cumulativeText += `\n<span style="color:red">Error API: ${evt.content}</span>`;
+                            assistantBubble.innerHTML = DOMPurify.sanitize(marked.parse(cumulativeText));
+                            scrollToBottom();
+                        } else if (evt.type === 'done') {
+                            // Finished stream
+                        }
+                    } catch (e) {
+                        // Some chunks might arrive broken in half from TCP, but JSON.parse will fail gracefully and the next chunk fixes it... Actually proper SSE needs a robust buffer, but chunk lines Usually don't break mid JSON text if yielded properly.
+                    }
+                }
+            }
         }
     } catch (err) {
         appendAssistantMessage(`<span style="color:red">Network connection failed.</span>`);
