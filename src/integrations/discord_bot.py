@@ -53,8 +53,33 @@ class MoltyClawDiscordBot(discord.Client):
                 console.print(f"[bold yellow][Segurança] Ignorando Discord de não autorizado: {message.author} ({message.author.id})[/bold yellow]")
                 return
             
-        # O MoltyClaw vai responder se for mencionado numa sala ou se for numa Mensagem Direta (DM) com alguém.
+        # O MoltyClaw vai responder se for mencionado numa sala, via Comando CALL, ou se for numa Mensagem Direta (DM) com alguém.
         # Assim ele não fica tentando responder o server de Discord inteiro o tempo todo.
+        
+        # CHECAGEM DO COMANDO DE ENTRAR E SAIR DA CALL
+        if message.content.lower().startswith('!call'):
+            if not message.author.voice:
+                await message.reply("Você precisa estar em um Canal de Voz para me chamar!")
+                return
+            
+            channel = message.author.voice.channel
+            try:
+                vc = await channel.connect()
+                console.print(f"[bold green]Entrei no canal de voz: {channel.name}[/bold green]")
+                await message.reply(f"MoltyClaw entrou na call **{channel.name}**! Me diga algo!")
+            except Exception as e:
+                console.print(f"[bold red]Erro ao entrar no canal de voz: {e}[/bold red]")
+                await message.reply("Opa, rolou um problema ao entrar na call.")
+            return
+
+        if message.content.lower().startswith('!disconnect'):
+            for vc in client.voice_clients:
+                if vc.guild == message.guild:
+                    await vc.disconnect()
+                    await message.reply("Saí da call!")
+                    return
+            return
+            
         if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
             
             # Pega o texto da mensagem e remove a marcação de arroba (@MoltyClaw)
@@ -119,7 +144,20 @@ class MoltyClawDiscordBot(discord.Client):
                             
                         # Manda o áudio narrado se existir
                         if audio_reply_path and os.path.exists(audio_reply_path):
-                            await message.channel.send(file=discord.File(audio_reply_path))
+                            # Teta achar se o bot está numa de voz para tocar direto, se não estiver, joga como Anexo no chat
+                            bot_in_voice = False
+                            for vc in self.voice_clients:
+                                if vc.guild == message.guild and vc.is_connected():
+                                    bot_in_voice = True
+                                    if not vc.is_playing():
+                                        console.print(f"[info]Falando a resposta no canal de voz...[/info]")
+                                        vc.play(discord.FFmpegPCMAudio(source=audio_reply_path))
+                                    else:
+                                        await message.channel.send("(Nota: Molty já está falando algo no Voice Chat!)")
+                                    break
+                            
+                            if not bot_in_voice:
+                                await message.channel.send(file=discord.File(audio_reply_path))
                         
                         
                 except Exception as e:
@@ -135,6 +173,7 @@ if __name__ == "__main__":
         # Pede permissão explícita pro Discord para ler conteúdo das mensagens em servidores!
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.voice_states = True # Pra saber quem ta em call
         
         client = MoltyClawDiscordBot(intents=intents)
         
