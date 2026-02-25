@@ -27,7 +27,10 @@ def run_agent_loop():
     
     # Prepara o Event Loop do Asyncio para a Thread 
     if os.name == 'nt':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

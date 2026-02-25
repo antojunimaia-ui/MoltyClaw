@@ -110,13 +110,17 @@ async function sendMessage() {
 
         let assistantBubble = createAssistantMessage();
         let cumulativeText = "";
+        let buffer = "";
 
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
 
             const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
+            buffer += chunk;
+            const lines = buffer.split('\n');
+
+            buffer = lines.pop(); // Guarda o restante (linha incompleta) para o próximo ciclo
 
             for (let line of lines) {
                 if (line.startsWith('data: ')) {
@@ -141,7 +145,7 @@ async function sendMessage() {
                             // Finished stream
                         }
                     } catch (e) {
-                        // Some chunks might arrive broken in half from TCP, but JSON.parse will fail gracefully and the next chunk fixes it... Actually proper SSE needs a robust buffer, but chunk lines Usually don't break mid JSON text if yielded properly.
+                        // Ignora erros temporarios
                     }
                 }
             }
