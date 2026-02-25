@@ -18,3 +18,4 @@ PyNaCl
 pydub
 soundfile
 SpeechRecognition
+flask

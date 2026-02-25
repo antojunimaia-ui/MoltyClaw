@@ -88,6 +88,12 @@ if __name__ == "__main__":
         border_style="cyan"
     ))
     
+    console.print("\n[bold yellow] Ambiente Tático:[/bold yellow]")
+    console.print("1. [bold cyan]Modo WebUI Dashboard[/bold cyan] (Painel Web em 127.0.0.1:5000)")
+    console.print("2. [bold magenta]Modo Terminal & Conectores[/bold magenta] (Discord, Whats, Telegram, etc)")
+    
+    env_choice = Prompt.ask("Selecione o modo de inicialização", choices=["1", "2"], default="2")
+    
     console.print("\n[bold yellow] Escolha do Provedor de IA:[/bold yellow]")
     console.print("1. [bold cyan]Mistral AI[/bold cyan] (MISTRAL_API_KEY)")
     console.print("2. [bold magenta]OpenRouter[/bold magenta] (OPENROUTER_API_KEY)")
@@ -98,6 +104,11 @@ if __name__ == "__main__":
         os.environ["MOLTY_PROVIDER"] = "openrouter"
     else:
         os.environ["MOLTY_PROVIDER"] = "mistral"
+        
+    if env_choice == "1":
+        # Run local flask app mapping the GUI UI
+        os.system("python src/webui/app.py")
+        sys.exit(0)
         
     console.print("\n[bold cyan] Quais braços do agente deseja iniciar?[/bold cyan]")
     

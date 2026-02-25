@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoltyClaw Gateway Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- DOMPurify to safe markdown render -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.3/purify.min.js"></script>
+</head>
+<body>
+    
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fa-solid fa-bars menu-toggle"></i>
+                <div class="logo-area">
+                    <span class="logo-title">MOLTYCLAW</span>
+                    <span class="logo-subtitle">GATEWAY DASHBOARD</span>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="nav-section">
+                    <div class="nav-section-title">Chat <span>-</span></div>
+                    <div class="nav-item active">
+                        <i class="fa-regular fa-comment-dots"></i>
+                        <span>Chat</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Control <span>-</span></div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-chart-column"></i>
+                        <span>Overview</span>
+                    </div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-link"></i>
+                        <span>Channels</span>
+                    </div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-server"></i>
+                        <span>Instances</span>
+                    </div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-file-lines"></i>
+                        <span>Sessions</span>
+                    </div>
+                    <div class="nav-item">
+                        <i class="fa-regular fa-clock"></i>
+                        <span>Cron Jobs</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Agent <span>-</span></div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>Skills</span>
+                    </div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-network-wired"></i>
+                        <span>Nodes</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Settings <span>-</span></div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-gear"></i>
+                        <span>Config</span>
+                    </div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-bug"></i>
+                        <span>Debug</span>
+                    </div>
+                    <div class="nav-item">
+                        <i class="fa-solid fa-bars-staggered"></i>
+                        <span>Logs</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">Resources</div>
+                    <div class="nav-item">
+                        <i class="fa-regular fa-file"></i>
+                        <span>Docs</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="main-workspace">
+            
+            <!-- Top Navigation / Header -->
+            <header class="main-header">
+                <div class="header-left">
+                    <h1 class="page-title">Chat <span class="status-badge" id="agent-status"><i class="fa-solid fa-circle-notch fa-spin" style="margin-right:4px;"></i>Starting...</span></h1>
+                    <p class="page-subtitle">Direct gateway chat session for quick interventions.</p>
+                </div>
+                <div class="header-right">
+                    <div class="input-target">
+                        <input type="text" value="moltyclaw:local" readonly>
+                    </div>
+                    <button class="icon-btn"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button class="icon-btn"><i class="fa-solid fa-brain"></i></button>
+                    <button class="icon-btn"><i class="fa-solid fa-expand"></i></button>
+                </div>
+            </header>
+
+            <!-- Chat Area -->
+            <div class="chat-container" id="chat-container">
+                <!-- Chat messages will be appended here via JS -->
+                <div class="system-welcome">
+                    Welcome to MoltyClaw WebUI. I have full browser and system access.
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <textarea id="message-input" placeholder="Message (↵ to send, Shift+↵ for line breaks)"></textarea>
+                </div>
+                <div class="input-actions">
+                    <button class="btn-secondary" onclick="clearSession()">New session</button>
+                    <button class="btn-primary" id="send-btn" onclick="sendMessage()">Send <i class="fa-solid fa-paper-plane" style="margin-left:5px; font-size:12px;"></i></button>
+                </div>
+            </div>
+
+        </main>
+
+    </div>
+
+    <!-- Script at the bottom -->
+    <script src="/static/script.js"></script>
+</body>
+</html>
