@@ -64,6 +64,22 @@ function createAssistantMessage() {
     return bubble;
 }
 
+function renderMarkdownWithMedia(text) {
+    let safeHtml = DOMPurify.sanitize(marked.parse(text));
+
+    // Converte chamadas de arquivo bruto de audio injetadas em tag real HTML5
+    safeHtml = safeHtml.replace(/\[AUDIO_REPLY:\s*([^\]]+)\]/g, (match, filename) => {
+        return `<div style="margin-top: 12px; margin-bottom: 8px;">
+            <audio controls style="width: 100%; max-width: 300px; height: 35px; border-radius: 8px;">
+                <source src="/temp/${filename.trim()}" type="audio/mpeg">
+                ${filename}
+            </audio>
+        </div>`;
+    });
+
+    return safeHtml;
+}
+
 async function sendMessage() {
     const text = messageInput.value.trim();
     const fileInput = document.getElementById('fileAttachment');
@@ -131,15 +147,15 @@ async function sendMessage() {
                         const evt = JSON.parse(dataStr);
                         if (evt.type === 'token') {
                             cumulativeText += evt.content;
-                            assistantBubble.innerHTML = DOMPurify.sanitize(marked.parse(cumulativeText));
+                            assistantBubble.innerHTML = renderMarkdownWithMedia(cumulativeText);
                             scrollToBottom();
                         } else if (evt.type === 'tool') {
                             cumulativeText += `\n> ⚙️ [\`${evt.content}\`]\n\n`;
-                            assistantBubble.innerHTML = DOMPurify.sanitize(marked.parse(cumulativeText));
+                            assistantBubble.innerHTML = renderMarkdownWithMedia(cumulativeText);
                             scrollToBottom();
                         } else if (evt.type === 'error') {
                             cumulativeText += `\n<span style="color:red">Error API: ${evt.content}</span>`;
-                            assistantBubble.innerHTML = DOMPurify.sanitize(marked.parse(cumulativeText));
+                            assistantBubble.innerHTML = renderMarkdownWithMedia(cumulativeText);
                             scrollToBottom();
                         } else if (evt.type === 'done') {
                             // Finished stream
