@@ -23,7 +23,7 @@ O MoltyClaw não apenas hospeda um navegador, como domina táticas Anti-Bot de n
 
 - **`GOTO` e Busca Silenciosa (`DDG_SEARCH`)**: Ele abre links e processa dados. Quando banido temporariamente pelo Google, ele executa autonomamente a DuckDuckGo Search API em *background*.
 - **`READ_PAGE` e Visão Estrutural Dinâmica (`INSPECT_PAGE`)**: Faz a raspagem inteligente do texto atual. Seu sistema de visão utiliza **Mapeamento Lógico por DOM (Operant ID)**, marcando botões visíveis na tela matematicamente e devolvendo uma legenda ao robô para eliminar falhas de clique e alucinações de HTML.
-- **`CLICK` e `TYPE`**: Com a legenda de IDs do `INSPECT_PAGE`, o MoltyClaw pode **clicar cirurgicamente** em menus complexos e **preencher** formulários autonomamente!
+- **`CLICK`, `TYPE` e `PRESS_ENTER`**: Com a legenda de IDs do `INSPECT_PAGE`, o MoltyClaw pode **clicar cirurgicamente** em menus complexos, **preencher** formulários autonomamente e submetê-los como um ser humano de verdade!
 - **`SCREENSHOT`**: Ele pode capturar fotos perfeitas do seu monitor interno a qualquer momento e espalhar em mensagens diretas pelo chat.
 
 ### ⚙️ Execução de Terminal
@@ -143,15 +143,18 @@ Este projeto se divide em uma base principal em Python e uma ponte em Node.js (e
    npm install whatsapp-web.js qrcode-terminal axios dotenv
    ```
 
-### 🎮 O Launcher Interativo
+### 🎮 O Launcher Interativo & WebUI Dashboard
 
-Não sabe qual serviço rodar? Esqueça inicializações longas e abra nosso **Launcher** direto do seu terminal:
+Esqueça inicializações longas! Abra nosso **Launcher** flexível direto do seu terminal:
 
 ```bash
 python start_moltyclaw.py
 ```
 
-O MoltyClaw te apresentará um menu lindo (com poder da interface *Rich*) para você escolher qual braço da IA quer conectar naquele exato momento: WhatsApp, Discord, Telegram ou iniciar TODOS DE UMA VEZ!
+O MoltyClaw te apresentará um menu lindo (com o poder da interface *Rich*) perguntando primeiro pelo seu **Ambiente Tático**:
+
+1. **Modo WebUI Dashboard**: Levanta um painel web super moderno (estilo Gateway) localmente na porta `5000` via **Flask**. Nele você pode gerenciar suas integrações (ligar/desligar bots com cliques visuais) e conversar ativamente com o agente gerando renderização visual (Markdown + DOMPurify) em tempo real!
+2. **Modo Terminal & Conectores**: Modo clássico. Você escolhe puramente qual braço lógico da IA quer ligar em *background*: WhatsApp, Discord, Telegram, X (Twitter) ou iniciar TODOS DE UMA VEZ!
 
 ---
 
@@ -161,10 +164,13 @@ Para desenvolvedores curiosos, eis a estrutura do MoltyClaw:
 
 - `start_moltyclaw.py` -> Gerenciador multithread de subprocessos.
 - `src/moltyclaw.py` -> A essência do agente! Contém o Prompt de Sistema com regras de Bloqueio JSON (`<tool>`), loop de interações com as *tools* da máquina física e do Chromium.
-- `src/integrations/whatsapp_server.py` -> API Rest construída em `aiohttp` carregando o corpo digital do MoltyClaw.
-- `src/integrations/whatsapp_bridge.js` -> Capturador headless silencioso do protocolo Web do WhatsApp que repassa o recado aos ouvidos do Python.
-- `src/integrations/discord_bot.py` -> Robô clássico conectado via biblioteca `discord.py` utilizando *Intents*.
-- `src/integrations/telegram_bot.py` -> Módulo assíncrono conectado usando `python-telegram-bot`, pronto para Groups e Private Chats.
+- `src/webui/app.py` -> Servidor Backend assíncrono Flask acoplando threads seguras da interface web dinamicamente com a lógica do MoltyClaw.
+- `src/webui/templates/index.html` -> Frontend visual responsivo gerando markdown via DOMPurify e Marked.js.
+- `src/integrations/whatsapp_server.py` -> API Rest construída em `aiohttp` carregando o corpo digital.
+- `src/integrations/whatsapp_bridge.js` -> Capturador headless silencioso do protocolo Web do WhatsApp.
+- `src/integrations/discord_bot.py` -> Robô conectado via `discord.py` suportando Audio Player em Servidores (`FFmpegPCMAudio`).
+- `src/integrations/telegram_bot.py` -> Módulo assíncrono conectado usando `python-telegram-bot`.
+- `src/integrations/twitter_bot.py` -> Robô acoplado na API oficial do X (v2) por `tweepy`.
 
 ---
 **Nota**: O Agente opera com total liberdade dentro das permissões lógicas do usuário que inicia o script. Tenha cautela caso deixe o seu computador ligado sozinho enquanto pede para o MoltyClaw apagar arquivos do seu disco pelo zap! 😉
