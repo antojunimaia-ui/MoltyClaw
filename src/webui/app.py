@@ -57,8 +57,14 @@ def status():
     return jsonify({"ready": ready})
 
 from werkzeug.utils import secure_filename
+from flask import send_from_directory
 import queue
 import json
+import re
+
+@app.route("/temp/<path:filename>")
+def serve_temp(filename):
+    return send_from_directory(os.path.abspath("temp"), filename)
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -102,7 +108,13 @@ def chat():
 
     async def run_ask():
         try:
-            await agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
+            res = await agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
+            if res and isinstance(res, str) and "[AUDIO_REPLY:" in res:
+                match = re.search(r'\[AUDIO_REPLY:\s*([^\]]+)\]', res)
+                if match:
+                    filename = os.path.basename(match.group(1).strip())
+                    q.put(("token", f"\n\n[AUDIO_REPLY: {filename}]\n\n"))
+                    
             q.put(("done", None))
         except Exception as e:
             q.put(("error", str(e)))
