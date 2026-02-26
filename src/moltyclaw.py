@@ -2,8 +2,15 @@ import os
 import asyncio
 import traceback
 import re
+import sys
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "integrations"))
+try:
+    from mcp_hub import MCPHub
+except ImportError:
+    MCPHub = None
 
 from mistralai.async_client import MistralAsyncClient
 from mistralai.models.chat_completion import ChatMessage
@@ -40,6 +47,7 @@ class MoltyClaw:
         self.browser = None
         self.context = None
         self.page = None
+        self.mcp_hub = MCPHub() if MCPHub else None
         
         active_features = []
         if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
@@ -91,7 +99,7 @@ Ações suportadas no JSON:
 "YOUTUBE_SUMMARIZE" (param: link_do_video)
 {chr(10).join(active_features)}
 
-IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de memória te dirá os arquivos, use MEMORY_GET para lê-los. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY no texto da resposta."""}
+IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de memória te dirá os arquivos, use MEMORY_GET para lê-los. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY no texto da resposta.\n{self._get_mcp_prompt_placeholder()}"""}
         ]
         
         if not self.api_key:
@@ -108,6 +116,29 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                     base_url="https://openrouter.ai/api/v1",
                     api_key=self.api_key,
                 )
+
+    def _get_mcp_prompt_placeholder(self) -> str:
+        return "[MCP_TOOLS_INJECTED_HERE_AUTOMATICALLY]"
+
+    async def update_mcp_tools_in_prompt(self):
+        if not self.mcp_hub:
+            return
+            
+        tools_str = await self.mcp_hub.get_all_tools_formatted()
+        if not tools_str:
+            return
+            
+        mcp_section = f"\nFERRAMENTAS MCP EXTRAS DETECTADAS VIA SERVIDOR EXTERNO (Protocolo MCP):\n{tools_str}\n"
+        
+        # Encontra a posição do base_prompt e substitui a TAG
+        prompt_content = self.history[0]["content"]
+        if "[MCP_TOOLS_INJECTED_HERE_AUTOMATICALLY]" in prompt_content:
+            self.history[0]["content"] = prompt_content.replace("[MCP_TOOLS_INJECTED_HERE_AUTOMATICALLY]", mcp_section)
+        else:
+            # Caso ja tenha injetado, tira a velha e bota a nova limpando a string
+            import re
+            new_content = re.sub(r'\nFERRAMENTAS MCP EXTRAS DETECTADAS.*?(\n\n|$)', '\n' + mcp_section + '\n\n', prompt_content, flags=re.DOTALL)
+            self.history[0]["content"] = new_content
 
     async def init_browser(self):
         """Inicializa o navegador persistente."""
@@ -166,6 +197,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             await self.browser.close()
         if self.playwright:
             await self.playwright.stop()
+        if self.mcp_hub:
+            await self.mcp_hub.cleanup()
 
     async def execute_terminal_command(self, command: str) -> str:
         console.print(f"[info][{self.name}] Executando comando:[/info] {command}")
@@ -660,6 +693,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
         # Avalia sempre que o usuario manda uma mensagem real se precisa flushear contexto
         if not is_tool_response and not silent:
             await self.update_system_prompt_with_memory()
+            await self.update_mcp_tools_in_prompt()
             await self.check_compaction()
         
         if not is_tool_response and not silent:
@@ -736,7 +770,24 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                     action = cmd_data.get("action")
                     param = cmd_data.get("param", "")
                     
-                    if action == "CMD":
+                    if action == "MCP_TOOL":
+                        mcp_server = cmd_data.get("server")
+                        mcp_tool = cmd_data.get("tool")
+                        mcp_params = cmd_data.get("params", {})
+                        
+                        console.print(f"\n[info]🔌 Módulo MCP Externo ({mcp_server}):[/info] Rodando Tool '{mcp_tool}'")
+                        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                            progress.add_task(description=f"Comunicando via StdioProtocol ao servidor...", total=None)
+                            if self.mcp_hub:
+                                result = await self.mcp_hub.call_tool(mcp_server, mcp_tool, mcp_params)
+                            else:
+                                result = "Falha: MCPHub não estava ativo ou não importou as bibliotecas."
+                                
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado MCP Tool {mcp_tool}] ->\n{result}"})
+                        if tool_callback: await tool_callback(f"[MCP] {mcp_tool}")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+
+                    elif action == "CMD":
                         console.print(f"\n[info]⚙️ Executando TERMINAL:[/info] {param}")
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description="Aguardando OS...", total=None)
@@ -893,8 +944,10 @@ async def interactive_shell():
     ))
     
     agent = MoltyClaw()
-    # Inicializa o Browser Persistent Mode logo ao iniciar o CLI
+    # Inicializa o Browser Persistent Mode logo ao iniciar o CLI e Servidores MCP Externos
     await agent.init_browser()
+    if agent.mcp_hub:
+        await agent.mcp_hub.connect_servers()
     
     while True:
         try:
