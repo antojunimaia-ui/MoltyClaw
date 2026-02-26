@@ -265,9 +265,11 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             elif action == "SCREENSHOT":
                 import os
                 import time
-                path_str = f"screenshot_{int(time.time())}.png"
+                os.makedirs("temp", exist_ok=True)
+                filename = f"screenshot_{int(time.time())}.png"
+                path_str = os.path.join("temp", filename)
                 await self.page.screenshot(path=path_str, full_page=False)
-                return f"Screenshot capturado com sucesso. Se o usuário pediu a imagem, você DEVE dizer essa exata frase no meio do seu texto de volta para ele: [SCREENSHOT_TAKEN: {path_str}]"
+                return f"Screenshot capturado com sucesso. Se o usuário pediu a imagem, você DEVE dizer essa exata frase no meio do seu texto de volta para ele: [SCREENSHOT_TAKEN: {filename}]"
                 
         except Exception as e:
             return f"Erro durante a execução da ferramenta '{action}': {e}"

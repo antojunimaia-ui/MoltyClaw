@@ -19,9 +19,14 @@ function formatTime() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function appendUserMessage(text) {
+function appendUserMessage(text, imgData = null) {
     const row = document.createElement('div');
     row.className = 'message-row user-row';
+
+    let htmlDisplay = escapeHTML(text);
+    if (imgData) {
+        htmlDisplay += `<div style="margin-top: 10px;"><img src="${imgData}" style="max-width: 100%; border-radius: 8px; max-height: 250px; object-fit: contain;"></div>`;
+    }
 
     row.innerHTML = `
         <div class="user-metadata">
@@ -29,7 +34,7 @@ function appendUserMessage(text) {
             <div class="user-timestamp">You ${formatTime()}</div>
         </div>
         <div class="message-bubble user-bubble">
-            ${escapeHTML(text)}
+            ${htmlDisplay}
         </div>
     `;
     chatContainer.appendChild(row);
@@ -70,10 +75,19 @@ function renderMarkdownWithMedia(text) {
     // Converte chamadas de arquivo bruto de audio injetadas em tag real HTML5
     let tempHtml = safeHtml.replace(/<p>\[AUDIO_REPLY:\s*([^\]]+)\]<\/p>/g, "[AUDIO_REPLY:$1]");
     tempHtml = tempHtml.replace(/\[AUDIO_REPLY:\s*([^\]]+)\]/g, (match, filename) => {
-        return `<div class="audio-player-wrapper" style="margin-top: 15px; margin-bottom: 15px; padding: 15px; background: #f0f0f0; border-radius: 12px; border: 1px solid #ccc; display: block; width: 100%;">
+        return `<div class="audio-player-wrapper" style="margin-top: 15px; margin-bottom: 15px; padding: 15px; background: #f0f0f0; border-radius: 12px; border: 1px solid #ccc; display: block; width: 100%; min-width: 350px;">
             <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px; color: #333;">🎙️ Áudio Gerado</div>
             <audio controls style="width: 100%; display: block;" src="/temp/${filename.trim()}"></audio>
             <div style="font-size: 10px; color: #666; margin-top: 8px; font-family: monospace;">📂 ${filename.trim()}</div>
+        </div>`;
+    });
+
+    // Converte Screenhots tirados
+    tempHtml = tempHtml.replace(/<p>\[SCREENSHOT_TAKEN:\s*([^\]]+)\]<\/p>/g, "[SCREENSHOT_TAKEN:$1]");
+    tempHtml = tempHtml.replace(/\[SCREENSHOT_TAKEN:\s*([^\]]+)\]/g, (match, filename) => {
+        return `<div class="image-wrapper" style="margin-top: 15px; margin-bottom: 15px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; display: inline-block; max-width: 100%;">
+            <div style="background: #f8fafc; padding: 8px 12px; font-size: 10px; color: #64748b; font-family: monospace; border-bottom: 1px solid #e2e8f0;">📸 Captura de Tela (${filename.trim()})</div>
+            <a href="/temp/${filename.trim()}" target="_blank"><img src="/temp/${filename.trim()}" style="width: 100%; display: block; max-height: 400px; object-fit: cover;"></a>
         </div>`;
     });
 
@@ -88,12 +102,18 @@ async function sendMessage() {
     if (!text && !file) return;
 
     let userDisplay = text;
+    let localPreviewUrl = null;
+
     if (file) {
-        userDisplay += `\n\n*(📎 Anexo: ${file.name})*`;
+        if (file.type.startsWith('image/')) {
+            localPreviewUrl = URL.createObjectURL(file);
+        } else {
+            userDisplay += `\n\n*(📎 Anexo: ${file.name})*`;
+        }
     }
 
     // UI Updates
-    appendUserMessage(userDisplay);
+    appendUserMessage(userDisplay, localPreviewUrl);
     messageInput.value = '';
     if (fileInput) fileInput.value = '';
     sendBtn.disabled = true;
