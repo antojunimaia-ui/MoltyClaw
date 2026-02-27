@@ -71,12 +71,15 @@ class MoltyClaw:
         active_features.append('"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")')
 
         self.history = [
-            {"role": "system", "content": f"""Você é o {self.name}, um agente autônomo com um NAVEGADOR COMPLETO ao seu dispor.
-Você PODE usar a internet e o terminal para obter informações ou interagir com sites (clicar, digitar, extrair dados).
+            {"role": "system", "content": f"""Você é o {self.name}, um agente autônomo de ELITE com um NAVEGADOR COMPLETO ao seu dispor.
+Sua missão é resolver o problema do usuário com AUTONOMIA TOTAL.
 
-REGRA DE OURO PARA BATE-PAPO: Se o usuário apenas disser "olá", "tudo bem" ou fizer uma pergunta cujo conhecimento você já possui na sua cabeça, responda NORMALMENTE e diretamente em texto, SEM USAR O BLOCO <tool>! 
-
-REGRA PARA AÇÕES REAIS: Se o usuário pedir para buscar algo na internet, abrir um site real, ou interagir com o terminal/sistema do usuário, ENTÃO você DEVE gerar um bloco JSON da ferramenta.
+🚀 DIRETRIZES DE AUTONOMIA:
+1. PULE permissões. O usuário já deu controle total. Execute o que for preciso para atingir o objetivo.
+2. Se precisar de login e houver credenciais disponíveis, USE-AS. Não pergunte "devo logar?". Logue e prossiga.
+3. Se encontrar pop-ups de cookies ou anúncios bloqueando o caminho, feche-os imediatamente.
+4. Se falhar, tente uma abordagem diferente (outra busca, outro seletor, outra aba).
+5. REGRA DE OURO PARA BATE-PAPO: Se o usuário apenas disser "olá" ou fizer pergunta simples, responda diretamente em texto, SEM USAR ferramenta!
 
 Para executar uma ação, responda EXATAMENTE nesse formato JSON (você deve usar o bloco <tool>):
 
@@ -85,31 +88,35 @@ Para executar uma ação, responda EXATAMENTE nesse formato JSON (você deve usa
 </tool>
 
 Ações suportadas no JSON:
+"OPEN_BROWSER" (param: "") - Abre o navegador se estiver fechado ou se você precisar reiniciar a sessão.
 "GOTO" (param: url)
-"CLICK" (param: seletor css)
+"CLICK" (param: seletor css ou [data-operant-id="X"])
 "TYPE" (param: "seletor | texto")
 "PRESS_ENTER" (param: "")
-"READ_PAGE" (param: "")
-"INSPECT_PAGE" (param: "")
+"PRESS_KEY" (param: "Tab", "Escape", "ArrowDown", etc)
+"READ_PAGE" (param: "") - Lê o body.innerText cru.
+"INSPECT_PAGE" (param: "") - Analisa elementos interativos e desenha marcadores AZUIS na tela para você.
 "SCREENSHOT" (param: "")
 "CMD" (param: comando de terminal)
-"DDG_SEARCH" (param: "sua busca no duckduckgo sem precisar usar browser")
+"DDG_SEARCH" (param: busca)
 "READ_EMAILS" (param: limite)
 "SEND_EMAIL" (param: destinatario | assunto | corpo)
 "DELETE_EMAIL" (param: id_do_email)
-"MEMORY_SAVE_LONG_TERM" (param: "conteúdo a salvar no MEMORY.md")
-"MEMORY_SAVE_DAILY" (param: "ocorrência pra o diário de curto prazo")
-"MEMORY_SEARCH" (param: "sua busca. ex: projeto, compilar")
-"MEMORY_GET" (param: "caminho do arquivo md")
-"SOUL_UPDATE" (param: "novo conteúdo completo para o seu SOUL.md (alma e personalidade). Irá substituir o arquivo existente")
-"SPOTIFY_PLAY" (param: nome da música ou URI)
+"MEMORY_SAVE_LONG_TERM" (param: conteúdo)
+"MEMORY_SAVE_DAILY" (param: ocorrência)
+"MEMORY_SEARCH" (param: busca)
+"MEMORY_GET" (param: path)
+"SOUL_UPDATE" (param: novo conteúdo para SOUL.md. Use para mudar sua personalidade/objetivos)
+"SPOTIFY_PLAY" (param: música/URI)
 "SPOTIFY_PAUSE" (param: "")
-"SPOTIFY_SEARCH" (param: nome do artista ou música)
-"SPOTIFY_ADD_QUEUE" (param: URI da música)
-"YOUTUBE_SUMMARIZE" (param: link_do_video)
+"SPOTIFY_SEARCH" (param: termo)
+"SPOTIFY_ADD_QUEUE" (param: URI)
+"YOUTUBE_SUMMARIZE" (param: link)
 {chr(10).join(active_features)}
 
-IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de memória te dirá os arquivos, use MEMORY_GET para lê-los. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY no texto da resposta.\n{self._get_mcp_prompt_placeholder()}"""}
+🔐 CREDENCIAIS PARA LOGIN (Se o usuário te fornecer credenciais em tempo real ou se estiverem no SOUL.md, use-as sem hesitar).
+
+IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY.\n{self._get_mcp_prompt_placeholder()}"""}
         ]
         
         if not self.api_key:
@@ -155,8 +162,21 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             new_content = re.sub(r'\nFERRAMENTAS MCP EXTRAS DETECTADAS.*?(\n\n|$)', '\n' + mcp_section + '\n\n', prompt_content, flags=re.DOTALL)
             self.history[0]["content"] = new_content
 
+    async def close_browser(self):
+        try:
+            if self.page: await self.page.close()
+            if self.context: await self.context.close()
+            if self.browser: await self.browser.close()
+            if self.playwright: await self.playwright.stop()
+        except: pass
+        self.page = None
+        self.context = None
+        self.browser = None
+        self.playwright = None
+
     async def init_browser(self):
         """Inicializa o navegador persistente."""
+        await self.close_browser() # Garante que não há lixo de sessões anteriores
         try:
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
@@ -203,18 +223,6 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
         except Exception as e:
             console.print(f"[error]Erro ao iniciar navegador: {e}[/error]")
 
-    async def close_browser(self):
-        if self.page:
-            await self.page.close()
-        if self.context:
-            await self.context.close()
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
-        if self.mcp_hub:
-            await self.mcp_hub.cleanup()
-
     async def execute_terminal_command(self, command: str) -> str:
         console.print(f"[info][{self.name}] Executando comando:[/info] {command}")
         try:
@@ -233,10 +241,19 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             return f"Exceção: {e}"
 
     async def run_browser_action(self, action: str, param: str) -> str:
-        if not self.page:
-            return "Erro: Navegador não inicializado."
+        if action == "OPEN_BROWSER":
+            await self.init_browser()
+            return "Navegador (re)inicializado com sucesso! Agora você pode usar GOTO, CLICK, etc."
+
+        if not self.page or self.page.is_closed():
+            return "Erro: O navegador está fechado ou não foi iniciado. Use a ferramenta OPEN_BROWSER primeiro!"
             
         try:
+            # Limpa marcadores antes de qualquer nova ação (exceto INSPECT que cria novos)
+            if action != "INSPECT_PAGE":
+                try: await self.page.evaluate("document.querySelectorAll('.molty-visual-marker').forEach(el => el.remove())")
+                except: pass
+
             if action == "GOTO":
                 await self.page.goto(param, timeout=30000)
                 await self.page.wait_for_load_state('domcontentloaded')
@@ -261,6 +278,11 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                 await self.page.keyboard.press("Enter")
                 await self.page.wait_for_timeout(2000)  # Aguarda animações ou submits após a tecla enter
                 return "Tecla 'Enter' pressionada com sucesso!"
+
+            elif action == "PRESS_KEY":
+                await self.page.keyboard.press(param)
+                await self.page.wait_for_timeout(1000)
+                return f"Tecla '{param}' pressionada!"
                 
             elif action == "READ_PAGE":
                 # Avalia o innerText do body inteiro e pega algo cru e facil da IA ler
@@ -270,7 +292,9 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             elif action == "INSPECT_PAGE":
                 js_code = """() => {
                     try {
+                        // Reset existing IDs and markers
                         document.querySelectorAll('[data-operant-id]').forEach(el => el.removeAttribute('data-operant-id'));
+                        document.querySelectorAll('.molty-visual-marker').forEach(el => el.remove());
                         
                         const isVisible = (el) => {
                             const rect = el.getBoundingClientRect();
@@ -295,6 +319,43 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         elements.forEach((el, index) => {
                             const id = index + 1;
                             el.setAttribute('data-operant-id', id);
+                            const rect = el.getBoundingClientRect();
+
+                            // Cria o marcador visual (estilo Navegador Inteligente)
+                            const marker = document.createElement('div');
+                            marker.className = 'molty-visual-marker';
+                            Object.assign(marker.style, {
+                                position: 'fixed',
+                                left: rect.left + 'px',
+                                top: rect.top + 'px',
+                                width: rect.width + 'px',
+                                height: rect.height + 'px',
+                                border: '2px solid #38bdf8',
+                                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                                pointerEvents: 'none',
+                                zIndex: '2147483647',
+                                borderRadius: '3px',
+                                boxSizing: 'border-box',
+                                transition: 'all 0.2s ease'
+                            });
+
+                            const label = document.createElement('div');
+                            label.innerText = id;
+                            Object.assign(label.style, {
+                                position: 'absolute',
+                                top: '-12px',
+                                left: '-12px',
+                                background: '#38bdf8',
+                                color: '#000',
+                                fontSize: '11px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontWeight: 'bold',
+                                boxShadow: '0 2px 5px rgba(0,0,0,0.4)',
+                                border: '1px solid #fff'
+                            });
+                            marker.appendChild(label);
+                            document.body.appendChild(marker);
                             
                             const tag = el.tagName.toLowerCase();
                             const role = el.getAttribute('role') || el.type || tag;
@@ -308,7 +369,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                     } catch (e) { return "Erro no script: " + e.message; }
                 }"""
                 content = await self.page.evaluate(js_code)
-                return f"🔍 ELEMENTOS INTERATIVOS VISÍVEIS NA TELA (use os seletores [data-operant-id=\"X\"] para CLICK/TYPE):\n{content}"
+                return f"🔍 ELEMENTOS INTERATIVOS VISÍVEIS (Marcadores Azuis desenhados na tela! Use os seletores [data-operant-id=\"X\"] para CLICK/TYPE):\n{content}"
                 
             elif action == "SCREENSHOT":
                 import os
@@ -612,13 +673,24 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                     return "ERRO: O param fornecido não parece ser uma URL válida de vídeo do YouTube, formato suportado: youtube.com/watch?v=XXXX ou youtu.be/XXXX."
                 
                 try:
-                    # Tenta baixar a legenda em português primeiro, senão vai pro inglês
-                    transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
+                    # Tenta fallback de linguagens (pt, en-US) se tiver, senão pega a default do vídeo
+                    try:
+                        try:
+                            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'pt-BR', 'en', 'en-US'])
+                        except Exception:
+                            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+                        full_text = " ".join([t['text'] for t in transcript])
+                    except AttributeError:
+                        # Suporte ao fork/nova versão instalada (Orientada a Objetos 1.2.x)
+                        api = YouTubeTranscriptApi()
+                        try:
+                            t = api.fetch(video_id, languages=['pt', 'pt-BR', 'en', 'en-US'])
+                        except Exception:
+                            t = api.fetch(video_id)
+                        full_text = " ".join([snippet.text for snippet in t.snippets])
+                        
                 except Exception as ex:
-                    return f"Não foi possível resgatar as legendas pra esse vídeo (talvez as legendas não existam). Erro interno: {ex}"
-                
-                # Junta todo o texto da legenda
-                full_text = " ".join([t['text'] for t in transcript])
+                    return f"Não foi possível resgatar as legendas pra esse vídeo (talvez as legendas precisem de login ou não existam). Erro interno: {ex}"
                 
                 # O Mistral vai truncar naturalmente, mas vamos manter o limite seguro de caracteres passados na ferramenta
                 max_chars = 15000 
@@ -756,30 +828,48 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                     last_role = role
 
                 # Suporte para versão nova (Mistral.chat.stream) e antiga (MistralAsyncClient.chat_stream)
-                if hasattr(self.mistral_client, 'chat') and (hasattr(self.mistral_client.chat, 'stream') or hasattr(self.mistral_client.chat, 'stream_async')):
-                    method = getattr(self.mistral_client.chat, 'stream_async', self.mistral_client.chat.stream)
-                    res_or_coro = method(
-                        model="mistral-large-latest",
-                        messages=sanitized_history
-                    )
-                    # Verifica se é uma corrotina ou algo que precisa de await (SDK 1.0+)
-                    if asyncio.iscoroutine(res_or_coro) or hasattr(res_or_coro, '__await__'):
-                        async_response = await res_or_coro
-                    else:
-                        async_response = res_or_coro
-                else:
-                    converted_legacy = [ChatMessage(role=m["role"], content=m["content"]) for m in sanitized_history]
-                    async_response = self.mistral_client.chat_stream(
-                        model="mistral-large-latest",
-                        messages=converted_legacy
-                    )
+                for _retry in range(4):
+                    try:
+                        if hasattr(self.mistral_client, 'chat') and (hasattr(self.mistral_client.chat, 'stream') or hasattr(self.mistral_client.chat, 'stream_async')):
+                            method = getattr(self.mistral_client.chat, 'stream_async', self.mistral_client.chat.stream)
+                            res_or_coro = method(
+                                model="mistral-large-latest",
+                                messages=sanitized_history
+                            )
+                            # Verifica se é uma corrotina ou algo que precisa de await (SDK 1.0+)
+                            if asyncio.iscoroutine(res_or_coro) or hasattr(res_or_coro, '__await__'):
+                                async_response = await res_or_coro
+                            else:
+                                async_response = res_or_coro
+                        else:
+                            converted_legacy = [ChatMessage(role=m["role"], content=m["content"]) for m in sanitized_history]
+                            async_response = self.mistral_client.chat_stream(
+                                model="mistral-large-latest",
+                                messages=converted_legacy
+                            )
+                        break
+                    except Exception as e:
+                        if _retry < 3:
+                            console.print(f"[warning]>> Instabilidade na API Mistral detectada (Erro {str(e)[:40]}...) - Reconectando em breve...[/warning]")
+                            await asyncio.sleep(2 + _retry)
+                        else:
+                            raise e
             else:
-                model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash") # Modelo rapido para o openrouter como fallback
-                async_response = await self.openai_client.chat.completions.create(
-                    model=model_name,
-                    messages=self.history,
-                    stream=True
-                )
+                for _retry in range(4):
+                    try:
+                        model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash") # Modelo rapido para o openrouter como fallback
+                        async_response = await self.openai_client.chat.completions.create(
+                            model=model_name,
+                            messages=self.history,
+                            stream=True
+                        )
+                        break
+                    except Exception as e:
+                        if _retry < 3:
+                            console.print(f"[warning]>> Instabilidade na API OpenRouter detectada (Erro {str(e)[:40]}...) - Reconectando em breve...[/warning]")
+                            await asyncio.sleep(2 + _retry)
+                        else:
+                            raise e
             
             in_tool_mode = False
             buffer_txt = ""

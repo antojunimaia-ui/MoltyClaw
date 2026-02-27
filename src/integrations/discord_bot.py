@@ -8,8 +8,17 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from moltyclaw import MoltyClaw
-from rich.console import Console
+import aiohttp
+import socket
 
+# Correção para o aiohttp no Windows com Python 3.10+ (Evita travamentos do aiohappyeyeballs e TimeoutError de IPv6)
+_orig_tcp_init = aiohttp.TCPConnector.__init__
+def _new_tcp_init(self, *args, **kwargs):
+    kwargs['family'] = socket.AF_INET
+    _orig_tcp_init(self, *args, **kwargs)
+aiohttp.TCPConnector.__init__ = _new_tcp_init
+
+from rich.console import Console
 console = Console()
 load_dotenv()
 
