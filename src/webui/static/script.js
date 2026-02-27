@@ -259,6 +259,96 @@ function switchTab(tabId) {
 
     if (tabId === 'integrations') {
         fetchIntegrations();
+    } else if (tabId === 'agent') {
+        loadAgentFiles();
+    }
+}
+
+// Agent Files Logic
+let currentAgentFile = 'soul';
+let agentFilesContent = {
+    soul: '',
+    memory: ''
+};
+
+async function loadAgentFiles() {
+    try {
+        const memRes = await fetch('/api/agent/memory');
+        const memData = await memRes.json();
+        agentFilesContent['memory'] = memData.content || '';
+
+        const soulRes = await fetch('/api/agent/soul');
+        const soulData = await soulRes.json();
+        agentFilesContent['soul'] = soulData.content || '';
+
+        selectAgentFile(currentAgentFile);
+    } catch (e) {
+        console.error('Failed to load agent files', e);
+    }
+}
+
+function selectAgentFile(fileId) {
+    const activeEditor = document.getElementById('active-editor');
+    if (activeEditor && currentAgentFile) {
+        agentFilesContent[currentAgentFile] = activeEditor.value;
+    }
+
+    currentAgentFile = fileId;
+
+    document.querySelectorAll('.studio-file-card').forEach(card => card.classList.remove('active'));
+    document.getElementById(`card-${fileId}`).classList.add('active');
+
+    if (activeEditor) {
+        activeEditor.value = agentFilesContent[fileId];
+    }
+
+    const titleEl = document.getElementById('current-editor-title');
+    const pathEl = document.getElementById('current-editor-path');
+
+    if (fileId === 'soul') {
+        titleEl.innerText = 'SOUL.md';
+        pathEl.innerText = 'c:\\Users\\Cliente\\OpenPy\\SOUL.md';
+    } else {
+        titleEl.innerText = 'MEMORY.md';
+        pathEl.innerText = 'c:\\Users\\Cliente\\OpenPy\\MEMORY.md';
+    }
+}
+
+async function saveCurrentAgentFile() {
+    const activeEditor = document.getElementById('active-editor');
+    if (!activeEditor || !currentAgentFile) return;
+
+    const content = activeEditor.value;
+    agentFilesContent[currentAgentFile] = content; // sync dict
+
+    const btn = event.target || document.querySelector('.editor-actions .btn-primary');
+    const originalText = btn.innerText;
+
+    btn.disabled = true;
+    btn.innerText = "Salvando...";
+
+    try {
+        const res = await fetch(`/api/agent/${currentAgentFile}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+
+        if (res.ok) {
+            btn.innerText = "Salvo!";
+            setTimeout(() => {
+                btn.innerText = originalText;
+            }, 2000);
+        } else {
+            alert(`Erro ao salvar ${currentAgentFile.toUpperCase()}.md`);
+            btn.innerText = originalText;
+        }
+    } catch (e) {
+        console.error(`Error saving ${currentAgentFile}`, e);
+        alert(`Erro de conexão ao salvar ${currentAgentFile.toUpperCase()}.md`);
+        btn.innerText = originalText;
+    } finally {
+        btn.disabled = false;
     }
 }
 

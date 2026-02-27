@@ -43,6 +43,14 @@
                         <span>Integrations</span>
                     </div>
                 </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">MOLTYCLAW <span>-</span></div>
+                    <div class="nav-item" id="nav-agent" onclick="switchTab('agent')">
+                        <i class="fa-solid fa-robot"></i>
+                        <span>Agent</span>
+                    </div>
+                </div>
             </div>
         </aside>
 
@@ -155,6 +163,104 @@
                         </label>
                     </div>
                 </div>
+            </div>
+
+            <!-- Agent View -->
+            <div id="view-agent" class="view-content"
+                style="display: none; background-color: #f8fafc; color: #334155; padding: 20px;">
+                <header class="main-header"
+                    style="margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 15px; padding-top: 30px; background-color: transparent;">
+                    <div class="header-left">
+                        <h1 class="page-title" style="color: #0f172a;">Core Files</h1>
+                        <p class="page-subtitle" style="color: #64748b;">Bootstrap persona, identity, and tool guidance.
+                        </p>
+                    </div>
+                </header>
+
+                <div class="agent-studio-wrapper"
+                    style="display: flex; gap: 30px; padding: 0 40px 20px 40px; height: calc(100vh - 120px);">
+
+                    <!-- Left sidebar for files -->
+                    <div class="studio-sidebar"
+                        style="width: 250px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; padding-right: 10px;">
+
+                        <div class="studio-file-card active" id="card-soul" onclick="selectAgentFile('soul')">
+                            <h4>SOUL.md</h4>
+                            <span>Persona Identity</span>
+                        </div>
+
+                        <div class="studio-file-card" id="card-memory" onclick="selectAgentFile('memory')">
+                            <h4>MEMORY.md</h4>
+                            <span>Persistent Knowledge</span>
+                        </div>
+
+                    </div>
+
+                    <!-- Right side editor -->
+                    <div class="studio-editor-area"
+                        style="flex: 1; display: flex; flex-direction: column; background: #ffffff; border-radius: 12px; border: 1px solid #ef4444; position: relative; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.1);">
+                        <div class="editor-header"
+                            style="display: flex; justify-content: space-between; align-items: center; padding: 15px 25px; border-bottom: 1px solid #e2e8f0;">
+                            <div class="editor-title-area">
+                                <h3 id="current-editor-title" style="color: #0f172a; margin: 0; font-size: 15px;">
+                                    SOUL.md
+                                </h3>
+                                <p id="current-editor-path"
+                                    style="margin: 5px 0 0 0; font-size: 12px; color: #64748b; font-family: monospace;">
+                                    /workspace/SOUL.md</p>
+                            </div>
+                            <div class="editor-actions">
+                                <button class="btn-primary" onclick="saveCurrentAgentFile()">Save</button>
+                            </div>
+                        </div>
+
+                        <div class="editor-body" style="flex: 1; display: flex; flex-direction: column; padding: 25px;">
+                            <textarea id="active-editor"
+                                style="flex: 1; width: 100%; background: transparent; border: none; color: #334155; font-family: 'Consolas', monospace; font-size: 14px; outline: none; resize: none; line-height: 1.6;"
+                                spellcheck="false"></textarea>
+                        </div>
+                    </div>
+
+                </div>
+
+                <style>
+                    .studio-file-card {
+                        background: #ffffff;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 8px;
+                        padding: 15px 20px;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+                    }
+
+                    .studio-file-card:hover {
+                        background: #f1f5f9;
+                    }
+
+                    .studio-file-card.active {
+                        border-color: #ef4444;
+                        box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
+                        background: #fef2f2;
+                    }
+
+                    .studio-file-card h4 {
+                        color: #1e293b;
+                        margin: 0 0 5px 0;
+                        font-size: 14px;
+                        font-weight: 600;
+                    }
+
+                    .studio-file-card span {
+                        color: #64748b;
+                        font-size: 11px;
+                    }
+
+                    /* Sobrescreve estilo padrao para nao estragar a div do main */
+                    .main-workspace {
+                        position: relative;
+                    }
+                </style>
             </div>
 
         </main>

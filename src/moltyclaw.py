@@ -92,6 +92,7 @@ Ações suportadas no JSON:
 "MEMORY_SAVE_DAILY" (param: "ocorrência pra o diário de curto prazo")
 "MEMORY_SEARCH" (param: "sua busca. ex: projeto, compilar")
 "MEMORY_GET" (param: "caminho do arquivo md")
+"SOUL_UPDATE" (param: "novo conteúdo completo para o seu SOUL.md (alma e personalidade). Irá substituir o arquivo existente")
 "SPOTIFY_PLAY" (param: nome da música ou URI)
 "SPOTIFY_PAUSE" (param: "")
 "SPOTIFY_SEARCH" (param: nome do artista ou música)
@@ -319,7 +320,12 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
         long_term_md = "MEMORY.md"
 
         try:
-            if action == "MEMORY_SAVE_LONG_TERM":
+            if action == "SOUL_UPDATE":
+                with open("SOUL.md", "w", encoding="utf-8") as f:
+                    f.write(param)
+                return "✅ Arquivo SOUL.md atualizado com sucesso! Sua 'alma' foi reescrita e recarregada."
+
+            elif action == "MEMORY_SAVE_LONG_TERM":
                 with open(long_term_md, "a", encoding="utf-8") as f:
                     f.write(f"\n- {param}\n")
                 return f"✅ Salvo permanentemente no {long_term_md}!"
@@ -610,6 +616,14 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
     async def update_system_prompt_with_memory(self):
         long_term = "MEMORY.md"
         memory_data = ""
+        soul_data = ""
+        
+        if os.path.exists("SOUL.md"):
+            with open("SOUL.md", "r", encoding="utf-8") as fs:
+                s_content = fs.read()
+                if s_content.strip():
+                    soul_data = "\n--- SOUL.md (ESTA É A SUA ALMA - QUEM VOCÊ É) ---\n" + s_content + "\n[IMPORTANTE: Esses são os traços da sua personalidade e evolução.]\n"
+
         if os.path.exists(long_term):
             with open(long_term, "r", encoding="utf-8") as f:
                 content = f.read()[:2000]
@@ -617,8 +631,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                     memory_data = "\n--- MEMÓRIA DE LONGO PRAZO ---\n" + content + "\n[IMPORTANTE: Use os fatos acima de forma implícita e natural. NÃO comente que você está lendo da memória de longo prazo, apenas saiba as informações.]\n"
                 
         # Mantém a original e apenda a memória carregada no início do boot
-        base_prompt = self.history[0]["content"].split("\n--- MEMÓRIA")[0]
-        self.history[0] = {"role": "system", "content": base_prompt + memory_data}
+        base_prompt = self.history[0]["content"].split("\n--- SOUL.md")[0].split("\n--- MEMÓRIA")[0]
+        self.history[0] = {"role": "system", "content": base_prompt + soul_data + memory_data}
 
     async def check_compaction(self):
         """Mecanismo de Flush Stealth (OpenClaw) - Compactação da janela de contexto"""
@@ -833,8 +847,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
                         if tool_callback: await tool_callback(f"[{action}]")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
-                    elif action.startswith("MEMORY_"):
-                        if not silent: console.print(f"\n[info]🧠 Módulo MEMORY ({action}):[/info] {param}")
+                    elif action.startswith("MEMORY_") or action == "SOUL_UPDATE":
+                        if not silent: console.print(f"\n[info]🧠 Módulo MEMORY/SOUL ({action}):[/info] {param[:30]}")
                         result = await self.run_memory_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         if tool_callback: await tool_callback(f"[{action}]")

@@ -198,6 +198,29 @@ def toggle_integration(action):
         return jsonify({"success": True})
     return jsonify({"error": "Falha na operação"}), 500
 
+@app.route("/api/agent/<file>", methods=["GET", "POST"])
+def manage_agent_file(file):
+    if file not in ["memory", "soul"]:
+        return jsonify({"error": "Arquivo inválido"}), 400
+        
+    filename = "MEMORY.md" if file == "memory" else "SOUL.md"
+    filepath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', filename))
+    
+    if request.method == "GET":
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            return jsonify({"content": content})
+        except FileNotFoundError:
+            return jsonify({"content": ""})
+            
+    if request.method == "POST":
+        data = request.json
+        content = data.get("content", "")
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+        return jsonify({"success": True})
+
 if __name__ == "__main__":
     console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI... Acesse: http://127.0.0.1:5000[/intense_cyan]")
     # Roda o dev test na porta 5000 acessível local
