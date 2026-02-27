@@ -12,8 +12,17 @@ try:
 except ImportError:
     MCPHub = None
 
-from mistralai.async_client import MistralAsyncClient
-from mistralai.models.chat_completion import ChatMessage
+try:
+    from mistralai import Mistral
+    # Na versão nova, usamos dicionários simples ou modelos específicos.
+    ChatMessage = None 
+except ImportError:
+    try:
+        from mistralai.async_client import MistralAsyncClient as Mistral
+        from mistralai.models.chat_completion import ChatMessage
+    except ImportError:
+        Mistral = None
+        ChatMessage = None
 
 from openai import AsyncOpenAI
 
@@ -109,7 +118,12 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             self.openai_client = None
         else:
             if self.provider == "mistral":
-                self.mistral_client = MistralAsyncClient(api_key=self.api_key)
+                # Detecta se é a versão nova (Mistral) ou antiga (MistralAsyncClient)
+                try:
+                    from mistralai import Mistral
+                    self.mistral_client = Mistral(api_key=self.api_key)
+                except (ImportError, TypeError):
+                    self.mistral_client = MistralAsyncClient(api_key=self.api_key)
                 self.openai_client = None
             else:
                 self.mistral_client = None
@@ -717,11 +731,48 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             response_chunks = ""
             
             if self.provider == "mistral":
-                converted_history = [ChatMessage(role=msg["role"], content=msg["content"]) for msg in self.history]
-                async_response = self.mistral_client.chat_stream(
-                    model="mistral-large-latest",
-                    messages=converted_history
-                )
+                # Sanitização rigorosa para Mistral (v1 e legado)
+                sanitized_history = []
+                last_role = None
+                
+                for msg in self.history:
+                    role = msg["role"]
+                    # Força conteúdo a ser string e não vazio
+                    content = str(msg.get("content") or "").strip()
+                    if not content:
+                        content = "..." # Placeholder obrigatório
+                    
+                    if role == "system":
+                        sanitized_history.append({"role": "system", "content": content})
+                        continue
+                    
+                    if role == last_role:
+                        # Une mensagens seguidas do mesmo autor
+                        if sanitized_history:
+                            sanitized_history[-1]["content"] += "\n" + content
+                        continue
+                    
+                    sanitized_history.append({"role": role, "content": content})
+                    last_role = role
+
+                # Suporte para versão nova (Mistral.chat.stream) e antiga (MistralAsyncClient.chat_stream)
+                if hasattr(self.mistral_client, 'chat') and (hasattr(self.mistral_client.chat, 'stream') or hasattr(self.mistral_client.chat, 'stream_async')):
+                    method = getattr(self.mistral_client.chat, 'stream_async', self.mistral_client.chat.stream)
+                    res_or_coro = method(
+                        model="mistral-large-latest",
+                        messages=sanitized_history
+                    )
+                    # Verifica se é uma corrotina ou algo que precisa de await (SDK 1.0+)
+                    if asyncio.iscoroutine(res_or_coro) or hasattr(res_or_coro, '__await__'):
+                        async_response = await res_or_coro
+                    else:
+                        async_response = res_or_coro
+                else:
+                    converted_legacy = [ChatMessage(role=m["role"], content=m["content"]) for m in sanitized_history]
+                    async_response = self.mistral_client.chat_stream(
+                        model="mistral-large-latest",
+                        messages=converted_legacy
+                    )
             else:
                 model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash") # Modelo rapido para o openrouter como fallback
                 async_response = await self.openai_client.chat.completions.create(
@@ -735,7 +786,22 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             
             if hasattr(async_response, '__aiter__'):  # if stream is async generator
                 async for chunk in async_response:
-                    text = chunk.choices[0].delta.content if hasattr(chunk.choices[0].delta, 'content') else None
+                    text = None
+                    try:
+                        # Tentativa 1: SDK v1+ (.data.choices)
+                        if hasattr(chunk, "data"):
+                            d = chunk.data
+                            if hasattr(d, "choices") and d.choices:
+                                text = d.choices[0].delta.content
+                        # Tentativa 2: OpenAI ou SDK v0 (.choices)
+                        elif hasattr(chunk, "choices") and chunk.choices:
+                            text = chunk.choices[0].delta.content
+                        # Tentativa 3: Conteúdo direto (raro)
+                        elif hasattr(chunk, "content"):
+                            text = chunk.content
+                    except Exception:
+                        pass
+
                     if text:
                         response_chunks += text
                         # Esconde o bloco <tool> inteiro do usuário usando buffer inteligente
@@ -771,7 +837,10 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. O retorno de busca de me
             tool_match = re.search(r'<tool>\s*(.*?)\s*</tool>', response_chunks, re.DOTALL)
             
             # Adiciona a resposta do assistente no histórico DENTRO de try ANTES das novas chamadas de tool ou do retorno final
-            self.history.append({"role": "assistant", "content": response_chunks})
+            if response_chunks.strip():
+                self.history.append({"role": "assistant", "content": response_chunks})
+            else:
+                self.history.append({"role": "assistant", "content": "..."})
             
             if tool_match:
                 try:
