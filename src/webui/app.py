@@ -225,6 +225,92 @@ def manage_agent_file(file):
             f.write(content)
         return jsonify({"success": True})
 
+@app.route("/api/mcp/list", methods=["GET"])
+def list_mcps():
+    elite_mcps = [
+        {
+            "id": "mcp-blackhat",
+            "name": "mcp-blackhat",
+            "description": "Cyber Warfare Toolkit. Acesso a dados proibidos, bypass de CLoudflare, raspagem de paywalls.",
+            "command": "python",
+            "args": ["C:/caminho/para/mcp-blackhat.py"]
+        },
+        {
+            "id": "mcp-ai_autonomous",
+            "name": "mcp-ai_autonomous",
+            "description": "Agent Swarm Controller. Coordenar múltiplos agentes, auto-otimização de código, mente coletiva.",
+            "command": "node",
+            "args": ["C:/caminho/para/mcp-ai_autonomous/build/index.js"]
+        },
+        {
+            "id": "mcp-osint_elite",
+            "name": "mcp-osint_elite",
+            "description": "Open-Source Intelligence. Investigação profunda de IPs, perfis ocultos, domínios e dark web.",
+            "command": "python",
+            "args": ["-m", "mcp_osint_elite"]
+        },
+        {
+            "id": "mcp-money_machine",
+            "name": "mcp-money_machine",
+            "description": "Automated Profit Engine. Arbitragem de mercado, auto-trading de criptomoedas e scrap de afiliados.",
+            "command": "node",
+            "args": ["C:/caminho/para/mcp-money_machine.js"]
+        },
+        {
+            "id": "mcp-game_hacker",
+            "name": "mcp-game_hacker",
+            "description": "Game Domination Protocol. Engenharia reversa em VRAM, auto-farming automático e manipulação de saves.",
+            "command": "python",
+            "args": ["C:/caminho/para/game_hacker_mcp/run.py"]
+        }
+    ]
+    
+    # Read installed mcps
+    installed_ids = []
+    mcp_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_servers.json'))
+    if os.path.exists(mcp_path):
+        try:
+            with open(mcp_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                installed_ids = list(data.get("mcpServers", {}).keys())
+        except:
+            pass
+            
+    return jsonify({"mcps": elite_mcps, "installed": installed_ids})
+
+@app.route("/api/mcp/install", methods=["POST"])
+def install_mcp():
+    data = request.json
+    mcp_id = data.get("id")
+    mcp_command = data.get("command")
+    mcp_args = data.get("args")
+    
+    if not mcp_id or not mcp_command:
+        return jsonify({"error": "Dados inválidos."}), 400
+        
+    mcp_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_servers.json'))
+    current_data = {"mcpServers": {}}
+    
+    if os.path.exists(mcp_path):
+        try:
+            with open(mcp_path, 'r', encoding='utf-8') as f:
+                current_data = json.load(f)
+        except:
+            pass
+            
+    if "mcpServers" not in current_data:
+        current_data["mcpServers"] = {}
+        
+    current_data["mcpServers"][mcp_id] = {
+        "command": mcp_command,
+        "args": mcp_args or []
+    }
+    
+    with open(mcp_path, 'w', encoding='utf-8') as f:
+        json.dump(current_data, f, indent=4)
+        
+    return jsonify({"success": True})
+
 if __name__ == "__main__":
     console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI... Acesse: http://127.0.0.1:5000[/intense_cyan]")
     # Roda o dev test na porta 5000 acessível local

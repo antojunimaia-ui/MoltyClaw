@@ -50,6 +50,10 @@
                         <i class="fa-solid fa-robot"></i>
                         <span>Agent</span>
                     </div>
+                    <div class="nav-item" id="nav-mcp" onclick="switchTab('mcp')">
+                        <i class="fa-solid fa-plug"></i>
+                        <span>Model Context Protocol</span>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -261,6 +265,20 @@
                         position: relative;
                     }
                 </style>
+            </div>
+
+            <!-- MCP View -->
+            <div id="view-mcp" class="view-content" style="display: none; padding: 20px;">
+                <header class="main-header" style="margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 15px; padding-top: 30px; background-color: transparent;">
+                    <div class="header-left">
+                        <h1 class="page-title" style="color: #0f172a;">Model Context Protocol (MCP)</h1>
+                        <p class="page-subtitle" style="color: #64748b;">Instale e gerencie servidores MCP elite na máquina local.</p>
+                    </div>
+                </header>
+                
+                <div class="mcp-grid" id="mcp-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                    <!-- Preenchido via JS -->
+                </div>
             </div>
 
         </main>

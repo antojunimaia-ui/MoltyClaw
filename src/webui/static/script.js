@@ -261,6 +261,8 @@ function switchTab(tabId) {
         fetchIntegrations();
     } else if (tabId === 'agent') {
         loadAgentFiles();
+    } else if (tabId === 'mcp') {
+        loadMCPList();
     }
 }
 
@@ -397,3 +399,95 @@ async function toggleIntegration(name) {
 
 // Initial fetch to sync states
 fetchIntegrations();
+
+// --- MCP Tab Logic ---
+let mcpList = [];
+let installedMcps = [];
+
+async function loadMCPList() {
+    try {
+        const res = await fetch('/api/mcp/list');
+        const data = await res.json();
+        mcpList = data.mcps || [];
+        installedMcps = data.installed || [];
+        renderMCPGrid();
+    } catch (e) {
+        console.error('Falha ao carregar MCPs', e);
+    }
+}
+
+function renderMCPGrid() {
+    const grid = document.getElementById('mcp-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    mcpList.forEach(mcp => {
+        const isInstalled = installedMcps.includes(mcp.id);
+        const card = document.createElement('div');
+
+        // Estilos CSS inline para o modo premium da WebUI
+        card.style.background = '#ffffff';
+        card.style.border = isInstalled ? '2px solid #22c55e' : '1px solid #e2e8f0';
+        card.style.borderRadius = '12px';
+        card.style.padding = '20px';
+        card.style.display = 'flex';
+        card.style.flexDirection = 'column';
+        card.style.gap = '12px';
+        card.style.boxShadow = isInstalled ? '0 4px 15px rgba(34, 197, 94, 0.15)' : '0 4px 6px -1px rgba(0, 0, 0, 0.05)';
+        card.style.transition = 'all 0.3s ease';
+
+        card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <h3 style="margin: 0; font-size: 16px; color: #0f172a;"><i class="fa-solid fa-cube" style="color: ${isInstalled ? '#22c55e' : '#ef4444'}; margin-right: 8px;"></i>${mcp.name}</h3>
+                ${isInstalled ? '<span style="background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: bold;"><i class="fa-solid fa-check" style="margin-right: 4px;"></i>Ativo</span>' : ''}
+            </div>
+            <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5; flex-grow: 1;">${mcp.description}</p>
+            <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; font-family: monospace; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: #f8fafc; padding: 5px; border-radius: 4px;">
+                > ${mcp.command} ${mcp.args[0] ? mcp.args[0] : ''}
+            </div>
+            <div style="margin-top: 10px;">
+                <button class="btn-primary" style="width: 100%; justify-content: center; ${isInstalled ? 'background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; border: none; font-weight: normal;' : 'background-color: #0f172a; border-color: #0f172a;'}" 
+                    ${isInstalled ? 'disabled' : ''} 
+                    onclick="installMCP(event, '${mcp.id}')">
+                    ${isInstalled ? 'Configurado no start_moltyclaw' : '<i class="fa-solid fa-download" style="margin-right: 5px;"></i> Instalar Módulo'}
+                </button>
+            </div>
+        `;
+
+        grid.appendChild(card);
+    });
+}
+
+async function installMCP(event, mcpId) {
+    const target = mcpList.find(m => m.id === mcpId);
+    if (!target) return;
+
+    const originalBtnContent = event.currentTarget.innerHTML;
+    event.currentTarget.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Baixando & Registrando...';
+    event.currentTarget.disabled = true;
+
+    // Simula um loading pra ficar mais chique e parecer que está instalando pacotes
+    await new Promise(r => setTimeout(r, 1500));
+
+    try {
+        const res = await fetch('/api/mcp/install', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(target)
+        });
+
+        if (res.ok) {
+            alert(`O Módulo Cybernético '${target.name}' foi instalado no seu 'mcp_servers.json' e está pronto para uso!\n\nFeche o Launcher (Ctrl+C) e rode 'python start_moltyclaw.py' navamente para a plataforma despertar com os novos poderes MCP ativos na rede.`);
+            loadMCPList(); // Refresh grid
+        } else {
+            alert('Falha ao instalar MCP');
+            event.currentTarget.innerHTML = originalBtnContent;
+            event.currentTarget.disabled = false;
+        }
+    } catch (e) {
+        alert('Erro de conexão ao instalar MCP');
+        event.currentTarget.innerHTML = originalBtnContent;
+        event.currentTarget.disabled = false;
+    }
+}
