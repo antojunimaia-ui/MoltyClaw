@@ -230,54 +230,69 @@ def manage_agent_file(file):
 @app.route("/api/mcp/list", methods=["GET"])
 def list_mcps():
     mcps_from_api = []
+    seen_names = set()
     try:
-        req = urllib.request.Request(
-            "https://registry.modelcontextprotocol.io/v0.1/servers",
-            headers={"User-Agent": "MoltyClaw-WebUI/1.0"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        url = "https://registry.modelcontextprotocol.io/v0.1/servers"
         
-        seen_names = set()
-        for item in data.get("servers", []):
-            server = item.get("server", {})
-            name = server.get("title", server.get("name", "Unknown"))
+        while url and len(mcps_from_api) < 300: # Limite seguro para não sobrecarregar
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "MoltyClaw-WebUI/1.0"}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+            except Exception as e:
+                console.print(f"[yellow]Aviso ao processar MCP Registry Pagination: {e}[/yellow]")
+                break
             
-            # Avoid duplicates of older versions
-            if name in seen_names:
-                continue
+            for item in data.get("servers", []):
+                server = item.get("server", {})
+                name = server.get("title", server.get("name", "Unknown"))
                 
-            desc = server.get("description", "")
-            packages = server.get("packages", [])
-            
-            command = None
-            args = []
-            
-            # Prioritize stdio runnable packages (npm, pip, docker)
-            if packages:
-                pkg = packages[0]
-                ident = pkg.get("identifier", "")
-                rtype = pkg.get("registryType", "")
+                # Avoid duplicates of older versions
+                if name in seen_names:
+                    continue
+                    
+                desc = server.get("description", "")
+                packages = server.get("packages", [])
                 
-                if rtype == "npm":
-                    command = "npx"
-                    args = ["-y", ident]
-                elif rtype == "pypi":
-                    command = "uvx" # Modern fast runner for python packages
-                    args = [ident]
-                elif "docker" in ident or rtype == "oci":
-                    command = "docker"
-                    args = ["run", "-i", "--rm", ident]
+                command = None
+                args = []
+                
+                # Verifica compatibilidade via stdio, que o MoltyClaw aguenta
+                if packages:
+                    pkg = packages[0]
+                    ident = pkg.get("identifier", "")
+                    rtype = pkg.get("registryType", "")
+                    
+                    if rtype == "npm":
+                        command = "npx"
+                        args = ["-y", ident]
+                    elif rtype == "pypi":
+                        command = "uvx" # Alternativa rápida ao pipx/pip para injetar sem isolamento chato
+                        args = [ident]
+                    elif rtype == "oci" or "docker" in ident:
+                        command = "docker"
+                        args = ["run", "-i", "--rm", ident]
+                
+                if command:
+                    seen_names.add(name)
+                    mcps_from_api.append({
+                        "id": server.get("name", name).replace("/", "-").replace(".", "-"),
+                        "name": name,
+                        "description": desc,
+                        "command": command,
+                        "args": args
+                    })
             
-            if command:
-                seen_names.add(name)
-                mcps_from_api.append({
-                    "id": server.get("name", name).replace("/", "-").replace(".", "-"),
-                    "name": name,
-                    "description": desc,
-                    "command": command,
-                    "args": args
-                })
+            cursor = data.get("metadata", {}).get("nextCursor")
+            if cursor:
+                import urllib.parse
+                url = f"https://registry.modelcontextprotocol.io/v0.1/servers?cursor={urllib.parse.quote(cursor)}"
+            else:
+                url = None
+                
     except Exception as e:
         console.print(f"[red]Failed to fetch MCP registry: {e}[/red]")
         pass
