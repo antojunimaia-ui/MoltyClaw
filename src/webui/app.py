@@ -2,6 +2,8 @@ import os
 import sys
 import asyncio
 import threading
+import json
+import urllib.request
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 
@@ -227,44 +229,59 @@ def manage_agent_file(file):
 
 @app.route("/api/mcp/list", methods=["GET"])
 def list_mcps():
-    elite_mcps = [
-        {
-            "id": "mcp-blackhat",
-            "name": "mcp-blackhat",
-            "description": "Cyber Warfare Toolkit. Acesso a dados proibidos, bypass de CLoudflare, raspagem de paywalls.",
-            "command": "python",
-            "args": ["C:/caminho/para/mcp-blackhat.py"]
-        },
-        {
-            "id": "mcp-ai_autonomous",
-            "name": "mcp-ai_autonomous",
-            "description": "Agent Swarm Controller. Coordenar múltiplos agentes, auto-otimização de código, mente coletiva.",
-            "command": "node",
-            "args": ["C:/caminho/para/mcp-ai_autonomous/build/index.js"]
-        },
-        {
-            "id": "mcp-osint_elite",
-            "name": "mcp-osint_elite",
-            "description": "Open-Source Intelligence. Investigação profunda de IPs, perfis ocultos, domínios e dark web.",
-            "command": "python",
-            "args": ["-m", "mcp_osint_elite"]
-        },
-        {
-            "id": "mcp-money_machine",
-            "name": "mcp-money_machine",
-            "description": "Automated Profit Engine. Arbitragem de mercado, auto-trading de criptomoedas e scrap de afiliados.",
-            "command": "node",
-            "args": ["C:/caminho/para/mcp-money_machine.js"]
-        },
-        {
-            "id": "mcp-game_hacker",
-            "name": "mcp-game_hacker",
-            "description": "Game Domination Protocol. Engenharia reversa em VRAM, auto-farming automático e manipulação de saves.",
-            "command": "python",
-            "args": ["C:/caminho/para/game_hacker_mcp/run.py"]
-        }
-    ]
-    
+    mcps_from_api = []
+    try:
+        req = urllib.request.Request(
+            "https://registry.modelcontextprotocol.io/v0.1/servers",
+            headers={"User-Agent": "MoltyClaw-WebUI/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        
+        seen_names = set()
+        for item in data.get("servers", []):
+            server = item.get("server", {})
+            name = server.get("title", server.get("name", "Unknown"))
+            
+            # Avoid duplicates of older versions
+            if name in seen_names:
+                continue
+                
+            desc = server.get("description", "")
+            packages = server.get("packages", [])
+            
+            command = None
+            args = []
+            
+            # Prioritize stdio runnable packages (npm, pip, docker)
+            if packages:
+                pkg = packages[0]
+                ident = pkg.get("identifier", "")
+                rtype = pkg.get("registryType", "")
+                
+                if rtype == "npm":
+                    command = "npx"
+                    args = ["-y", ident]
+                elif rtype == "pypi":
+                    command = "uvx" # Modern fast runner for python packages
+                    args = [ident]
+                elif "docker" in ident or rtype == "oci":
+                    command = "docker"
+                    args = ["run", "-i", "--rm", ident]
+            
+            if command:
+                seen_names.add(name)
+                mcps_from_api.append({
+                    "id": server.get("name", name).replace("/", "-").replace(".", "-"),
+                    "name": name,
+                    "description": desc,
+                    "command": command,
+                    "args": args
+                })
+    except Exception as e:
+        console.print(f"[red]Failed to fetch MCP registry: {e}[/red]")
+        pass
+
     # Read installed mcps
     installed_ids = []
     mcp_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_servers.json'))
@@ -276,7 +293,7 @@ def list_mcps():
         except:
             pass
             
-    return jsonify({"mcps": elite_mcps, "installed": installed_ids})
+    return jsonify({"mcps": mcps_from_api, "installed": installed_ids})
 
 @app.route("/api/mcp/install", methods=["POST"])
 def install_mcp():
