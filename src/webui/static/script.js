@@ -405,6 +405,11 @@ let mcpList = [];
 let installedMcps = [];
 
 async function loadMCPList() {
+    const grid = document.getElementById('mcp-grid');
+    if (grid) {
+        grid.innerHTML = '<div style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: #64748b; font-family: sans-serif;"><i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2.5rem; color: #3b82f6; margin-bottom: 20px;"></i><h3 style="color: #0f172a; margin: 0 0 10px 0;">Sincronizando com a MCP Global Registry...</h3><p style="margin: 0; font-size: 14px;">Inspecionando mais de 300+ módulos oficiais disponíveis no mercado e filtrando os suportados pelo MoltyClaw.</p><p style="margin: 10px 0 0 0; font-size: 12px; font-weight: bold; padding: 6px 14px; background: #e0e7ff; color: #4338ca; border-radius: 6px;"><i class="fa-solid fa-clock"></i> Pode levar de 5 a 15 segundos na primeira vez</p></div>';
+    }
+
     try {
         const res = await fetch('/api/mcp/list');
         const data = await res.json();
@@ -413,6 +418,9 @@ async function loadMCPList() {
         renderMCPGrid();
     } catch (e) {
         console.error('Falha ao carregar MCPs', e);
+        if (grid) {
+            grid.innerHTML = '<div style="grid-column: 1 / -1; color: #ef4444; padding: 20px; text-align: center; border: 1px solid #ef4444; border-radius: 12px; background: #fef2f2;">Falha de Conexão: Não foi possível baixar o Registry.</div>';
+        }
     }
 }
 
