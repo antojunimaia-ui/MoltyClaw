@@ -4,6 +4,7 @@ import asyncio
 import threading
 import json
 import urllib.request
+import urllib.parse
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 
@@ -288,7 +289,6 @@ def list_mcps():
             
             cursor = data.get("metadata", {}).get("nextCursor")
             if cursor:
-                import urllib.parse
                 url = f"https://registry.modelcontextprotocol.io/v0.1/servers?cursor={urllib.parse.quote(cursor)}"
             else:
                 url = None
