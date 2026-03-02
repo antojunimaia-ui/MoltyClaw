@@ -80,6 +80,44 @@ Para elevar o MoltyClaw ao próximo nível em termos de "Assistência Pessoal To
 
 ---
 
+## 🔌 Integração MCP (Model Context Protocol)
+
+O MoltyClaw suporta nativamente a conexão ultra-dinâmica com servidores locais ou remotos operando através do protocolo base **MCP (Model Context Protocol)** usando a camada Stdio.
+Isso significa que você pode expandir o Arsenal Inteligente do Bot infalivelmente, sem necessidade de editar 1 linha do código Python base.
+
+**Como habilitar passo a passo:**
+
+1. Copie o arquivo `mcp_servers.example.json` fornecido no projeto para um novo chamado `mcp_servers.json`. (Nota: por segurança de seus dados isolados, o `mcp_servers.json` é explicitamente ignorado nas rotinas do seu repositório Git através do `.gitignore`).
+2. Identifique ou construa um servidor MCP (pode ser Node.js, Python, executáveis Go).
+3. Especifique no JSON exatamente qual comando o computador deve rodar para iniciar aquele servidor no background.
+
+Aqui está um exemplo de como seria interligar o seu MoltyClaw com um Servidor de Banco de Dados local e um servidor genérico de manipulação de Arquivos via pasta `Node`:
+
+```json
+{
+  "mcpServers": {
+    "sqlite_database": {
+      "command": "python",
+      "args": ["caminho/para/servidor-sqlite-mcp.py", "--db", "meubanco.db"]
+    },
+    "file_system_manager": {
+      "command": "node",
+      "args": ["C:/Users/exemplo/repositorios/mcp-filesystem/build/index.js"],
+      "env": {
+        "DOCKER_SECURE": "true"
+      }
+    }
+  }
+}
+```
+
+**Como Funciona Mágicamente?**
+Ao rodar via interface do *Launcher* (`python start_moltyclaw.py`), você verá no console um relatório dizendo `"🔌 X Servidores MCP Detectados"`.
+Automaticamente, todas as condutas Stdio das portas dos servidores mapeados serão engatadas pelo Core Python.
+Em menos de 1 segundo, o MoltyClaw mapeará todas as **ferramentas disponíveis expostas pelas rotas MCP e as injetará dinamicamente no seu próprio Sistema e Prompt de IA**, habilitando controle assíncrono absoluto de qualquer módulo de forma invisível. Você não programa as chamadas: você apenas conversa no Chat!
+
+---
+
 ## 🚀 Como Rodar
 
 Este projeto se divide em uma base principal em Python e uma ponte em Node.js (exclusivo para WhatsApp).
