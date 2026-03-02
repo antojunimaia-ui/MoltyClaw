@@ -87,7 +87,7 @@ Isso significa que você pode expandir o Arsenal Inteligente do Bot infalivelmen
 
 **Como habilitar passo a passo:**
 
-1. Copie o arquivo `mcp_servers.example.json` fornecido no projeto para um novo chamado `mcp_servers.json`. (Nota: por segurança de seus dados isolados, o `mcp_servers.json` é explicitamente ignorado nas rotinas do seu repositório Git através do `.gitignore`).
+1. Copie o arquivo `mcp_servers.example.json` fornecido no projeto para um novo chamado `mcp_servers.json`.
 2. Identifique ou construa um servidor MCP (pode ser Node.js, Python, executáveis Go).
 3. Especifique no JSON exatamente qual comando o computador deve rodar para iniciar aquele servidor no background.
 

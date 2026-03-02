@@ -159,7 +159,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
         else:
             # Caso ja tenha injetado, tira a velha e bota a nova limpando a string
             import re
-            new_content = re.sub(r'\nFERRAMENTAS MCP EXTRAS DETECTADAS.*?(\n\n|$)', '\n' + mcp_section + '\n\n', prompt_content, flags=re.DOTALL)
+            new_content = re.sub(r'\nFERRAMENTAS MCP EXTRAS DETECTADAS.*?(\n\n|$)', lambda m: '\n' + mcp_section + '\n\n', prompt_content, flags=re.DOTALL)
             self.history[0]["content"] = new_content
 
     async def close_browser(self):
