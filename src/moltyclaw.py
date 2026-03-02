@@ -494,7 +494,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
         if not client_id or not client_secret:
             return "ERRO: Ferramentas do Spotify exigem as chaves SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env."
             
-        try:
+        def _run_spotify_sync():
             import spotipy
             from spotipy.oauth2 import SpotifyOAuth
             
@@ -503,7 +503,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=client_id,
                                                            client_secret=client_secret,
                                                            redirect_uri=redirect_uri,
-                                                           scope=scope))
+                                                           scope=scope), requests_timeout=15)
             
             # Testa se tem algum dispositivo ativo (senão o Playback quebra)
             devices = sp.devices()
@@ -540,7 +540,15 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             elif action == "SPOTIFY_ADD_QUEUE":
                 sp.add_to_queue(param)
                 return f"Adicionado à fila de reprodução: {param}."
-                
+            
+            return "Ação desconhecida."
+            
+        try:
+            import asyncio
+            # Roda as requisições bloqueantes (sync) do Spotipy em outra thread com Timeout fixo de 20s
+            return await asyncio.wait_for(asyncio.to_thread(_run_spotify_sync), timeout=20.0)
+        except asyncio.TimeoutError:
+            return "ERRO_TIMEOUT: A API do Spotify demorou muito para responder (mais de 20 segundos) e a requisição foi cancelada automaticamente!"
         except Exception as e:
             return f"Erro Módulo Spotify ({action}): {e}"
 

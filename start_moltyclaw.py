@@ -4,6 +4,7 @@ import threading
 import time
 import os
 import signal
+import json
 
 # Usando as bibliotecas rich que já temos instaladas para um menu maravilhoso
 from rich.console import Console
@@ -82,9 +83,23 @@ def run_twitter():
 
 if __name__ == "__main__":
     console.clear()
+    
+    mcp_text = "[dim]Nenhum servidor MCP detectado.[/dim]"
+    mcp_path = "mcp_servers.json"
+    if os.path.exists(mcp_path):
+        try:
+            with open(mcp_path, "r", encoding="utf-8") as f:
+                mcp_data = json.load(f)
+                servers = list(mcp_data.get("mcpServers", {}).keys())
+                if servers:
+                    mcp_text = f"[bold green]🔌 {len(servers)} Servidores MCP Detectados:[/bold green] [cyan]{', '.join(servers)}[/cyan]"
+        except Exception:
+            mcp_text = "[bold red]Erro ao ler mcp_servers.json[/bold red]"
+            
     console.print(Panel.fit(
-        "[bold cyan]🚀 INICIALIZADOR DO MOLTYCLAW 🚀[/bold cyan]\n"
-        "[dim]Escolha qual módulo de inteligência você quer acordar hoje.[/dim]",
+        f"[bold cyan]🚀 INICIALIZADOR DO MOLTYCLAW 🚀[/bold cyan]\n"
+        f"[dim]Escolha qual módulo de inteligência você quer acordar hoje.[/dim]\n"
+        f"{mcp_text}",
         border_style="cyan"
     ))
     

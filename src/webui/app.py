@@ -40,6 +40,10 @@ def run_agent_loop():
     # Inicia o Browser do Playwright escondido
     loop.run_until_complete(agent.init_browser())
     
+    # Se existirem servidores MCP, inicia e conecta via IO Pipe
+    if agent.mcp_hub:
+        loop.run_until_complete(agent.mcp_hub.connect_servers())
+    
     ready = True
     console.print("\n[bold green]✅ WebUI Health OK -> Porta 5000 Aberta![/bold green]")
     loop.run_forever()
