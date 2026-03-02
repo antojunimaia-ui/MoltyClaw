@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "exemplo_servidor": {
+            "command": "node",
+            "args": [
+                "caminho/para/o/mcp/index.js"
+            ],
+            "env": {
+                "VARIAVEL_DE_AMBIENTE": "valor"
+            }
+        }
+    }
+}
