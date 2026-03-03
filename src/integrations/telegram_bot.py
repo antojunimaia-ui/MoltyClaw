@@ -8,6 +8,8 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTyp
 
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 
 from moltyclaw import MoltyClaw
 from rich.console import Console
@@ -41,6 +43,9 @@ async def stop_agent() -> None:
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message: return
     
+    # Se a mensagem tiver texto puro, extrai
+
+
     user_text = ""
     if update.message.text:
         user_text = update.message.text.strip()
@@ -63,8 +68,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             user_text = "(Áudio Recebido, ininteligível)"
             
+    if not user_text and update.message.caption:
+        user_text = update.message.caption.strip()
+
     if not user_text:
         return
+        
+    console.print(f"[debug] Incoming msg: '{user_text}' from '{update.message.from_user.username}' chat type: '{update.message.chat.type}'")
 
     # Evita que o bot responda a si mesmo (raro no telegram, mas por prevenção)
     if update.message.from_user.is_bot:
@@ -101,6 +111,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         user_text = re.sub(f"(?i)@{bot_username}", "", user_text).strip()
         if not user_text:
             user_text = "Olá!"
+            
+        # Opcional: Se a pessoa também usar o nome do bot por extenso e virgula, a gente limpa
+        user_text = re.sub(f"(?i)^{bot_username}[,\s]*", "", user_text).strip()
 
     author = update.message.from_user.username or update.message.from_user.first_name
     console.print(f"\n[bold magenta]📩 Mensagem Telegram ({author}):[/bold magenta] {user_text}")
@@ -168,8 +181,8 @@ if __name__ == '__main__':
         # Cria e constrói a aplicação do Telegram Python Bot
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
 
-        # Monitora qualquer mensagem de texto que esbarre no bot
-        app.add_handler(MessageHandler(filters.TEXT, handle_message))
+        # Monitora qualquer mensagem que não seja um comando slash (/)
+        app.add_handler(MessageHandler(~filters.COMMAND, handle_message))
         
         try:
             # Faz pooling ativo no Telegram
