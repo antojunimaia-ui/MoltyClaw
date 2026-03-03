@@ -148,6 +148,13 @@ async function sendMessage() {
         let cumulativeText = "";
         let buffer = "";
 
+        let renderTimer = null;
+        const flushRender = () => {
+            assistantBubble.innerHTML = renderMarkdownWithMedia(cumulativeText);
+            scrollToBottom();
+            renderTimer = null;
+        };
+
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
@@ -167,18 +174,18 @@ async function sendMessage() {
                         const evt = JSON.parse(dataStr);
                         if (evt.type === 'token') {
                             cumulativeText += evt.content;
-                            assistantBubble.innerHTML = renderMarkdownWithMedia(cumulativeText);
-                            scrollToBottom();
+                            if (!renderTimer) renderTimer = setTimeout(flushRender, 100);
                         } else if (evt.type === 'tool') {
                             cumulativeText += `\n> ⚙️ [\`${evt.content}\`]\n\n`;
-                            assistantBubble.innerHTML = renderMarkdownWithMedia(cumulativeText);
-                            scrollToBottom();
+                            flushRender();
                         } else if (evt.type === 'error') {
                             cumulativeText += `\n<span style="color:red">Error API: ${evt.content}</span>`;
-                            assistantBubble.innerHTML = renderMarkdownWithMedia(cumulativeText);
-                            scrollToBottom();
+                            flushRender();
                         } else if (evt.type === 'done') {
-                            // Finished stream
+                            if (renderTimer) {
+                                clearTimeout(renderTimer);
+                                flushRender();
+                            }
                         }
                     } catch (e) {
                         // Ignora erros temporarios
