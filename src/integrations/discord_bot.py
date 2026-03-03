@@ -33,7 +33,9 @@ class MoltyClawDiscordBot(discord.Client):
         # Essa função do discord.Client é ideal para inicializar o Browser assíncrono!
         console.print("[bold green]Inicializando navegador do MoltyClaw para o Discord...[/bold green]")
         await self.agent.init_browser()
-        console.print("[bold green]Navegador ligado e pronto para pesquisas![/bold green]")
+        if self.agent.mcp_hub:
+            await self.agent.mcp_hub.connect_servers()
+        console.print("[bold green]Navegador e conectores MCP ligados e prontos para pesquisas![/bold green]")
 
     async def on_ready(self):
         console.print(f"[bold blue]🤖 Conectado no Discord escutando como {self.user}![/bold blue]")

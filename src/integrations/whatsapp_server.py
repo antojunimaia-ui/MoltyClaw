@@ -17,7 +17,9 @@ async def init_moltyclaw(app):
     console.print("[bold green]Inicializando MoltyClaw e instanciando o navegador interno...[/bold green]")
     agent = MoltyClaw()
     await agent.init_browser()
-    console.print("[bold green]Agente MoltyClaw pronto na API HTTP![/bold green]")
+    if agent.mcp_hub:
+        await agent.mcp_hub.connect_servers()
+    console.print("[bold green]Agente MoltyClaw (com MCP) pronto na API HTTP![/bold green]")
 
 async def cleanup_moltyclaw(app):
     global agent

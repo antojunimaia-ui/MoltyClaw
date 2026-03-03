@@ -24,7 +24,9 @@ async def post_init(application: ApplicationBuilder) -> None:
     console.print("[bold green]Inicializando navegador do MoltyClaw para o Telegram...[/bold green]")
     agent = MoltyClaw(name="MoltyClaw (Telegram)")
     await agent.init_browser()
-    console.print("[bold green]Navegador ligado e pronto para pesquisas![/bold green]")
+    if agent.mcp_hub:
+        await agent.mcp_hub.connect_servers()
+    console.print("[bold green]Navegador e conectores MCP ligados e prontos para pesquisas![/bold green]")
     
     bot = application.bot
     bot_info = await bot.get_me()

@@ -31,7 +31,9 @@ async def main_loop():
     console.print("[bold green]Inicializando navegador do MoltyClaw para o Twitter...[/bold green]")
     agent = MoltyClaw(name="MoltyClaw (Twitter)")
     await agent.init_browser()
-    console.print("[bold green]Navegador ligado e pronto para pesquisas![/bold green]")
+    if agent.mcp_hub:
+        await agent.mcp_hub.connect_servers()
+    console.print("[bold green]Navegador e conectores MCP ligados e prontos para pesquisas![/bold green]")
     
     # Criar cliente API v2 do Twitter
     client = tweepy.Client(
