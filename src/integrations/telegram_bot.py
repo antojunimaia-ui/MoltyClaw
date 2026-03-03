@@ -84,10 +84,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Se for um grupo, o bot só responde se for mencionado com @moltyclaw (ou se responderem a ele)
     if is_group:
         bot_username = context.bot.username
-        if f"@{bot_username}" not in user_text and getattr(update.message.reply_to_message, 'from_user', None) and update.message.reply_to_message.from_user.username != bot_username:
+        if not bot_username: return
+        
+        is_reply_to_bot = False
+        if update.message.reply_to_message and update.message.reply_to_message.from_user:
+            if update.message.reply_to_message.from_user.username == bot_username:
+                is_reply_to_bot = True
+                
+        is_mentioned = f"@{bot_username.lower()}" in user_text.lower()
+        
+        if not is_mentioned and not is_reply_to_bot:
             return
-        # Limpa mencão do texto
-        user_text = user_text.replace(f"@{bot_username}", "").strip()
+            
+        import re
+        # Limpa menção do texto ignorando maiúsculas
+        user_text = re.sub(f"(?i)@{bot_username}", "", user_text).strip()
+        if not user_text:
+            user_text = "Olá!"
 
     author = update.message.from_user.username or update.message.from_user.first_name
     console.print(f"\n[bold magenta]📩 Mensagem Telegram ({author}):[/bold magenta] {user_text}")
