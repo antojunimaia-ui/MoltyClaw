@@ -81,7 +81,48 @@ def run_twitter():
     th_twt.start()
     return [th_twt]
 
+def install_moltyclaw_path():
+    scripts_dir = os.path.join(os.path.dirname(sys.executable), "Scripts")
+    bat_path = os.path.join(scripts_dir, "moltyclaw.bat")
+    exe_path = os.path.join(scripts_dir, "moltyclaw.exe")
+    cwd = os.getcwd()
+    bat_content = f'@echo off\ncd /d "{cwd}"\npython start_moltyclaw.py %*\n'
+    
+    try:
+        if not os.path.exists(scripts_dir):
+            os.makedirs(scripts_dir, exist_ok=True)
+            
+        # Remove an old conflicting executable if it exists
+        if os.path.exists(exe_path):
+            os.remove(exe_path)
+            console.print("[dim]Antigo moltyclaw.exe removido para evitar conflitos.[/dim]")
+            
+        with open(bat_path, "w", encoding="utf-8") as f:
+            f.write(bat_content)
+        console.print(f"\n[bold green]✅ Sucesso! O comando 'moltyclaw' foi configurado e atualizado em:[/bold green] {bat_path}")
+        console.print("[bold cyan]Agora você pode digitar 'moltyclaw' em qualquer terminal para iniciar o projeto de qualquer lugar![/bold cyan]\n")
+    except Exception as e:
+        console.print(f"\n[bold red]❌ Erro ao configurar o path:[/bold red] {e}\n")
+
 if __name__ == "__main__":
+    # Tratamento de Argumentos de Linha de Comando (CLI)
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].lower()
+        if arg in ["--config", "-c"]:
+            console.print("[bold cyan]📝 Abrindo arquivo .env para configuração...[/bold cyan]")
+            # No Windows, abre o notepad direto no arquivo
+            os.system(f"notepad {os.path.join(os.getcwd(), '.env')}")
+            sys.exit(0)
+        elif arg in ["--help", "-h"]:
+            console.print(Panel.fit(
+                "[bold cyan]🚀 COMANDOS GLOBAIS DO MOLTYCLAW 🚀[/bold cyan]\n\n"
+                "[green]moltyclaw[/green]          : Abre o menu interativo padrão\n"
+                "[green]moltyclaw --config[/green] : Abre seu arquivo .env no Bloco de Notas para configurações fáceis\n"
+                "[green]moltyclaw --help[/green]   : Exibe este menu de ajuda",
+                border_style="cyan"
+            ))
+            sys.exit(0)
+
     console.clear()
     
     mcp_text = "[dim]Nenhum servidor MCP detectado.[/dim]"
@@ -106,8 +147,13 @@ if __name__ == "__main__":
     console.print("\n[bold yellow] Ambiente Tático:[/bold yellow]")
     console.print("1. [bold cyan]Modo WebUI Dashboard[/bold cyan] (Painel Web em 127.0.0.1:5000)")
     console.print("2. [bold magenta]Modo Terminal & Conectores[/bold magenta] (Discord, Whats, Telegram, etc)")
+    console.print("3. [bold green]Configurar 'moltyclaw' Global[/bold green] (Adiciona atalho ao PATH)")
     
-    env_choice = Prompt.ask("Selecione o modo de inicialização", choices=["1", "2"], default="2")
+    env_choice = Prompt.ask("Selecione o modo de inicialização", choices=["1", "2", "3"], default="2")
+    
+    if env_choice == "3":
+        install_moltyclaw_path()
+        sys.exit(0)
     
     console.print("\n[bold yellow] Escolha do Provedor de IA:[/bold yellow]")
     console.print("1. [bold cyan]Mistral AI[/bold cyan] (MISTRAL_API_KEY)")

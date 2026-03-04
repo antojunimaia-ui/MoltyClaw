@@ -193,6 +193,7 @@ O MoltyClaw te apresentará um menu lindo (com o poder da interface *Rich*) perg
 
 1. **Modo WebUI Dashboard**: Levanta um painel web super moderno (estilo Gateway) localmente na porta `5000` via **Flask**. Nele você pode gerenciar suas integrações (ligar/desligar bots com cliques visuais) e conversar ativamente com o agente gerando renderização visual (Markdown + DOMPurify) em tempo real!
 2. **Modo Terminal & Conectores**: Modo clássico. Você escolhe puramente qual braço lógico da IA quer ligar em *background*: WhatsApp, Discord, Telegram, X (Twitter) ou iniciar TODOS DE UMA VEZ!
+3. **Configurar 'moltyclaw' Global**: Adiciona automaticamente um atalho nas variáveis de ambiente globais do Windows (na pasta do Python Local). Permite abrir o Prompt de Comando de **qualquer pasta do computador** e simplesmente digitar `moltyclaw` para iniciar o projeto!
 
 ---
 
