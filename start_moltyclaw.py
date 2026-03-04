@@ -279,6 +279,70 @@ def cli_mcp_list():
     except Exception as e:
         console.print(f"[bold red]❌ Erro ao ler mcp_servers.json:[/bold red] {e}")
         
+        sys.exit(0)
+
+def cli_mcp_uninstall(name):
+    mcp_json_path = os.path.join(os.getcwd(), 'mcp_servers.json')
+    if os.path.exists(mcp_json_path):
+        with open(mcp_json_path, 'r', encoding='utf-8') as f:
+            mcp_data = json.load(f)
+        removed = False
+        if name in mcp_data.get("mcpServers", {}):
+            del mcp_data["mcpServers"][name]
+            removed = True
+        if name in mcp_data.get("disabledMcpServers", {}):
+            del mcp_data["disabledMcpServers"][name]
+            removed = True
+        if removed:
+            with open(mcp_json_path, 'w', encoding='utf-8') as f:
+                json.dump(mcp_data, f, indent=2)
+            console.print(f"[bold green]✅ '{name}' removido do mcp_servers.json[/bold green]")
+        else:
+            console.print(f"[bold yellow]⚠ Servidor '{name}' não encontrado no JSON.[/bold yellow]")
+            
+    # Remove pasta
+    target_dir = os.path.join(os.getcwd(), "mcp_modules", name)
+    if os.path.exists(target_dir):
+        import shutil
+        try:
+            shutil.rmtree(target_dir)
+            console.print(f"[bold green]✅ Arquivos locais de '{name}' apagados com sucesso das pastas do PC.[/bold green]")
+        except Exception as e:
+            console.print(f"[bold red]❌ Erro ao apagar a pasta: {e}[/bold red]")
+            
+    sys.exit(0)
+
+def cli_mcp_toggle(name, turn_on=True):
+    mcp_json_path = os.path.join(os.getcwd(), 'mcp_servers.json')
+    if not os.path.exists(mcp_json_path):
+        console.print("[bold red]❌ Arquivo mcp_servers.json não encontrado.[/bold red]")
+        sys.exit(1)
+        
+    with open(mcp_json_path, 'r', encoding='utf-8') as f:
+        mcp_data = json.load(f)
+        
+    mcp_data.setdefault("mcpServers", {})
+    mcp_data.setdefault("disabledMcpServers", {})
+    
+    if turn_on:
+        if name in mcp_data["disabledMcpServers"]:
+            mcp_data["mcpServers"][name] = mcp_data["disabledMcpServers"].pop(name)
+            console.print(f"[bold green]✅ Servidor '{name}' ativado![/bold green]")
+        elif name in mcp_data["mcpServers"]:
+            console.print(f"[bold yellow]⚠ Servidor '{name}' já estava ativado.[/bold yellow]")
+        else:
+            console.print(f"[bold red]❌ Servidor '{name}' não encontrado.[/bold red]")
+    else:
+        if name in mcp_data["mcpServers"]:
+            mcp_data["disabledMcpServers"][name] = mcp_data["mcpServers"].pop(name)
+            console.print(f"[bold yellow]🔌 Servidor '{name}' desativado temporariamente.[/bold yellow]")
+        elif name in mcp_data["disabledMcpServers"]:
+            console.print(f"[bold yellow]⚠ Servidor '{name}' já estava desativado.[/bold yellow]")
+        else:
+            console.print(f"[bold red]❌ Servidor '{name}' não encontrado.[/bold red]")
+            
+    with open(mcp_json_path, 'w', encoding='utf-8') as f:
+        json.dump(mcp_data, f, indent=2)
     sys.exit(0)
 
 def cli_reset_memory():
@@ -344,6 +408,57 @@ def cli_start_bots(target):
     finally:
         sys.exit(0)
 
+def cli_organize(path):
+    console.print(Panel.fit(f"[bold cyan]🧹 MOLTYCLAW ORGANIZER[/bold cyan]\n[dim]Analisando arquivos na pasta:[/dim] [yellow]{path}[/yellow]"))
+    if not os.path.exists(path):
+        console.print(f"[bold red]❌ O diretório '{path}' não existe.[/bold red]")
+        sys.exit(1)
+        
+    console.print("[dim]Invocando MoltyClaw Brain para organizar a pasta...[/dim]")
+    import asyncio
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from moltyclaw import MoltyClaw
+    
+    async def run():
+        bot = MoltyClaw("MoltyOrganizer")
+        files = os.listdir(path)
+        prompt = f"O usuário pediu para organizar a pasta: '{path}'.\nArquivos nela atualmente: {files}\n\nSUA TAREFA OBRIGATÓRIA: Use a ferramenta CMD para criar os diretórios necessários (mkdir) E, NA MESMA OU EM SEGUIDA, usar comandos para mover os arquivos listados para as respectivas pastas criadas (move). Exemplo: agrupe .pdf para Documentos, .jpg para Imagens, etc.\n\nCRÍTICO: NÃO FINALIZE O PROCESSO nem responda com texto se você ainda não moveu DE FATO os arquivos usando a ferramenta CMD. Se faltou mover, use a ferramenta CMD de novo!"
+        
+        await bot.ask(prompt)
+        await bot.close_browser()
+
+    try:
+        asyncio.run(run())
+        console.print("\n[bold green]✅ Organização concluída pela IA![/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Erro durante a organização:[/bold red] {e}")
+        
+    sys.exit(0)
+
+def cli_research(query):
+    console.print(Panel.fit(f"[bold cyan]🔍 MOLTYCLAW RESEARCHER[/bold cyan]\n[dim]Tópico de Busca:[/dim] [yellow]{query}[/yellow]"))
+    console.print("[dim]Acordando o Navegador Analítico e conectando à LLM...[/dim]")
+    
+    import asyncio
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from moltyclaw import MoltyClaw
+    
+    async def run():
+        bot = MoltyClaw("MoltyResearcher")
+        prompt = f"Faça uma pesquisa extensa e minuciosa na internet sobre o tema: '{query}'. Use OPEN_BROWSER e DDG_SEARCH (ou GOTO/READ_PAGE). Leia artigos e quando terminar de consolidar a informação, me responda DE FORMA DIRETA (sem usar tags JSON) descrevendo todo o resumo super detalhado e as mudanças para que eu possa ler aqui no terminal. Não economize no resumo, seja didático."
+        
+        await bot.ask(prompt)
+        await bot.close_browser()
+
+    try:
+        asyncio.run(run())
+        console.print("\n[bold green]✅ Pesquisa e resumo concluídos pela IA![/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Erro durante a pesquisa:[/bold red] {e}")
+        
+    sys.exit(0)
+
+
 if __name__ == "__main__":
     # Tratamento de Argumentos de Linha de Comando (CLI)
     if len(sys.argv) > 1:
@@ -367,13 +482,20 @@ if __name__ == "__main__":
             else:
                 console.print("[bold red]Uso: moltyclaw config set <CHAVE> <VALOR> ou moltyclaw config get <CHAVE>[/bold red]")
                 sys.exit(1)
+
         elif arg == "mcp" and len(sys.argv) >= 3:
             if sys.argv[2].lower() == "install" and len(sys.argv) >= 4:
                 cli_mcp_install(sys.argv[3])
+            elif sys.argv[2].lower() == "uninstall" and len(sys.argv) >= 4:
+                cli_mcp_uninstall(sys.argv[3])
+            elif sys.argv[2].lower() == "off" and len(sys.argv) >= 4:
+                cli_mcp_toggle(sys.argv[3], turn_on=False)
+            elif sys.argv[2].lower() == "on" and len(sys.argv) >= 4:
+                cli_mcp_toggle(sys.argv[3], turn_on=True)
             elif sys.argv[2].lower() == "list":
                 cli_mcp_list()
             else:
-                console.print("[bold red]Uso: moltyclaw mcp install <REPO> ou moltyclaw mcp list[/bold red]")
+                console.print("[bold red]Uso: moltyclaw mcp install/uninstall/on/off <NOME> ou moltyclaw mcp list[/bold red]")
                 sys.exit(1)
         elif arg == "reset" and len(sys.argv) >= 3 and sys.argv[2].lower() == "memory":
             cli_reset_memory()
@@ -381,6 +503,11 @@ if __name__ == "__main__":
             cli_update()
         elif arg == "start" and len(sys.argv) >= 3:
             cli_start_bots(sys.argv[2].lower())
+        elif arg == "organize" and len(sys.argv) >= 3:
+            cli_organize(sys.argv[2])
+        elif arg == "research" and len(sys.argv) >= 3:
+            # Junta tudo porque o texto pode não ter vindo em aspas
+            cli_research(" ".join(sys.argv[2:]))
         elif arg in ["--help", "-h"]:
             console.print(Panel.fit(
                 "[bold cyan]🚀 COMANDOS GLOBAIS DO MOLTYCLAW 🚀[/bold cyan]\n\n"
@@ -392,9 +519,13 @@ if __name__ == "__main__":
                 "[green]moltyclaw doctor[/green]                      : Executa um diagnóstico de dependências (.env, Python, Node)\n"
                 "[green]moltyclaw config set <CHAVE> <VALOR>[/green]  : Cria ou altera uma variável do `.env` por comando de linha\n"
                 "[green]moltyclaw config get <CHAVE>[/green]          : Lê e devolve o valor de uma secret no seu `.env`\n"
+                "[green]moltyclaw organize <PASTA>[/green]            : Organiza arquivos de uma bagunça instantaneamente usando LLM\n"
+                "[green]moltyclaw research \"<TEMA>\"[/green]           : Puxa um resumo web consolidado e rápido pro seu prompt\n"
                 "[green]moltyclaw reset memory[/green]                : Engatilha o protocolo de amnésia do agente esvaziando a MEMORY\n"
-                "[green]moltyclaw mcp install <REPO>[/green]          : Tenta puxar dinamicamente e injetar um pacote MCP ao bot\n"
                 "[green]moltyclaw mcp list[/green]                  : Lista todos os servidores MCP instalados em uma tabela\n"
+                "[green]moltyclaw mcp install <REPO>[/green]          : Puxa e configura um pacote MCP a partir de um link GitHub\n"
+                "[green]moltyclaw mcp uninstall <NOME>[/green]        : Deleta um pacote MCP remotamente baixado e remove do JSON\n"
+                "[green]moltyclaw mcp on/off <NOME>[/green]           : Ativa ou Desativa um servidor temporariamente sem excluí-lo\n"
                 "[green]moltyclaw --help[/green] ou [green]-h[/green]                : Exibe este menu de ajuda",
                 border_style="cyan"
             ))

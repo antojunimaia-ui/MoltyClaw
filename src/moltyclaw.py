@@ -838,13 +838,15 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                 # Suporte para versão nova (Mistral.chat.stream) e antiga (MistralAsyncClient.chat_stream)
                 for _retry in range(4):
                     try:
-                        if hasattr(self.mistral_client, 'chat') and (hasattr(self.mistral_client.chat, 'stream') or hasattr(self.mistral_client.chat, 'stream_async')):
-                            method = getattr(self.mistral_client.chat, 'stream_async', self.mistral_client.chat.stream)
+                        if hasattr(self.mistral_client, 'chat'):
+                            method = getattr(self.mistral_client.chat, 'stream')
+                            if hasattr(self.mistral_client.chat, 'stream_async') and "Async" in getattr(self.mistral_client, '__class__', type(self.mistral_client)).__name__:
+                                method = self.mistral_client.chat.stream_async
+                                
                             res_or_coro = method(
                                 model="mistral-large-latest",
                                 messages=sanitized_history
                             )
-                            # Verifica se é uma corrotina ou algo que precisa de await (SDK 1.0+)
                             if asyncio.iscoroutine(res_or_coro) or hasattr(res_or_coro, '__await__'):
                                 async_response = await res_or_coro
                             else:
@@ -881,45 +883,61 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             
             in_tool_mode = False
             buffer_txt = ""
-            
-            if hasattr(async_response, '__aiter__'):  # if stream is async generator
-                async for chunk in async_response:
-                    text = None
+
+            if hasattr(async_response, '__aiter__') or hasattr(async_response, '__iter__'):
+                
+                async def process_chunk_text(text, _buffer_txt, _in_tool_mode, _response_chunks):
+                    if not text:
+                        return _buffer_txt, _in_tool_mode, _response_chunks
+                    _response_chunks += text
+                    for char in text:
+                        _buffer_txt += char
+                        if not _in_tool_mode:
+                            if "<tool>".startswith(_buffer_txt):
+                                if _buffer_txt == "<tool>":
+                                    _in_tool_mode = True
+                                    _buffer_txt = ""
+                            else:
+                                if not silent:
+                                    print(_buffer_txt, end="", flush=True)
+                                if stream_callback:
+                                    await stream_callback(_buffer_txt)
+                                _buffer_txt = ""
+                        else:
+                            if _buffer_txt.endswith("</tool>"):
+                                _in_tool_mode = False
+                                _buffer_txt = ""
+                    return _buffer_txt, _in_tool_mode, _response_chunks
+
+                def extract_text(_chunk):
                     try:
-                        # Tentativa 1: SDK v1+ (.data.choices)
-                        if hasattr(chunk, "data"):
-                            d = chunk.data
-                            if hasattr(d, "choices") and d.choices:
-                                text = d.choices[0].delta.content
-                        # Tentativa 2: OpenAI ou SDK v0 (.choices)
-                        elif hasattr(chunk, "choices") and chunk.choices:
-                            text = chunk.choices[0].delta.content
-                        # Tentativa 3: Conteúdo direto (raro)
-                        elif hasattr(chunk, "content"):
-                            text = chunk.content
+                        with open("dump_mistral.txt", "a") as f:
+                            f.write(f"CHUNK DATA: {getattr(_chunk, 'data', 'no-data')} | CHUNK CLASS: {type(_chunk)}\n")
+                        import json
+                        if hasattr(_chunk, "data") and isinstance(_chunk.data, str):
+                            if _chunk.data == "[DONE]": return None
+                            d = json.loads(_chunk.data)
+                            if "choices" in d and len(d["choices"]) > 0:
+                                delta = d["choices"][0].get("delta", {})
+                                return delta.get("content", "")
+                        elif hasattr(_chunk, "data") and hasattr(_chunk.data, "choices") and _chunk.data.choices:
+                            return _chunk.data.choices[0].delta.content
+                        elif hasattr(_chunk, "choices") and getattr(_chunk, "choices", None):
+                            return _chunk.choices[0].delta.content
+                        elif hasattr(_chunk, "content"):
+                            return _chunk.content
                     except Exception:
                         pass
+                    return None
 
-                    if text:
-                        response_chunks += text
-                        # Esconde o bloco <tool> inteiro do usuário usando buffer inteligente
-                        for char in text:
-                            buffer_txt += char
-                            if not in_tool_mode:
-                                if "<tool>".startswith(buffer_txt):
-                                    if buffer_txt == "<tool>":
-                                        in_tool_mode = True
-                                        buffer_txt = ""
-                                else:
-                                    if not silent:
-                                        print(buffer_txt, end="", flush=True)
-                                    if stream_callback:
-                                        await stream_callback(buffer_txt)
-                                    buffer_txt = ""
-                            else:
-                                if buffer_txt.endswith("</tool>"):
-                                    in_tool_mode = False
-                                    buffer_txt = ""
+                if hasattr(async_response, '__aiter__'):
+                    async for chunk in async_response:
+                        t = extract_text(chunk)
+                        buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
+                else:
+                    for chunk in async_response:
+                        t = extract_text(chunk)
+                        buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
             
             if not is_tool_response and not silent:
                 print()
@@ -998,7 +1016,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                         if tool_callback: await tool_callback(f"[SEARCH] {param}")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
-                    elif action in ["GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
+                    elif action in ["OPEN_BROWSER", "GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
                         if not silent: console.print(f"\n[info]🌐 Executando Browser ({action}):[/info] {param}")
                         result = await self.run_browser_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
