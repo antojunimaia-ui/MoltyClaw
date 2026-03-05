@@ -21,3 +21,4 @@ SpeechRecognition
 flask
 mcp
 atproto
+questionary

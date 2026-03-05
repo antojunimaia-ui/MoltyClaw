@@ -11,6 +11,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+try:
+    import questionary
+    from questionary import Style as QStyle
+    HAS_QUESTIONARY = True
+except ImportError:
+    HAS_QUESTIONARY = False
+
 console = Console()
 
 def run_process(command, name):
@@ -417,31 +424,201 @@ def cli_start_bots(target):
         sys.exit(0)
 
 def cli_organize(path):
-    console.print(Panel.fit(f"[bold cyan]🧹 MOLTYCLAW ORGANIZER[/bold cyan]\n[dim]Analisando arquivos na pasta:[/dim] [yellow]{path}[/yellow]"))
-    if not os.path.exists(path):
-        console.print(f"[bold red]❌ O diretório '{path}' não existe.[/bold red]")
-        sys.exit(1)
-        
-    console.print("[dim]Invocando MoltyClaw Brain para organizar a pasta...[/dim]")
     import asyncio
+    import json as _json
+    from datetime import datetime
+    from rich.table import Table
+
+    path = os.path.abspath(path)
+    console.print(Panel.fit(
+        f"[bold cyan]🧹 MOLTYCLAW ORGANIZER[/bold cyan]\n"
+        f"[dim]Pasta alvo:[/dim] [yellow]{path}[/yellow]",
+        border_style="cyan"
+    ))
+
+    if not os.path.isdir(path):
+        console.print(f"[bold red]❌ '{path}' não é um diretório válido.[/bold red]")
+        sys.exit(1)
+
+    # ── 1. Escaneia arquivos (ignora subpastas já existentes) ─────────────────
+    entries = []
+    for name in os.listdir(path):
+        full = os.path.join(path, name)
+        if os.path.isdir(full):
+            continue  # pula diretórios
+        try:
+            stat = os.stat(full)
+            ext = os.path.splitext(name)[1].lower()
+            size_kb = round(stat.st_size / 1024, 1)
+            mod_date = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d")
+            entries.append({
+                "name": name,
+                "ext": ext or "(sem extensão)",
+                "size_kb": size_kb,
+                "modified": mod_date
+            })
+        except Exception:
+            entries.append({"name": name, "ext": "?", "size_kb": 0, "modified": "?"})
+
+    if not entries:
+        console.print("[bold yellow]⚠ Nenhum arquivo encontrado na pasta (apenas subpastas).[/bold yellow]")
+        sys.exit(0)
+
+    console.print(f"[bold green]📂 {len(entries)} arquivo(s) encontrado(s).[/bold green]")
+
+    # ── 2. Pede ao LLM um plano de categorização JSON ─────────────────────────
+    console.print("[dim]Consultando IA para montar o plano de organização...[/dim]")
+
+    file_summary = "\n".join(
+        f"  - {e['name']}  (ext: {e['ext']}, {e['size_kb']}KB, modificado: {e['modified']})"
+        for e in entries
+    )
+
+    organize_prompt = f"""Você é um organizador de arquivos. Analise a lista de arquivos abaixo e retorne APENAS um JSON (sem markdown, sem explicação) com o plano de organização.
+
+ARQUIVOS NA PASTA:
+{file_summary}
+
+REGRAS:
+1. Agrupe por tipo lógico: Imagens, Documentos, Vídeos, Músicas, Código, Executáveis, Compactados, Outros, etc.
+2. Use nomes de pasta em PORTUGUÊS, capitalizados (ex: "Imagens", "Documentos")
+3. Cada arquivo deve aparecer EXATAMENTE uma vez
+
+FORMATO DE RESPOSTA (JSON puro, nada mais):
+{{
+  "NomeDaPasta": ["arquivo1.ext", "arquivo2.ext"],
+  "OutraPasta": ["arquivo3.ext"]
+}}"""
+
     sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
     from moltyclaw import MoltyClaw
-    
-    async def run():
+
+    plan = None
+
+    async def get_plan():
+        nonlocal plan
         bot = MoltyClaw("MoltyOrganizer")
-        files = os.listdir(path)
-        prompt = f"O usuário pediu para organizar a pasta: '{path}'.\nArquivos nela atualmente: {files}\n\nSUA TAREFA OBRIGATÓRIA: Use a ferramenta CMD para criar os diretórios necessários (mkdir) E, NA MESMA OU EM SEGUIDA, usar comandos para mover os arquivos listados para as respectivas pastas criadas (move). Exemplo: agrupe .pdf para Documentos, .jpg para Imagens, etc.\n\nCRÍTICO: NÃO FINALIZE O PROCESSO nem responda com texto se você ainda não moveu DE FATO os arquivos usando a ferramenta CMD. Se faltou mover, use a ferramenta CMD de novo!"
-        
-        await bot.ask(prompt)
+        response = await bot.ask(organize_prompt, silent=True)
         await bot.close_browser()
+        return response
 
     try:
-        asyncio.run(run())
-        console.print("\n[bold green]✅ Organização concluída pela IA![/bold green]")
+        if os.name == 'nt':
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+        raw_response = asyncio.run(get_plan())
+
+        # Tenta extrair JSON da resposta (tolera markdown code blocks)
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', raw_response or "")
+        if json_match:
+            plan = _json.loads(json_match.group())
     except Exception as e:
-        console.print(f"[bold red]Erro durante a organização:[/bold red] {e}")
-        
+        console.print(f"[bold yellow]⚠ IA não retornou JSON válido: {e}[/bold yellow]")
+
+    # ── 3. Fallback: organização por extensão se o LLM falhou ─────────────────
+    if not plan or not isinstance(plan, dict):
+        console.print("[dim]Usando regras por extensão como fallback...[/dim]")
+        ext_map = {
+            "Imagens": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff", ".heic"},
+            "Documentos": {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".xls", ".xlsx", ".ppt", ".pptx", ".csv"},
+            "Vídeos": {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm"},
+            "Músicas": {".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma"},
+            "Código": {".py", ".js", ".ts", ".html", ".css", ".java", ".cpp", ".c", ".rs", ".go", ".rb", ".php", ".json", ".xml", ".yaml", ".yml", ".md", ".sh", ".bat", ".ps1"},
+            "Executáveis": {".exe", ".msi", ".bat", ".cmd", ".com", ".app", ".dmg"},
+            "Compactados": {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz"},
+        }
+        plan = {}
+        for e in entries:
+            ext = e["ext"].lower()
+            dest = "Outros"
+            for folder, exts in ext_map.items():
+                if ext in exts:
+                    dest = folder
+                    break
+            plan.setdefault(dest, []).append(e["name"])
+
+    # ── 4. Preview com tabela Rich ────────────────────────────────────────────
+    category_colors = {
+        "Imagens": "green", "Documentos": "blue", "Vídeos": "magenta",
+        "Músicas": "cyan", "Código": "yellow", "Executáveis": "red",
+        "Compactados": "bright_magenta", "Outros": "dim",
+    }
+
+    table = Table(title="📋 Plano de Organização", border_style="cyan", show_lines=True)
+    table.add_column("📁 Pasta", style="bold", min_width=15)
+    table.add_column("📄 Arquivos", min_width=40)
+    table.add_column("Qtd", justify="center", min_width=4)
+
+    total_planned = 0
+    for folder, files in sorted(plan.items()):
+        color = category_colors.get(folder, "white")
+        file_list = "\n".join(f"  • {f}" for f in files)
+        table.add_row(f"[{color}]{folder}[/{color}]", file_list, str(len(files)))
+        total_planned += len(files)
+
+    console.print(table)
+    console.print(f"\n[bold]{total_planned} arquivo(s) serão movidos para {len(plan)} pasta(s).[/bold]")
+
+    # ── 5. Confirmação ────────────────────────────────────────────────────────
+    if HAS_QUESTIONARY:
+        confirm = questionary.confirm(
+            "Executar este plano de organização?",
+            default=True
+        ).ask()
+        if not confirm:
+            console.print("[dim]Operação cancelada.[/dim]")
+            sys.exit(0)
+    else:
+        confirm = Prompt.ask("Executar? [S/n]", default="S")
+        if confirm.lower() not in ["s", "sim", "y", "yes", ""]:
+            console.print("[dim]Operação cancelada.[/dim]")
+            sys.exit(0)
+
+    # ── 6. Executa as movimentações ───────────────────────────────────────────
+    import shutil
+    moved = 0
+    errors = 0
+
+    for folder, files in plan.items():
+        dest_dir = os.path.join(path, folder)
+        os.makedirs(dest_dir, exist_ok=True)
+
+        for fname in files:
+            src = os.path.join(path, fname)
+            dst = os.path.join(dest_dir, fname)
+
+            if not os.path.exists(src):
+                console.print(f"[dim yellow]⚠ Ignorando '{fname}' (não encontrado)[/dim yellow]")
+                errors += 1
+                continue
+
+            # Evita conflito de nomes
+            if os.path.exists(dst):
+                base, ext = os.path.splitext(fname)
+                counter = 1
+                while os.path.exists(dst):
+                    dst = os.path.join(dest_dir, f"{base} ({counter}){ext}")
+                    counter += 1
+
+            try:
+                shutil.move(src, dst)
+                moved += 1
+            except Exception as e:
+                console.print(f"[bold red]❌ Erro movendo '{fname}': {e}[/bold red]")
+                errors += 1
+
+    # ── 7. Relatório final ────────────────────────────────────────────────────
+    console.print(f"\n[bold green]✅ Organização concluída![/bold green]")
+    console.print(f"   📦 {moved} arquivo(s) movido(s)")
+    if errors:
+        console.print(f"   ⚠️  {errors} erro(s)/ignorado(s)")
+    console.print(f"   📂 {len(plan)} pasta(s) criada(s) em [cyan]{path}[/cyan]")
     sys.exit(0)
+
 
 def cli_research(query):
     console.print(Panel.fit(f"[bold cyan]🔍 MOLTYCLAW RESEARCHER[/bold cyan]\n[dim]Tópico de Busca:[/dim] [yellow]{query}[/yellow]"))
@@ -562,105 +739,171 @@ if __name__ == "__main__":
         border_style="cyan"
     ))
     
-    console.print("\n[bold yellow] Ambiente Tático:[/bold yellow]")
-    console.print("1. [bold cyan]Modo WebUI Dashboard[/bold cyan] (Painel Web em 127.0.0.1:5000)")
-    console.print("2. [bold magenta]Modo Terminal & Conectores[/bold magenta] (Discord, Whats, Telegram, etc)")
-    console.print("3. [bold green]Configurar 'moltyclaw' Global[/bold green] (Adiciona atalho ao PATH)")
-    
-    env_choice = Prompt.ask("Selecione o modo de inicialização", choices=["1", "2", "3"], default="2")
-    
+    # ── Menu Principal ────────────────────────────────────────────────────────
+    if HAS_QUESTIONARY:
+        molty_style = QStyle([
+            ('qmark',       'fg:#00d7ff bold'),
+            ('question',    'bold'),
+            ('answer',      'fg:#00d7ff bold'),
+            ('pointer',     'fg:#00d7ff bold'),
+            ('highlighted', 'fg:#00d7ff bold'),
+            ('selected',    'fg:#00ff87'),
+            ('separator',   'fg:#555555'),
+            ('instruction', 'fg:#888888'),
+        ])
+
+        env_answer = questionary.select(
+            "Ambiente Tático — selecione o modo:",
+            choices=[
+                questionary.Choice("🌐  WebUI Dashboard         (painel web em 127.0.0.1:5000)",      value="1"),
+                questionary.Choice("🤖  Terminal & Conectores   (Discord, WhatsApp, Telegram…)",     value="2"),
+                questionary.Choice("🔧  Configurar 'moltyclaw' Global  (adiciona atalho ao PATH)",   value="3"),
+            ],
+            style=molty_style,
+            use_shortcuts=False,
+        ).ask()
+
+        if env_answer is None:
+            sys.exit(0)
+        env_choice = env_answer
+
+    else:
+        console.print("\n[bold yellow] Ambiente Tático:[/bold yellow]")
+        console.print("1. [bold cyan]Modo WebUI Dashboard[/bold cyan]")
+        console.print("2. [bold magenta]Modo Terminal & Conectores[/bold magenta]")
+        console.print("3. [bold green]Configurar 'moltyclaw' Global[/bold green]")
+        env_choice = Prompt.ask("Selecione", choices=["1", "2", "3"], default="2")
+
     if env_choice == "3":
         install_moltyclaw_path()
         sys.exit(0)
-    
-    console.print("\n[bold yellow] Escolha do Provedor de IA:[/bold yellow]")
-    console.print("1. [bold cyan]Mistral AI[/bold cyan] (MISTRAL_API_KEY)")
-    console.print("2. [bold magenta]OpenRouter[/bold magenta] (OPENROUTER_API_KEY)")
-    
-    provider_choice = Prompt.ask("Selecione o provedor", choices=["1", "2"], default="1")
-    
+
+    # ── Provedor de IA ────────────────────────────────────────────────────────
+    if HAS_QUESTIONARY:
+        provider_answer = questionary.select(
+            "Provedor de IA:",
+            choices=[
+                questionary.Choice("⚡  Mistral AI      (MISTRAL_API_KEY)",     value="1"),
+                questionary.Choice("🌐  OpenRouter      (OPENROUTER_API_KEY)",  value="2"),
+            ],
+            style=molty_style,
+        ).ask()
+        provider_choice = provider_answer if provider_answer else "1"
+    else:
+        console.print("\n[bold yellow] Provedor de IA:[/bold yellow]")
+        console.print("1. [bold cyan]Mistral AI[/bold cyan]")
+        console.print("2. [bold magenta]OpenRouter[/bold magenta]")
+        provider_choice = Prompt.ask("Selecione", choices=["1", "2"], default="1")
+
     if provider_choice == "2":
         os.environ["MOLTY_PROVIDER"] = "openrouter"
     else:
         os.environ["MOLTY_PROVIDER"] = "mistral"
-        
+
+    # ── WebUI ─────────────────────────────────────────────────────────────────
     if env_choice == "1":
-        share = Prompt.ask("🌐 Deseja expor a WebUI na Rede/Tailscale para acesso mobile? [y/N]", default="N")
-        if share.lower() in ["s", "sim", "y", "yes", "1"]:
+        if HAS_QUESTIONARY:
+            share_answer = questionary.select(
+                "🌐 Acesso remoto (Tailscale/celular/TV):",
+                choices=[
+                    questionary.Choice("🔒  Apenas local  (127.0.0.1:5000)",       value="n"),
+                    questionary.Choice("📡  Expor na rede  (0.0.0.0 + IP local)",  value="y"),
+                ],
+                style=molty_style,
+            ).ask()
+            share = share_answer if share_answer else "n"
+        else:
+            share = Prompt.ask("🌐 Expor na rede? [y/N]", default="N")
+
+        if share.lower() in ["y", "s", "sim", "yes", "1"]:
             os.environ["MOLTY_WEBUI_SHARE"] = "1"
-        # Run local flask app mapping the GUI UI
         os.system("python src/webui/app.py")
         sys.exit(0)
+
+    # ── Seleção de Conectores (multi-select com Espaço + Enter) ───────────────
+    if HAS_QUESTIONARY:
+        connector_choices = questionary.checkbox(
+            "Conectores a iniciar junto ao agente (Enter sem marcar = só terminal):",
+            choices=[
+                questionary.Choice("🟢  WhatsApp     — Server Python + Bridge Node.js",    value="whatsapp"),
+                questionary.Choice("🔵  Discord      — Bot via API Oficial",                value="discord"),
+                questionary.Choice("✈️   Telegram     — Bot python-telegram-bot",            value="telegram"),
+                questionary.Choice("🐦  X / Twitter  — Bot API v2",                         value="twitter"),
+                questionary.Choice("🦋  Bluesky      — Bot AT Protocol (atproto)",           value="bluesky"),
+            ],
+            style=molty_style,
+            instruction="(↑↓ navegar  •  Espaço selecionar  •  Enter confirmar)",
+        ).ask()
+
+        # None = Ctrl+C/Escape; lista vazia = entrou sem marcar nada (terminal puro)
+        if connector_choices is None:
+            sys.exit(0)
+
+        selected = set(connector_choices)
+
+    else:
+        # Fallback numérico
+        console.print("\n[bold cyan] Quais braços do agente deseja iniciar?[/bold cyan]")
+        console.print("0. [bold white]Só o Terminal[/bold white] (sem conectores externos)")
+        console.print("1. [bold green]WhatsApp[/bold green]")
+        console.print("2. [bold blue]Discord[/bold blue]")
+        console.print("3. [bold cyan]Telegram[/bold cyan]")
+        console.print("4. [bold blue]X/Twitter[/bold blue]")
+        console.print("5. [bold bright_blue]Bluesky 🦋[/bold bright_blue]")
+        console.print("6. [bold magenta]Todos[/bold magenta]")
+        console.print("7. [bold red]Sair[/bold red]\n")
+        choice_str = Prompt.ask("Digite os números (ex: 0 ou 1&&2, Enter=só terminal)", default="0")
+        raw = [c.strip() for c in choice_str.split("&&")]
+        mapping = {"1": "whatsapp", "2": "discord", "3": "telegram", "4": "twitter", "5": "bluesky"}
+        if "7" in raw:
+            sys.exit(0)
+        if "6" in raw:
+            selected = set(mapping.values())
+        elif "0" in raw:
+            selected = set()  # só terminal
+        else:
+            selected = {mapping[c] for c in raw if c in mapping}
+
+
         
-    console.print("\n[bold cyan] Quais braços do agente deseja iniciar?[/bold cyan]")
-    
-    console.print("1. [bold green]WhatsApp[/bold green] (Abre Server Python + Bridge Node.js)")
-    console.print("2. [bold blue]Discord[/bold blue] (Abre Bot Discord)")
-    console.print("3. [bold cyan]Telegram[/bold cyan] (Abre Bot Telegram)")
-    console.print("4. [bold blue]X/Twitter[/bold blue] (Abre Bot Twitter API v2)")
-    console.print("5. [bold bright_blue]Bluesky 🪷[/bold bright_blue] (Abre Bot Bluesky via AT Protocol)")
-    console.print("6. [bold magenta]Todos[/bold magenta] (Acorda tudo de uma vez!)")
-    console.print("7. [bold red]Sair[/bold red]\n")
-    
-    choice_str = Prompt.ask("Digite os números das suas escolhas (ex: 1 ou 1&&2)", default="1")
-    
+    # ── Lança os conectores selecionados ──────────────────────────────────────
     active_threads = []
-    
-    choices = [c.strip() for c in choice_str.split("&&")]
-    
-    if "7" in choices:
-        console.print("[dim]Desligando...[/dim]")
-        sys.exit(0)
-        
-    if "6" in choices:
+
+    if "whatsapp" in selected:
         os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
-        os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
-        os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
-        os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
-        os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
         active_threads.extend(run_whatsapp())
         time.sleep(1)
+    if "discord" in selected:
+        os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
         active_threads.extend(run_discord())
         time.sleep(1)
+    if "telegram" in selected:
+        os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
         active_threads.extend(run_telegram())
         time.sleep(1)
+    if "twitter" in selected:
+        os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
         active_threads.extend(run_twitter())
         time.sleep(1)
+    if "bluesky" in selected:
+        os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
         active_threads.extend(run_bluesky())
-    else:
-        if "1" in choices:
-            os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
-            active_threads.extend(run_whatsapp())
-            time.sleep(1)
-        if "2" in choices:
-            os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
-            active_threads.extend(run_discord())
-            time.sleep(1)
-        if "3" in choices:
-            os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
-            active_threads.extend(run_telegram())
-            time.sleep(1)
-        if "4" in choices:
-            os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
-            active_threads.extend(run_twitter())
-            time.sleep(1)
-        if "5" in choices:
-            os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
-            active_threads.extend(run_bluesky())
-            time.sleep(1)
-        
-    try:
-        # Mantém script principal vivo monitorando as threads
-        while True:
-            time.sleep(1)
-            # Verifica se as threads ativadas ainda vivem
-            if any(not t.is_alive() for t in active_threads):
-                console.print("\n[bold red][!] Um dos processos essenciais desligou ou falhou. Fechando o Launcher...[/bold red]")
-                break
-                
-    except KeyboardInterrupt:
-        console.print("\n[bold yellow][!] Ctrl+C recebido! Desligando os servidores e limpando processos...[/bold yellow]")
-        
-    finally:
-        console.print("[bold cyan]Até logo![/bold cyan]")
-        sys.exit(0)
+        time.sleep(1)
+
+    # Sempre abre o Terminal — direto no processo (sem subprocess!)
+    import importlib.util, asyncio as _asyncio
+
+    _molty_path = os.path.join(os.path.dirname(__file__), "src", "moltyclaw.py")
+    _spec = importlib.util.spec_from_file_location("moltyclaw_main", _molty_path)
+    _mod  = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+
+    if os.name == 'nt':
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            _asyncio.set_event_loop_policy(_asyncio.WindowsProactorEventLoopPolicy())
+
+    _asyncio.run(_mod.interactive_shell())
+    sys.exit(0)
+
