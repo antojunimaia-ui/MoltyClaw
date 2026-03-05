@@ -276,10 +276,10 @@ def cli_mcp_list():
                 table.add_row(name, cmd, args_str)
                 
             console.print(table)
+            sys.exit(0)
     except Exception as e:
         console.print(f"[bold red]❌ Erro ao ler mcp_servers.json:[/bold red] {e}")
-        
-        sys.exit(0)
+        sys.exit(1)
 
 def cli_mcp_uninstall(name):
     mcp_json_path = os.path.join(os.getcwd(), 'mcp_servers.json')
@@ -469,6 +469,8 @@ if __name__ == "__main__":
             os.system(f"notepad {os.path.join(os.getcwd(), '.env')}")
             sys.exit(0)
         elif arg == "web":
+            if "--share" in sys.argv:
+                os.environ["MOLTY_WEBUI_SHARE"] = "1"
             console.print("[bold magenta]🚀 Lançando WebUI em modo Bypass...[/bold magenta]")
             os.system("python src/webui/app.py")
             sys.exit(0)
@@ -512,7 +514,7 @@ if __name__ == "__main__":
             console.print(Panel.fit(
                 "[bold cyan]🚀 COMANDOS GLOBAIS DO MOLTYCLAW 🚀[/bold cyan]\n\n"
                 "[green]moltyclaw[/green]                             : Abre o menu interativo padrão\n"
-                "[green]moltyclaw web[/green]                         : Abre a WebUI imediatamente na porta 5000 ignorando o Menu\n"
+                "[green]moltyclaw web [--share][/green]               : Abre a WebUI imediatamente (exponha na rede com --share)\n"
                 "[green]moltyclaw start <ALVO>[/green]              : Inicia bots (discord, telegram, whatsapp, twitter, all) silenciosamente\n"
                 "[green]moltyclaw update[/green]                      : Sincroniza com as atualizações mais recentes e instala libs via pip\n"
                 "[green]moltyclaw --config[/green] ou [green]-c[/green]              : Abre seu arquivo .env no Bloco de Notas para edição amigável\n"
@@ -575,6 +577,9 @@ if __name__ == "__main__":
         os.environ["MOLTY_PROVIDER"] = "mistral"
         
     if env_choice == "1":
+        share = Prompt.ask("🌐 Deseja expor a WebUI na Rede/Tailscale para acesso mobile? [y/N]", default="N")
+        if share.lower() in ["s", "sim", "y", "yes", "1"]:
+            os.environ["MOLTY_WEBUI_SHARE"] = "1"
         # Run local flask app mapping the GUI UI
         os.system("python src/webui/app.py")
         sys.exit(0)

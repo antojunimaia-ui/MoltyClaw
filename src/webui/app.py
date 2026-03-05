@@ -230,74 +230,37 @@ def manage_agent_file(file):
 
 @app.route("/api/mcp/list", methods=["GET"])
 def list_mcps():
-    mcps_from_api = []
-    seen_names = set()
-    try:
-        url = "https://registry.modelcontextprotocol.io/v0.1/servers"
-        
-        while url and len(mcps_from_api) < 300: # Limite seguro para não sobrecarregar
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "MoltyClaw-WebUI/1.0"}
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    data = json.loads(response.read().decode("utf-8"))
-            except Exception as e:
-                console.print(f"[yellow]Aviso ao processar MCP Registry Pagination: {e}[/yellow]")
-                break
-            
-            for item in data.get("servers", []):
-                server = item.get("server", {})
-                name = server.get("title", server.get("name", "Unknown"))
-                
-                # Avoid duplicates of older versions
-                if name in seen_names:
-                    continue
-                    
-                desc = server.get("description", "")
-                packages = server.get("packages", [])
-                
-                command = None
-                args = []
-                
-                # Verifica compatibilidade via stdio, que o MoltyClaw aguenta
-                if packages:
-                    pkg = packages[0]
-                    ident = pkg.get("identifier", "")
-                    rtype = pkg.get("registryType", "")
-                    
-                    if rtype == "npm":
-                        command = "npx"
-                        args = ["-y", ident]
-                    elif rtype == "pypi":
-                        command = "uvx" # Alternativa rápida ao pipx/pip para injetar sem isolamento chato
-                        args = [ident]
-                    elif rtype == "oci" or "docker" in ident:
-                        command = "docker"
-                        args = ["run", "-i", "--rm", ident]
-                
-                if command:
-                    seen_names.add(name)
-                    mcps_from_api.append({
-                        "id": server.get("name", name).replace("/", "-").replace(".", "-"),
-                        "name": name,
-                        "description": desc,
-                        "command": command,
-                        "args": args
-                    })
-            
-            cursor = data.get("metadata", {}).get("nextCursor")
-            if cursor:
-                url = f"https://registry.modelcontextprotocol.io/v0.1/servers?cursor={urllib.parse.quote(cursor)}"
-            else:
-                url = None
-                
-    except Exception as e:
-        console.print(f"[red]Failed to fetch MCP registry: {e}[/red]")
-        pass
+    mcps_from_api = [
+        {
+            "id": "magic-mcp",
+            "name": "Magic MCP",
+            "description": "Ferramentas incríveis da 21st-dev.",
+            "command": "moltyclaw mcp install",
+            "args": ["https://github.com/21st-dev/magic-mcp"]
+        },
+        {
+            "id": "boost-mcp",
+            "name": "Boost MCP",
+            "description": "Servidor MCP pela Boost Community.",
+            "command": "moltyclaw mcp install",
+            "args": ["https://github.com/boost-community/boost-mcp"]
+        },
+        {
+            "id": "mcp-server-canva",
+            "name": "Canva MCP",
+            "description": "Documentação Oficial de Server da Canva - Exemplo",
+            "command": "moltyclaw mcp install",
+            "args": ["https://www.canva.dev/docs/apps/mcp-server/"]
+        },
+        {
+            "id": "mcp-server-cloudflare",
+            "name": "Cloudflare MCP",
+            "description": "Integração oficial de Server MCP da Cloudflare.",
+            "command": "moltyclaw mcp install",
+            "args": ["https://github.com/cloudflare/mcp-server-cloudflare"]
+        }
+    ]
 
-    # Read installed mcps
     installed_ids = []
     mcp_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_servers.json'))
     if os.path.exists(mcp_path):
@@ -314,36 +277,44 @@ def list_mcps():
 def install_mcp():
     data = request.json
     mcp_id = data.get("id")
-    mcp_command = data.get("command")
-    mcp_args = data.get("args")
+    mcp_args = data.get("args", [])
     
-    if not mcp_id or not mcp_command:
+    if not mcp_id or not mcp_args:
         return jsonify({"error": "Dados inválidos."}), 400
         
-    mcp_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_servers.json'))
-    current_data = {"mcpServers": {}}
+    repo_url = mcp_args[0]
     
-    if os.path.exists(mcp_path):
+    import subprocess
+    try:
+        # Chama a execução nativa do MoltyClaw para Clonar & Fazer Build do MCP!
+        subprocess.run(
+            f"python start_moltyclaw.py mcp install {repo_url}",
+            shell=True,
+            check=True
+        )
+        return jsonify({"success": True})
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": "Falha na instalação via CLI."}), 500
+
+if __name__ == "__main__":
+    host = "0.0.0.0" if os.environ.get("MOLTY_WEBUI_SHARE") == "1" else "127.0.0.1"
+    
+    if host == "0.0.0.0":
+        import socket
+        local_ip = "SEU-IP-LOCAL"
         try:
-            with open(mcp_path, 'r', encoding='utf-8') as f:
-                current_data = json.load(f)
+            # Trick to get the actual local IP address routing to internet
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
         except:
             pass
             
-    if "mcpServers" not in current_data:
-        current_data["mcpServers"] = {}
+        console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI Aberta para a Rede/Tailscale![/intense_cyan]")
+        console.print(f"[intense_cyan]🌐 Acesse pelo celular usando: http://{local_ip}:5000[/intense_cyan]")
+    else:
+        console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI Privada... Acesse: http://127.0.0.1:5000[/intense_cyan]")
+        console.print("[dim]Quer acessar do celular na rede? Use: moltyclaw web --share[/dim]")
         
-    current_data["mcpServers"][mcp_id] = {
-        "command": mcp_command,
-        "args": mcp_args or []
-    }
-    
-    with open(mcp_path, 'w', encoding='utf-8') as f:
-        json.dump(current_data, f, indent=4)
-        
-    return jsonify({"success": True})
-
-if __name__ == "__main__":
-    console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI... Acesse: http://127.0.0.1:5000[/intense_cyan]")
-    # Roda o dev test na porta 5000 acessível local
-    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
+    app.run(host=host, port=5000, debug=False, use_reloader=False)

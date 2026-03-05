@@ -414,7 +414,7 @@ let installedMcps = [];
 async function loadMCPList() {
     const grid = document.getElementById('mcp-grid');
     if (grid) {
-        grid.innerHTML = '<div style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: #64748b; font-family: sans-serif;"><i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2.5rem; color: #3b82f6; margin-bottom: 20px;"></i><h3 style="color: #0f172a; margin: 0 0 10px 0;">Sincronizando com a MCP Global Registry...</h3><p style="margin: 0; font-size: 14px;">Inspecionando mais de 300+ módulos oficiais disponíveis no mercado e filtrando os suportados pelo MoltyClaw.</p><p style="margin: 10px 0 0 0; font-size: 12px; font-weight: bold; padding: 6px 14px; background: #e0e7ff; color: #4338ca; border-radius: 6px;"><i class="fa-solid fa-clock"></i> Pode levar de 5 a 15 segundos na primeira vez</p></div>';
+        grid.innerHTML = '<div style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: #64748b; font-family: sans-serif;"><i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2.5rem; color: #3b82f6; margin-bottom: 20px;"></i><h3 style="color: #0f172a; margin: 0 0 10px 0;">Buscando Catálogo Local...</h3><p style="margin: 0; font-size: 14px;">Carregando a lista recomendada de servidores MCP oficiais suportados pelo MoltyClaw.</p></div>';
     }
 
     try {
@@ -479,11 +479,8 @@ async function installMCP(event, mcpId) {
     if (!target) return;
 
     const originalBtnContent = event.currentTarget.innerHTML;
-    event.currentTarget.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Baixando & Registrando...';
+    event.currentTarget.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Clonando e Instalando... (Pode demorar)';
     event.currentTarget.disabled = true;
-
-    // Simula um loading pra ficar mais chique e parecer que está instalando pacotes
-    await new Promise(r => setTimeout(r, 1500));
 
     try {
         const res = await fetch('/api/mcp/install', {
