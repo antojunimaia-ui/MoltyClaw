@@ -151,7 +151,8 @@ def start_integration(name):
         "whatsapp": ["python src/integrations/whatsapp_server.py", "node src/integrations/whatsapp_bridge.js"],
         "discord": ["python src/integrations/discord_bot.py"],
         "telegram": ["python src/integrations/telegram_bot.py"],
-        "twitter": ["python src/integrations/twitter_bot.py"]
+        "twitter": ["python src/integrations/twitter_bot.py"],
+        "bluesky": ["python src/integrations/bluesky_bot.py"]
     }
     
     if name not in cmd_map: return False
@@ -162,6 +163,7 @@ def start_integration(name):
     if name == "discord": env["MOLTY_DISCORD_ACTIVE"] = "1"
     if name == "telegram": env["MOLTY_TELEGRAM_ACTIVE"] = "1"
     if name == "twitter": env["MOLTY_TWITTER_ACTIVE"] = "1"
+    if name == "bluesky": env["MOLTY_BLUESKY_ACTIVE"] = "1"
     
     procs = []
     for cmd in cmd_map[name]:
@@ -185,7 +187,8 @@ def get_integrations():
         "whatsapp": "whatsapp" in active_processes and any(p.poll() is None for p in active_processes["whatsapp"]),
         "discord": "discord" in active_processes and any(p.poll() is None for p in active_processes["discord"]),
         "telegram": "telegram" in active_processes and any(p.poll() is None for p in active_processes["telegram"]),
-        "twitter": "twitter" in active_processes and any(p.poll() is None for p in active_processes["twitter"])
+        "twitter": "twitter" in active_processes and any(p.poll() is None for p in active_processes["twitter"]),
+        "bluesky": "bluesky" in active_processes and any(p.poll() is None for p in active_processes["bluesky"])
     }
     return jsonify(status)
 

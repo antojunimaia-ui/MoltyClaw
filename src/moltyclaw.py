@@ -67,6 +67,8 @@ class MoltyClaw:
             active_features.append('"TELEGRAM_SEND" (param: "id_ou_username | opcional texto | opcional caminho arquivo absoluto")')
         if os.environ.get("MOLTY_TWITTER_ACTIVE"):
             active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
+        if os.environ.get("MOLTY_BLUESKY_ACTIVE"):
+            active_features.append('"BLUESKY_POST" (param: "texto do skeet de ate 300 chars para postar no Bluesky")')
         
         active_features.append('"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")')
 

@@ -20,3 +20,4 @@ soundfile
 SpeechRecognition
 flask
 mcp
+atproto

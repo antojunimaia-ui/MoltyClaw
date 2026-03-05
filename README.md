@@ -414,6 +414,37 @@ Celular do usuário recebe resposta
 - Pesquisa a internet antes de responder caso necessário.
 - **Disparo ativo**: `X_POST` para publicar tweets autônomos sem abrir o navegador.
 
+### 🦋 Bluesky (AT Protocol)
+
+**Implementado em `src/integrations/bluesky_bot.py` usando `atproto`.**
+
+O Bluesky opera sobre o **AT Protocol**, um padrão aberto e descentralizado. A autenticação é feita com um **App Password** isolado (criado em `bsky.app → Settings → App Passwords`), nunca com a senha principal da conta.
+
+**Fluxo de notificações:**
+
+```
+Bot faz polling de /app.bsky.notification.listNotifications
+  ↓ Filtra reason == "mention" | "reply"
+  ↓ Ignora autor == próprio DID (anti-loop)
+  ↓ Verifica whitelist BLUESKY_ALLOWED_HANDLES
+  ↓ Chama MoltyClaw.ask(texto)
+  ↓ Posta resposta via client.send_post() com ReplyRef (root + parent)
+```
+
+- **Respostas em thread**: o bot respeita a estrutura de thread do AT Protocol mantendo `root_ref` e `parent_ref` corretos — respostas aparecem agrupadas no mesmo fio de conversa.
+- **Limite de 300 caracteres** com truncagem automática.
+- **Whitelist**: `BLUESKY_ALLOWED_HANDLES` — handlers separados por vírgula (ex: `amigo.bsky.social`). Vazio = aceita todos.
+- **Tool ativa**: `BLUESKY_POST` para o agente publicar skeets autônomos quando a integração está ligada.
+- **Polling**: 15 segundos por padrão, respeitando os limites de rate da API pública do Bluesky.
+
+**Variáveis de ambiente:**
+
+| Variável | Descrição |
+|---|---|
+| `BLUESKY_HANDLE` | Handle da conta (ex: `seunome.bsky.social`) |
+| `BLUESKY_APP_PASSWORD` | App Password gerado em `bsky.app → Settings → App Passwords` |
+| `BLUESKY_ALLOWED_HANDLES` | Handles autorizados a interagir, separados por vírgula. Vazio = todos |
+
 ---
 
 ## 🎙️ IA de Voz — Audição e Síntese

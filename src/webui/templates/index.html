@@ -15,6 +15,8 @@
 </head>
 
 <body>
+    <!-- Overlay for mobile sidebar -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 
     <div class="app-layout">
         <!-- Sidebar -->
@@ -160,6 +162,19 @@
                             <span class="slider"></span>
                         </label>
                     </div>
+
+                    <!-- Bluesky -->
+                    <div class="integration-card">
+                        <i class="fa-brands fa-bluesky int-icon" style="color:#0085ff"></i>
+                        <div class="int-info">
+                            <h3>Bluesky</h3>
+                            <p>Bot via AT Protocol (atproto)</p>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-bluesky" onchange="toggleIntegration('bluesky')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -283,8 +298,28 @@
 
     </div>
 
+    <!-- Mobile Bottom Navigation (only visible on small screens) -->
+    <div class="mobile-bottom-nav">
+        <div class="mobile-nav-item active" id="mobile-nav-chat" onclick="switchTab('chat')">
+            <i class="fa-regular fa-comment-dots"></i>
+            <span>Chat</span>
+        </div>
+        <div class="mobile-nav-item" id="mobile-nav-integrations" onclick="switchTab('integrations')">
+            <i class="fa-solid fa-link"></i>
+            <span>Links</span>
+        </div>
+        <div class="mobile-nav-item" id="mobile-nav-agent" onclick="switchTab('agent')">
+            <i class="fa-solid fa-robot"></i>
+            <span>Agent</span>
+        </div>
+        <div class="mobile-nav-item" id="mobile-nav-mcp" onclick="switchTab('mcp')">
+            <i class="fa-solid fa-plug"></i>
+            <span>MCP</span>
+        </div>
+    </div>
+
     <!-- Script at the bottom -->
-    <script src="{{ url_for('static', filename='script.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=6"></script>
 </body>
 
 </html>

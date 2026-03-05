@@ -49,6 +49,8 @@ def get_color(name):
         return "cyan"
     elif "TWITTER" in name:
         return "blue"
+    elif "BLUESKY" in name:
+        return "bright_blue"
     return "cyan"
 
 def run_whatsapp():
@@ -80,6 +82,12 @@ def run_twitter():
     th_twt = threading.Thread(target=run_process, args=(CMD_TWITTER, "TWITTER-BOT"), daemon=True)
     th_twt.start()
     return [th_twt]
+
+def run_bluesky():
+    CMD_BLUESKY = "python src/integrations/bluesky_bot.py"
+    th_bsky = threading.Thread(target=run_process, args=(CMD_BLUESKY, "BLUESKY-BOT"), daemon=True)
+    th_bsky.start()
+    return [th_bsky]
 
 def install_moltyclaw_path():
     scripts_dir = os.path.join(os.path.dirname(sys.executable), "Scripts")
@@ -590,8 +598,9 @@ if __name__ == "__main__":
     console.print("2. [bold blue]Discord[/bold blue] (Abre Bot Discord)")
     console.print("3. [bold cyan]Telegram[/bold cyan] (Abre Bot Telegram)")
     console.print("4. [bold blue]X/Twitter[/bold blue] (Abre Bot Twitter API v2)")
-    console.print("5. [bold magenta]Todos[/bold magenta] (Acorda tudo de uma vez!)")
-    console.print("6. [bold red]Sair[/bold red]\n")
+    console.print("5. [bold bright_blue]Bluesky 🪷[/bold bright_blue] (Abre Bot Bluesky via AT Protocol)")
+    console.print("6. [bold magenta]Todos[/bold magenta] (Acorda tudo de uma vez!)")
+    console.print("7. [bold red]Sair[/bold red]\n")
     
     choice_str = Prompt.ask("Digite os números das suas escolhas (ex: 1 ou 1&&2)", default="1")
     
@@ -599,22 +608,25 @@ if __name__ == "__main__":
     
     choices = [c.strip() for c in choice_str.split("&&")]
     
-    if "6" in choices:
+    if "7" in choices:
         console.print("[dim]Desligando...[/dim]")
         sys.exit(0)
         
-    if "5" in choices:
+    if "6" in choices:
         os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
         os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
         os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
         os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
+        os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
         active_threads.extend(run_whatsapp())
-        time.sleep(1) # Intervalo seguro
+        time.sleep(1)
         active_threads.extend(run_discord())
         time.sleep(1)
         active_threads.extend(run_telegram())
         time.sleep(1)
         active_threads.extend(run_twitter())
+        time.sleep(1)
+        active_threads.extend(run_bluesky())
     else:
         if "1" in choices:
             os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
@@ -631,6 +643,10 @@ if __name__ == "__main__":
         if "4" in choices:
             os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
             active_threads.extend(run_twitter())
+            time.sleep(1)
+        if "5" in choices:
+            os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
+            active_threads.extend(run_bluesky())
             time.sleep(1)
         
     try:

@@ -219,6 +219,30 @@ function clearSession() {
     chatContainer.innerHTML = `<div class="system-welcome">Session Cleared. Starting fresh context.</div>`;
 }
 
+// ─── Mobile Sidebar Functions ───────────────────────────────────────────────
+function openSidebar() {
+    document.querySelector('.sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('active');
+}
+
+function closeSidebar() {
+    document.querySelector('.sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('active');
+}
+
+// Wire hamburger menu button
+const menuToggle = document.querySelector('.menu-toggle');
+if (menuToggle) {
+    menuToggle.addEventListener('click', () => {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar.classList.contains('open')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    });
+}
+
 // Polling status on startup to update "Ready" dot
 async function checkStatus() {
     try {
@@ -271,6 +295,14 @@ function switchTab(tabId) {
     } else if (tabId === 'mcp') {
         loadMCPList();
     }
+
+    // Sync mobile bottom nav active state
+    document.querySelectorAll('.mobile-nav-item').forEach(item => item.classList.remove('active'));
+    const mobileActive = document.getElementById(`mobile-nav-${tabId}`);
+    if (mobileActive) mobileActive.classList.add('active');
+
+    // Close sidebar on mobile after switching tab
+    closeSidebar();
 }
 
 // Agent Files Logic
