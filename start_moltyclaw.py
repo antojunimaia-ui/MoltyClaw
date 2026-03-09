@@ -578,10 +578,13 @@ FORMATO DE RESPOSTA (JSON puro, nada mais):
             console.print("[dim]Operação cancelada.[/dim]")
             sys.exit(0)
 
-    # ── 6. Executa as movimentações ───────────────────────────────────────────
+    # ── 6. Executa as movimentações ─────────────────────────────────────────
     import shutil
+    import json as _json2
+    from datetime import datetime as _dt2
     moved = 0
     errors = 0
+    manifest_moves = []  # log de src → dst para undo
 
     for folder, files in plan.items():
         dest_dir = os.path.join(path, folder)
@@ -606,17 +609,142 @@ FORMATO DE RESPOSTA (JSON puro, nada mais):
 
             try:
                 shutil.move(src, dst)
+                manifest_moves.append({"from": src, "to": dst})
                 moved += 1
             except Exception as e:
                 console.print(f"[bold red]❌ Erro movendo '{fname}': {e}[/bold red]")
                 errors += 1
 
-    # ── 7. Relatório final ────────────────────────────────────────────────────
+    # ── 7. Salva manifesto para undo ───────────────────────────────────────
+    manifest_path = os.path.join(path, ".moltyclaw_organize.json")
+    manifest_data = {
+        "timestamp": _dt2.now().isoformat(),
+        "total_moved": moved,
+        "folders_created": list(plan.keys()),
+        "moves": manifest_moves
+    }
+    try:
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            _json2.dump(manifest_data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass  # não crítico
+
+    # ── 8. Relatório final ────────────────────────────────────────────────
     console.print(f"\n[bold green]✅ Organização concluída![/bold green]")
     console.print(f"   📦 {moved} arquivo(s) movido(s)")
     if errors:
         console.print(f"   ⚠️  {errors} erro(s)/ignorado(s)")
     console.print(f"   📂 {len(plan)} pasta(s) criada(s) em [cyan]{path}[/cyan]")
+    console.print(f"   🔄 Para desfazer: [bold cyan]moltyclaw organize --undo {path}[/bold cyan]")
+    sys.exit(0)
+
+
+def cli_organize_undo(path):
+    import json as _json3
+    import shutil
+    from rich.table import Table
+
+    path = os.path.abspath(path)
+    manifest_path = os.path.join(path, ".moltyclaw_organize.json")
+
+    console.print(Panel.fit(
+        f"[bold yellow]⏪ MOLTYCLAW ORGANIZER — UNDO[/bold yellow]\n"
+        f"[dim]Revertendo organização em:[/dim] [yellow]{path}[/yellow]",
+        border_style="yellow"
+    ))
+
+    if not os.path.exists(manifest_path):
+        console.print("[bold red]❌ Nenhum manifesto (.moltyclaw_organize.json) encontrado nesta pasta.[/bold red]")
+        console.print("[dim]A pasta precisa ter sido organizada pelo MoltyClaw para poder desfazer.[/dim]")
+        sys.exit(1)
+
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = _json3.load(f)
+    except Exception as e:
+        console.print(f"[bold red]❌ Erro ao ler manifesto: {e}[/bold red]")
+        sys.exit(1)
+
+    moves = manifest.get("moves", [])
+    timestamp = manifest.get("timestamp", "?")
+    folders = manifest.get("folders_created", [])
+
+    if not moves:
+        console.print("[bold yellow]⚠ Manifesto vazio — nada para desfazer.[/bold yellow]")
+        sys.exit(0)
+
+    # Preview
+    table = Table(title=f"⏪ Undo — Organização de {timestamp}", border_style="yellow", show_lines=True)
+    table.add_column("📁 De (atual)", min_width=30)
+    table.add_column("📂 Para (original)", min_width=30)
+
+    for m in moves:
+        src_display = os.path.relpath(m["to"], path)
+        dst_display = os.path.relpath(m["from"], path)
+        table.add_row(f"[red]{src_display}[/red]", f"[green]{dst_display}[/green]")
+
+    console.print(table)
+    console.print(f"\n[bold]{len(moves)} arquivo(s) serão revertidos para a raiz.[/bold]")
+
+    # Confirmação
+    if HAS_QUESTIONARY:
+        confirm = questionary.confirm(
+            "Desfazer esta organização?",
+            default=True
+        ).ask()
+        if not confirm:
+            console.print("[dim]Operação cancelada.[/dim]")
+            sys.exit(0)
+    else:
+        confirm = Prompt.ask("Desfazer? [S/n]", default="S")
+        if confirm.lower() not in ["s", "sim", "y", "yes", ""]:
+            console.print("[dim]Operação cancelada.[/dim]")
+            sys.exit(0)
+
+    # Reverte
+    restored = 0
+    errs = 0
+    for m in moves:
+        src = m["to"]    # onde está agora
+        dst = m["from"]  # onde estava antes
+
+        if not os.path.exists(src):
+            console.print(f"[dim yellow]⚠ '{os.path.basename(src)}' não encontrado (já movido?)[/dim yellow]")
+            errs += 1
+            continue
+
+        try:
+            shutil.move(src, dst)
+            restored += 1
+        except Exception as e:
+            console.print(f"[bold red]❌ Erro revertendo '{os.path.basename(src)}': {e}[/bold red]")
+            errs += 1
+
+    # Limpa pastas vazias criadas pelo organize
+    cleaned = 0
+    for folder_name in folders:
+        folder_path = os.path.join(path, folder_name)
+        if os.path.isdir(folder_path):
+            try:
+                remaining = os.listdir(folder_path)
+                if not remaining:
+                    os.rmdir(folder_path)
+                    cleaned += 1
+            except Exception:
+                pass
+
+    # Remove o manifesto
+    try:
+        os.remove(manifest_path)
+    except Exception:
+        pass
+
+    console.print(f"\n[bold green]✅ Undo concluído![/bold green]")
+    console.print(f"   🔄 {restored} arquivo(s) restaurado(s)")
+    if cleaned:
+        console.print(f"   🗑️  {cleaned} pasta(s) vazia(s) removida(s)")
+    if errs:
+        console.print(f"   ⚠️  {errs} erro(s)/ignorado(s)")
     sys.exit(0)
 
 
@@ -645,6 +773,24 @@ def cli_research(query):
 
 
 if __name__ == "__main__":
+    # Tratamento global do modo (-m / --mode)
+    if "-m" in sys.argv or "--mode" in sys.argv:
+        try:
+            idx = sys.argv.index("-m") if "-m" in sys.argv else sys.argv.index("--mode")
+            mode = sys.argv[idx + 1].lower()
+            if mode in ["private", "public"]:
+                os.environ["MOLTY_MODE"] = mode
+            else:
+                console.print("[bold red]Modo inválido. Use 'private' ou 'public'.[/bold red]")
+                sys.exit(1)
+            sys.argv.pop(idx)
+            sys.argv.pop(idx)
+        except IndexError:
+            console.print("[bold red]Especifique um modo (ex: -m public).[/bold red]")
+            sys.exit(1)
+    else:
+        os.environ["MOLTY_MODE"] = "private"
+
     # Tratamento de Argumentos de Linha de Comando (CLI)
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
@@ -691,13 +837,17 @@ if __name__ == "__main__":
         elif arg == "start" and len(sys.argv) >= 3:
             cli_start_bots(sys.argv[2].lower())
         elif arg == "organize" and len(sys.argv) >= 3:
-            cli_organize(sys.argv[2])
+            if sys.argv[2] == "--undo" and len(sys.argv) >= 4:
+                cli_organize_undo(sys.argv[3])
+            else:
+                cli_organize(sys.argv[2])
         elif arg == "research" and len(sys.argv) >= 3:
             # Junta tudo porque o texto pode não ter vindo em aspas
             cli_research(" ".join(sys.argv[2:]))
         elif arg in ["--help", "-h"]:
             console.print(Panel.fit(
                 "[bold cyan]🚀 COMANDOS GLOBAIS DO MOLTYCLAW 🚀[/bold cyan]\n\n"
+                "[dim]Modificadores globais: use [bold green]-m public[/bold green] (desativa terminal) ou [bold green]-m private[/bold green] antes de qualquer comando.[/dim]\n"
                 "[green]moltyclaw[/green]                             : Abre o menu interativo padrão\n"
                 "[green]moltyclaw web [--share][/green]               : Abre a WebUI imediatamente (exponha na rede com --share)\n"
                 "[green]moltyclaw start <ALVO>[/green]              : Inicia bots (discord, telegram, whatsapp, twitter, all) silenciosamente\n"
@@ -707,6 +857,7 @@ if __name__ == "__main__":
                 "[green]moltyclaw config set <CHAVE> <VALOR>[/green]  : Cria ou altera uma variável do `.env` por comando de linha\n"
                 "[green]moltyclaw config get <CHAVE>[/green]          : Lê e devolve o valor de uma secret no seu `.env`\n"
                 "[green]moltyclaw organize <PASTA>[/green]            : Organiza arquivos de uma bagunça instantaneamente usando LLM\n"
+                "[green]moltyclaw organize --undo <PASTA>[/green]     : Desfaz a última organização usando o manifesto salvo\n"
                 "[green]moltyclaw research \"<TEMA>\"[/green]           : Puxa um resumo web consolidado e rápido pro seu prompt\n"
                 "[green]moltyclaw reset memory[/green]                : Engatilha o protocolo de amnésia do agente esvaziando a MEMORY\n"
                 "[green]moltyclaw mcp list[/green]                  : Lista todos os servidores MCP instalados em uma tabela\n"

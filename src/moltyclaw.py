@@ -59,6 +59,8 @@ class MoltyClaw:
         self.mcp_hub = MCPHub() if MCPHub else None
         
         active_features = []
+        if os.environ.get("MOLTY_MODE", "private") != "public":
+            active_features.append('"CMD" (param: comando de terminal)')
         if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
             active_features.append('"WHATSAPP_SEND" (param: "numero | opcional texto | opcional caminho arquivo absoluto")')
         if os.environ.get("MOLTY_DISCORD_ACTIVE"):
@@ -99,7 +101,6 @@ Ações suportadas no JSON:
 "READ_PAGE" (param: "") - Lê o body.innerText cru.
 "INSPECT_PAGE" (param: "") - Analisa elementos interativos e desenha marcadores AZUIS na tela para você.
 "SCREENSHOT" (param: "")
-"CMD" (param: comando de terminal)
 "DDG_SEARCH" (param: busca)
 "READ_EMAILS" (param: limite)
 "SEND_EMAIL" (param: destinatario | assunto | corpo)
@@ -226,6 +227,10 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             console.print(f"[error]Erro ao iniciar navegador: {e}[/error]")
 
     async def execute_terminal_command(self, command: str) -> str:
+        if os.environ.get("MOLTY_MODE", "private") == "public":
+            console.print(f"[warning][{self.name}] Tentativa de uso de CMD intercedida pelo Modo Publico.[/warning]")
+            return "Erro: O comando CMD está DESABILITADO no modo PUBLIC (ações de terminal bloqueadas por segurança)."
+            
         console.print(f"[info][{self.name}] Executando comando:[/info] {command}")
         try:
             process = await asyncio.create_subprocess_shell(
