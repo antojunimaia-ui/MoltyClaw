@@ -204,100 +204,147 @@
                 </div>
 
                 <!-- Agent View -->
-                <div id="view-agent" class="view-content">
-                    <header class="main-header">
-                        <div class="header-left">
-                            <h1 class="page-title">Agent Studio</h1>
-                            <p class="page-subtitle">Configure persona, memory and external context.</p>
-                        </div>
-                    </header>
+                <div id="view-agent" class="view-content" style="display: none;">
+                    <div class="agents-layout">
+                        <!-- Sidebar -->
+                        <section class="card agents-sidebar">
+                            <div class="row" style="justify-content: space-between;">
+                                <div>
+                                    <div class="card-title">Agents</div>
+                                    <div class="card-sub" id="agents-count-text">0 configured.</div>
+                                </div>
+                                <button class="btn btn--sm" onclick="loadAgentList()">Refresh</button>
+                            </div>
+                            <div class="agent-list" id="agent-list-container" style="margin-top: 12px;">
+                                <!-- Populated by JS -->
+                            </div>
+                        </section>
 
-                    <!-- Segment Toggle -->
-                    <div class="view-segment-toggle">
-                        <button class="segment-btn active" id="btn-agent-core" onclick="switchAgentSegment('core')">
-                            <i class="fa-solid fa-microchip"></i> Core
-                        </button>
-                        <button class="segment-btn" id="btn-agent-context" onclick="switchAgentSegment('context')">
-                            <i class="fa-solid fa-brain"></i> Context
-                        </button>
+                        <!-- Main Content -->
+                        <section class="agents-main">
+                            <div id="agent-selection-placeholder">
+                                <div class="card">
+                                    <div class="card-title">Select an agent</div>
+                                    <div class="card-sub">Pick an agent to inspect its workspace and tools.</div>
+                                </div>
+                            </div>
+
+                            <div id="agent-details-container" style="display: none; flex-direction: column; gap: 16px;">
+                                <!-- Agent Header -->
+                                <section class="card agent-header">
+                                    <div class="agent-header-main">
+                                        <div class="agent-avatar agent-avatar--lg" id="selected-agent-avatar">
+                                            M
+                                        </div>
+                                        <div>
+                                            <div class="card-title" id="selected-agent-name">MoltyClaw</div>
+                                            <div class="card-sub" id="selected-agent-subtitle">Agent workspace and routing.</div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-header-meta">
+                                        <div class="mono" id="selected-agent-id">moltyclaw</div>
+                                        <span class="agent-pill" id="selected-agent-badge" style="display: none;">default</span>
+                                    </div>
+                                </section>
+
+                                <!-- Agent Tabs -->
+                                <div class="agent-tabs">
+                                    <button class="agent-tab active" id="btn-agent-core" onclick="switchAgentSegment('core')">Identity & Memory</button>
+                                    <button class="agent-tab" id="btn-agent-config" onclick="switchAgentSegment('config')">Setup</button>
+                                    <button class="agent-tab" id="btn-agent-context" onclick="switchAgentSegment('context')">Context</button>
+                                </div>
+
+                                <!-- Tab Contents -->
+                                <div id="agent-segment-core" class="agent-segment active">
+                                    <div class="agent-studio-wrapper">
+                                        <!-- Sidebar for files -->
+                                        <div class="studio-sidebar">
+                                            <div class="studio-file-card active" id="card-soul" onclick="selectAgentFile('soul')">
+                                                <h4>SOUL.md</h4>
+                                                <span>Persona Identity</span>
+                                            </div>
+                                            <div class="studio-file-card" id="card-memory" onclick="selectAgentFile('memory')">
+                                                <h4>MEMORY.md</h4>
+                                                <span>Persistent Knowledge</span>
+                                            </div>
+                                        </div>
+                                        <!-- Main area -->
+                                        <div class="studio-main">
+                                            <div class="editor-header">
+                                                <div class="editor-title">
+                                                    <h3 id="current-editor-title">SOUL.md</h3>
+                                                    <span id="current-editor-path">~/.moltyclaw/SOUL.md</span>
+                                                </div>
+                                                <div class="editor-actions">
+                                                    <button class="btn btn-primary btn--sm" onclick="saveCurrentAgentFile()">Salvar</button>
+                                                </div>
+                                            </div>
+                                            <textarea id="active-editor" class="code-editor" placeholder="Escreva a alma do seu agente aqui..."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="agent-segment-config" class="agent-segment" style="display: none;">
+                                    <div class="card" style="width: 100%;">
+                                        <div class="form-wrapper">
+                                            <div class="form-group">
+                                                <label>ID do Agente (Único)</label>
+                                                <input type="text" id="agent-form-id" placeholder="Ex: pesquisador_web">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Nome Visível</label>
+                                                <input type="text" id="agent-form-name" placeholder="Ex: Molty Pesquisador">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Descrição / Objetivo</label>
+                                                <textarea id="agent-form-description" placeholder="O que este agente faz?"></textarea>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Provedor de IA (LLM)</label>
+                                                <select id="agent-form-provider">
+                                                    <option value="mistral">Mistral AI (Nativo)</option>
+                                                    <option value="gemini">Google Gemini</option>
+                                                    <option value="openrouter">OpenRouter (Múltiplos)</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Variáveis de Ambiente (.env) - Ex: CHAVE=valor</label>
+                                                <textarea id="agent-form-env" placeholder="GEMINI_API_KEY=xxx\nOUTRA_KEY=yyy" style="height: 100px;"></textarea>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Tools Nativas Locais Ativadas (Separadas por vírgula)</label>
+                                                <input type="text" id="agent-form-tools-local" placeholder="DDG_SEARCH, READ_PAGE" value="DDG_SEARCH, READ_PAGE">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>MCP Tools (IDs dos Servidores MCP Ativados, separados por vírgula)</label>
+                                                <input type="text" id="agent-form-tools-mcp" placeholder="mcp-facebook, mcp-spotify">
+                                            </div>
+                                            <div style="display: flex; gap: 10px;">
+                                                <button class="btn-primary" onclick="saveAgentConfig()" style="flex: 1; margin-top: 15px;">Salvar Sub-Agente</button>
+                                                <button class="btn-secondary" id="btn-delete-agent" onclick="deleteAgent()" style="margin-top: 15px; border-color: #ef4444; color: #ef4444; display:none;">Excluir</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="agent-segment-context" class="agent-segment" style="display: none;">
+                                    <div class="card" style="width: 100%;">
+                                        <div class="card-title">Context Management</div>
+                                        <div class="card-sub">Import or export your agent's learned context.</div>
+                                        <div class="row" style="margin-top: 20px;">
+                                            <button class="btn" onclick="importContext()">Import Context</button>
+                                            <button class="btn" onclick="exportContext()">Export Context</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
                     </div>
+                </div>
 
-                    <div id="agent-segment-core" class="agent-segment active">
-                        <div class="agent-studio-wrapper">
-
-                            <!-- Left sidebar for files -->
-                            <div class="studio-sidebar">
-
-                                <div class="studio-file-card active" id="card-soul" onclick="selectAgentFile('soul')">
-                                    <h4>SOUL.md</h4>
-                                    <span>Persona Identity</span>
-                                </div>
-
-                                <div class="studio-file-card" id="card-memory" onclick="selectAgentFile('memory')">
-                                    <h4>MEMORY.md</h4>
-                                    <span>Persistent Knowledge</span>
-                                </div>
-
-                            </div>
-
-                            <!-- Right side editor -->
-                            <div class="studio-editor-area">
-                                <div class="editor-header">
-                                    <div class="editor-title-area">
-                                        <h3 id="current-editor-title">SOUL.md</h3>
-                                        <p id="current-editor-path">/workspace/SOUL.md</p>
-                                    </div>
-                                    <div class="editor-actions">
-                                        <button class="btn-primary" onclick="saveCurrentAgentFile()">Save</button>
-                                    </div>
-                                </div>
-
-                                <div class="editor-body">
-                                    <textarea id="active-editor" spellcheck="false"></textarea>
-                                </div>
-                            </div>
-
-                        </div>
-
-                    </div> <!-- End Core Segment -->
-
-                    <div id="agent-segment-context" class="agent-segment" style="display: none;">
-                        <div class="context-management-wrapper">
-                            <div class="context-card">
-                                <div class="context-card-icon">
-                                    <i class="fa-solid fa-file-import"></i>
-                                </div>
-                                <div class="context-card-info">
-                                    <h3>Import Context</h3>
-                                    <p>Load external personality or preference files into MoltyClaw.</p>
-                                </div>
-                                <div class="context-card-actions">
-                                    <button class="btn-secondary" onclick="importContext()">
-                                        <i class="fa-solid fa-upload"></i> Import Context
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="context-card">
-                                <div class="context-card-icon">
-                                    <i class="fa-solid fa-file-export"></i>
-                                </div>
-                                <div class="context-card-info">
-                                    <h3>Export Context</h3>
-                                    <p>Gather everything MoltyClaw learned and export it for other agents.</p>
-                                </div>
-                                <div class="context-card-actions">
-                                    <button class="btn-primary" onclick="exportContext()">
-                                        <i class="fa-solid fa-download"></i> Export Context
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div> <!-- End Context Segment -->
-                </div> <!-- End Agent View -->
 
                 <!-- MCP View -->
-                <div id="view-mcp" class="view-content">
+                <div id="view-mcp" class="view-content" style="display: none;">
                     <header class="main-header">
                         <div class="header-left">
                             <h1 class="page-title">Model Context Protocol (MCP)</h1>

@@ -214,8 +214,16 @@ def manage_agent_file(file):
     if file not in ["memory", "soul"]:
         return jsonify({"error": "Arquivo inválido"}), 400
         
+    agent_id = request.args.get("agent", "MoltyClaw")
+    
+    if agent_id == "MoltyClaw":
+        folder_path = MOLTY_DIR
+    else:
+        folder_path = os.path.join(MOLTY_DIR, "agents", agent_id)
+        os.makedirs(folder_path, exist_ok=True)
+        
     filename = "MEMORY.md" if file == "memory" else "SOUL.md"
-    filepath = os.path.join(MOLTY_DIR, filename)
+    filepath = os.path.join(folder_path, filename)
     
     if request.method == "GET":
         try:
@@ -223,7 +231,11 @@ def manage_agent_file(file):
                 content = f.read()
             return jsonify({"content": content})
         except FileNotFoundError:
-            return jsonify({"content": ""})
+            # For new agents, provide a default template
+            if file == "soul":
+                default_content = f"Você é {agent_id}, um agente especializado.\n\nSiga sempre as diretrizes de autonomia."
+                return jsonify({"content": default_content})
+            return jsonify({"content": "# MEMÓRIA\n\nNenhuma memória armazenada ainda."})
             
     if request.method == "POST":
         data = request.json
@@ -231,6 +243,93 @@ def manage_agent_file(file):
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
         return jsonify({"success": True})
+
+@app.route("/api/agents", methods=["GET"])
+def get_agents():
+    agents_dir = os.path.join(MOLTY_DIR, "agents")
+    os.makedirs(agents_dir, exist_ok=True)
+    
+    agent_list = [
+        {
+            "id": "MoltyClaw",
+            "name": "MoltyClaw",
+            "description": "Agente Mestre Orquestrador.",
+            "provider": "Padrao do Kernel",
+            "tools_mcp": ["Todos"],
+            "tools_local": ["Todas"],
+            "is_master": True
+        }
+    ]
+    
+    for agent_id in os.listdir(agents_dir):
+        agent_path = os.path.join(agents_dir, agent_id)
+        if os.path.isdir(agent_path):
+            config_path = os.path.join(agent_path, "config.json")
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                    cfg["id"] = agent_id
+                    cfg["is_master"] = False
+                    agent_list.append(cfg)
+                except: pass
+    
+    return jsonify({"agents": agent_list})
+
+@app.route("/api/agents", methods=["POST"])
+def save_agent():
+    data = request.json
+    agent_id = data.get("id") or data.get("name", "").replace(" ", "_").lower()
+    
+    if not agent_id or agent_id.lower() == "moltyclaw":
+        return jsonify({"error": "Nome inválido ou reservado."}), 400
+        
+    agents_dir = os.path.join(MOLTY_DIR, "agents", agent_id)
+    os.makedirs(agents_dir, exist_ok=True)
+    
+    config = {
+        "name": data.get("name", agent_id),
+        "description": data.get("description", "Agente Especializado do MoltyClaw."),
+        "provider": data.get("provider", "mistral"),
+        "tools_mcp": data.get("tools_mcp", []),
+        "tools_local": data.get("tools_local", ["DDG_SEARCH", "READ_PAGE"])
+    }
+    
+    with open(os.path.join(agents_dir, "config.json"), "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=4)
+        
+    # Salvar a Env do agente
+    env_vars = data.get("env_vars", {})
+    with open(os.path.join(agents_dir, ".env"), "w", encoding="utf-8") as f:
+        for k, v in env_vars.items():
+            f.write(f"{k}={v}\n")
+            
+    # Criar SOUL padrao se não houver
+    soul_path = os.path.join(agents_dir, "SOUL.md")
+    if not os.path.exists(soul_path):
+        with open(soul_path, "w", encoding="utf-8") as f:
+            f.write(f"Você é {config['name']}, um agente especializado.\n\n"
+                    f"Descrição: {config['description']}\n\n"
+                    f"Seja preciso nas suas atividades.")
+                    
+    memory_path = os.path.join(agents_dir, "MEMORY.md")
+    if not os.path.exists(memory_path):
+        with open(memory_path, "w", encoding="utf-8") as f:
+            f.write("# MEMORY\n\nA memória deste agente está limpa.")
+            
+    return jsonify({"success": True, "agent": config})
+
+@app.route("/api/agents/<agent_id>", methods=["DELETE"])
+def delete_agent(agent_id):
+    if agent_id.lower() == "moltyclaw":
+        return jsonify({"error": "Não é permitido excluir o MoltyClaw Master."}), 403
+        
+    import shutil
+    agent_dir = os.path.join(MOLTY_DIR, "agents", agent_id)
+    if os.path.exists(agent_dir):
+        shutil.rmtree(agent_dir)
+        return jsonify({"success": True})
+    return jsonify({"error": "Agente não encontrado."}), 404
 
 @app.route("/api/agent/import_context", methods=["POST"])
 def import_context():

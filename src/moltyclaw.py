@@ -51,10 +51,16 @@ custom_theme = Theme({
 console = Console(theme=custom_theme)
 
 class MoltyClaw:
-    def __init__(self, name="MoltyClaw"):
+    def __init__(self, name="MoltyClaw", agent_id=None):
         self.name = name
+        self.agent_id = agent_id if agent_id else (name.replace(" (WebUI Gateway)", "").replace(" (Discord)", "").replace(" (Telegram)", "").replace(" (WhatsApp)", "").replace(" (Twitter)", "").replace(" (Bluesky)", "").strip())
+        if self.agent_id.startswith("MoltyClaw"): self.agent_id = "MoltyClaw"
+        self.is_master = (self.agent_id == "MoltyClaw")
         
-        # Le a variavel de ambiente passada pelo Launcher
+        self.workspace_dir = MOLTY_DIR if self.is_master else os.path.join(MOLTY_DIR, "agents", self.agent_id)
+        os.makedirs(self.workspace_dir, exist_ok=True)
+        
+        # Le a variavel de ambiente passada
         self.provider = os.getenv("MOLTY_PROVIDER", "mistral")
         
         if self.provider == "mistral":
@@ -88,6 +94,13 @@ class MoltyClaw:
             active_features.append('"BLUESKY_POST" (param: "texto do skeet de ate 300 chars para postar no Bluesky")')
             active_features.append('"BLUESKY_GET_PROFILE" (param: "handle_opcional") - Se vazio, pega o SEU proprio perfil. Retorna seguidores, posts, etc.')
         
+        if self.is_master:
+            available_agents = self._get_available_agents()
+            if available_agents:
+                agent_list_str = "\n".join([f"- {a['id']}: {a['name']} ({a['description']})" for a in available_agents])
+                active_features.append(f'\n🤖 AGENTES ESPECIALISTAS DISPONÍVEIS:\n{agent_list_str}')
+            active_features.append('\n"CALL_AGENT" (param: "id_do_agente | o que ele deve fazer") - Invoca um sub-agente especializado.')
+
         active_features.append('"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")')
 
         self.history = [
@@ -1172,6 +1185,53 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                         if tool_callback: await tool_callback(f"[SEARCH] {param}")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
+                    elif action == "CALL_AGENT":
+                        console.print(f"\n[info]🤖 Delegando Tarefa ({action}):[/info] {param}")
+                        if tool_callback: await tool_callback(f"[CALL_AGENT] {param[:30]}")
+                        
+                        try:
+                            parts = param.split('|', 1)
+                            if len(parts) == 2:
+                                sub_id = parts[0].strip()
+                                task_text = parts[1].strip()
+                                
+                                import json
+                                cfg_path = os.path.join(MOLTY_DIR, "agents", sub_id, "config.json")
+                                if not os.path.exists(cfg_path):
+                                    result = f"Erro: Sub-Agente '{sub_id}' não existe ou não foi configurado."
+                                else:
+                                    # Load cfg briefly to inject env vars
+                                    with open(cfg_path, 'r', encoding='utf-8') as f:
+                                        scfg = json.load(f)
+                                        
+                                    env_path = os.path.join(MOLTY_DIR, "agents", sub_id, ".env")
+                                    if os.path.exists(env_path):
+                                        from dotenv import load_dotenv
+                                        load_dotenv(env_path, override=True)
+                                        
+                                    old_provider = os.environ.get("MOLTY_PROVIDER")
+                                    os.environ["MOLTY_PROVIDER"] = scfg.get("provider", "mistral")
+                                    
+                                    # Start new instance and run
+                                    sub_agent = MoltyClaw(name=scfg.get("name", sub_id), agent_id=sub_id)
+                                    sub_reply = await sub_agent.ask(task_text, silent=True)
+                                    # Optional close browser...
+                                    if sub_agent.browser:
+                                        await sub_agent.close()
+                                        
+                                    # Restore previous provider
+                                    if old_provider:
+                                        os.environ["MOLTY_PROVIDER"] = old_provider
+                                        
+                                    result = f"Resultado retornado pelo Agente [{sub_id}]: {sub_reply}"
+                            else:
+                                result = "Erro: Formato incorreto. Use 'id_do_agente | tarefa_detalhada'."
+                        except Exception as e:
+                            result = f"Erro ao executar CALL_AGENT: {e}"
+                            
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado CALL_AGENT] -> {result}"})
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+                        
                     elif action in ["OPEN_BROWSER", "GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
                         if not silent: console.print(f"\n[info]🌐 Executando Browser ({action}):[/info] {param}")
                         result = await self.run_browser_action(action, param)
@@ -1291,6 +1351,31 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             err_msg = f"Erro ao comunicar com Mistral: {e}"
             console.print(f"[error]{err_msg}[/error]")
             return err_msg
+
+    def _get_available_agents(self):
+        """Retorna uma lista resumida de todos os sub-agentes criados no .moltyclaw/agents"""
+        import json
+        agents_dir = os.path.join(MOLTY_DIR, "agents")
+        if not os.path.exists(agents_dir):
+            return []
+            
+        agent_configs = []
+        for agent_id in os.listdir(agents_dir):
+            agent_path = os.path.join(agents_dir, agent_id)
+            if os.path.isdir(agent_path):
+                config_path = os.path.join(agent_path, "config.json")
+                if os.path.exists(config_path):
+                    try:
+                        with open(config_path, "r", encoding="utf-8") as f:
+                            cfg = json.load(f)
+                        agent_configs.append({
+                            "id": agent_id,
+                            "name": cfg.get("name", agent_id),
+                            "description": cfg.get("description", "Sem descrição.")
+                        })
+                    except:
+                        pass
+        return agent_configs
 
 async def interactive_shell():
     console.clear()

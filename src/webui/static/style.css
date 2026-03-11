@@ -1062,24 +1062,7 @@ body[data-theme="dark"] .chat-container {
     border: 1px solid var(--border-main) !important;
 }
 
-/* ─────────────────────────────────────────────
-   AGENT STUDIO STYLES
-   ───────────────────────────────────────────── */
-.agent-studio-wrapper {
-    display: flex;
-    gap: 30px;
-    padding: 0 40px 20px 40px;
-    height: calc(100vh - 120px);
-}
-
-.studio-sidebar {
-    width: 250px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    overflow-y: auto;
-    padding-right: 10px;
-}
+/* Redundant styles removed */
 
 .studio-editor-area {
     flex: 1;
@@ -1431,18 +1414,377 @@ body[data-theme="dark"] .studio-file-card.active {
     margin-bottom: 20px;
 }
 
-.review-box {
-    margin-bottom: 20px;
+/* Base UI Components used in segments */
+.card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-main);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow-main);
 }
 
-body[data-theme="dark"] .prompt-box,
-body[data-theme="dark"] #context-input-text,
-body[data-theme="dark"] #new-memory-preview {
-    background: #0f172a;
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: var(--text-main);
+}
+
+.card-sub {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* General Button style if not specified */
+.btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: 0.2s;
+    border: 1px solid var(--border-main);
+    background: var(--bg-surface);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn:hover {
+    background: var(--bg-app);
+    border-color: var(--accent);
 }
 
 /* ─────────────────────────────────────────────
-   DARK MODE OVERRIDES (FINAL FIXES)
+   AGENT LAYOUT (OPENCLAW STYLE)
+   ───────────────────────────────────────────── */
+.agents-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    gap: 16px;
+    height: calc(100vh - 80px); /* Ajustado para preencher a tela */
+    padding: 16px 24px;
+    overflow: hidden;
+}
+
+.agents-sidebar {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+    align-self: start;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-card);
+}
+
+.agents-main {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    padding-right: 8px; /* Espaço para scroll */
+}
+
+.agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    align-content: flex-start; /* Impede que os itens estiquem verticalmente */
+}
+
+.agent-row {
+    display: flex; /* Mudando para flex para controle melhor do espalhamento */
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--border-main);
+    border-radius: 12px;
+    background: var(--bg-surface);
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-main);
+    flex-shrink: 0; /* Impede que o card seja espremido */
+}
+
+.agent-row:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.agent-row.active {
+    border-color: #ef4444; /* Realce vermelho solicitado */
+    background: #111827;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
+}
+
+.agent-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg-hover);
+    display: grid;
+    place-items: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.agent-avatar--lg {
+    width: 48px;
+    height: 48px;
+    font-size: 1.4rem;
+}
+
+.agent-info {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.agent-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.agent-sub {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.agent-pill {
+    border: 1px solid var(--border-main);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 10px;
+    color: var(--text-muted);
+    background: var(--bg-hover);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+}
+
+.agent-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    padding: 20px;
+}
+
+.agent-header-main {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.agent-header-meta {
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+    color: var(--text-muted);
+}
+
+.agent-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    background: var(--bg-surface);
+    padding: 8px;
+    border-radius: 12px;
+    border: 1px solid var(--border-main);
+}
+
+.agent-tab {
+    border: 1px solid transparent;
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.agent-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-main);
+}
+
+.agent-tab.active {
+    background: #ef4444;
+    color: white;
+}
+
+.agent-studio-wrapper {
+    display: flex;
+    gap: 15px;
+    height: 500px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-main);
+    overflow: hidden;
+    padding: 0; /* REMOVIDO PADDING QUE EMPURRAVA TUDO */
+}
+
+.studio-sidebar {
+    width: 220px;
+    border-right: 1px solid var(--border-main);
+    display: flex;
+    flex-direction: column;
+    padding: 12px; /* Padding uniforme em todos os lados */
+    gap: 10px;
+    align-items: stretch;
+}
+
+.studio-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.studio-file-card {
+    padding: 12px 16px;
+    cursor: pointer;
+    border: 1px solid var(--border-main);
+    border-radius: 10px;
+    transition: 0.2s;
+    background: transparent;
+    width: 100%;
+    margin: 0;
+    display: block; /* Garante que se comporte como bloco */
+}
+.studio-file-card:hover { 
+    background: var(--bg-hover); 
+}
+.studio-file-card.active {
+    background: var(--bg-surface);
+    border-color: var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.studio-file-card h4 { 
+    margin: 0; 
+    font-size: 0.88rem; 
+    font-weight: 700;
+}
+.studio-file-card span { 
+    font-size: 0.72rem; 
+    color: var(--text-muted); 
+    display: block;
+    margin-top: 2px;
+}
+
+.editor-header {
+    padding: 15px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-main);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.editor-title h3 { margin: 0; font-size: 1rem; }
+.editor-title span { font-size: 0.75rem; color: var(--text-muted); }
+
+/* Form Styles for Setup Tab */
+.form-wrapper {
+    padding: 10px;
+    max-width: 800px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.form-group input, 
+.form-group select, 
+.form-group textarea {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-main);
+    color: var(--text-main);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: 0.2s;
+}
+
+.form-group input:focus, 
+.form-group select:focus, 
+.form-group textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
+}
+
+.form-group input:disabled {
+    background: var(--bg-app);
+    cursor: not-allowed;
+    color: var(--text-muted);
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.code-editor {
+    flex: 1;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px;
+    border: none;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.95rem;
+    resize: none;
+    line-height: 1.6;
+}
+
+.code-editor:focus { outline: none; }
+
+.btn--sm {
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    height: fit-content;
+}
+
+/* Fix para o botão refresh na sidebar */
+.agents-sidebar .btn--sm {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #f8fafc;
+}
+.agents-sidebar .btn--sm:hover {
+    background: #334155;
+}
+
+.mono {
+    font-family: 'Fira Code', monospace;
+}
+
+/* ─────────────────────────────────────────────
+   DARK MODE OVERRIDES
    ───────────────────────────────────────────── */
 body[data-theme="dark"] .main-header {
     border-bottom-color: var(--border-main);
@@ -1454,13 +1796,13 @@ body[data-theme="dark"] .nav-section-title {
 }
 
 body[data-theme="dark"] .nav-item:hover {
-    background-color: #334155;
-    color: #f8fafc;
+    background-color: #334155 !important;
+    color: #f8fafc !important;
 }
 
 body[data-theme="dark"] .nav-item.active {
-    background-color: #450a0a;
-    color: #fca5a5;
+    background-color: #450a0a !important;
+    color: #fca5a5 !important;
 }
 
 body[data-theme="dark"] .message-bubble.assistant-bubble {
@@ -1483,39 +1825,86 @@ body[data-theme="dark"] .input-wrapper textarea {
     color: var(--text-main);
 }
 
-body[data-theme="dark"] #view-agent {
-    background-color: var(--bg-app) !important;
-    color: var(--text-main) !important;
+body[data-theme="dark"] .prompt-box,
+body[data-theme="dark"] #context-input-text,
+body[data-theme="dark"] #new-memory-preview {
+    background: #0f172a;
+    color: #e2e8f0;
 }
 
-body[data-theme="dark"] .studio-sidebar .studio-file-card {
-    background: var(--bg-surface);
-    border-color: var(--border-main);
+/* Agent Workspace Dark Mode */
+body[data-theme="dark"] .agent-row {
+    background: #1e293b;
+    border-color: #334155;
+    color: #f8fafc;
 }
 
-body[data-theme="dark"] .studio-file-card h4 {
-    color: var(--text-main);
+body[data-theme="dark"] .agent-row:hover {
+    background: #334155;
 }
 
-body[data-theme="dark"] .studio-editor-area {
-    background: var(--bg-surface);
+body[data-theme="dark"] .agent-row.active {
+    background: #0f172a;
+    border-color: #ef4444;
+}
+
+body[data-theme="dark"] .agent-tabs {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body[data-theme="dark"] .agent-tab:hover {
+    background: #334155;
+    color: #f8fafc;
+}
+
+body[data-theme="dark"] .studio-sidebar {
+    background: transparent;
+    border-color: #334155;
+}
+
+body[data-theme="dark"] .studio-file-card.active {
+    background: #111827;
     border-color: var(--accent);
 }
 
 body[data-theme="dark"] .editor-header {
-    border-bottom-color: var(--border-main);
+    background: #1e293b;
+    border-color: #334155;
 }
 
-body[data-theme="dark"] #active-editor {
-    color: var(--text-main);
+body[data-theme="dark"] .agent-studio-wrapper {
+    background: #1e293b;
+    border-color: #334155;
 }
 
-body[data-theme="dark"] .integration-card {
-    background: var(--bg-surface);
-    border-color: var(--border-main);
+body[data-theme="dark"] .form-group input,
+body[data-theme="dark"] .form-group select,
+body[data-theme="dark"] .form-group textarea {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
 }
 
-body[data-theme="dark"] .mobile-bottom-nav {
-    background-color: var(--bg-navbar);
-    border-top-color: var(--border-main);
+body[data-theme="dark"] .form-group input:disabled {
+    background: #1e293b;
+    color: #475569;
 }
+
+body[data-theme="dark"] .card {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body[data-theme="dark"] .btn {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
+}
+
+body[data-theme="dark"] .btn:hover {
+    background: #1e293b;
+    border-color: var(--accent);
+}
+
+

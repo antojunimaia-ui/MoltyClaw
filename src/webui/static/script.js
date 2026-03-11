@@ -342,7 +342,7 @@ function switchTab(tabId) {
     if (tabId === 'integrations') {
         fetchIntegrations();
     } else if (tabId === 'agent') {
-        loadAgentFiles();
+        loadAgentList();
     } else if (tabId === 'mcp') {
         loadMCPList();
     }
@@ -356,7 +356,243 @@ function switchTab(tabId) {
     closeSidebar();
 }
 
-// Agent Files Logic
+// Agent Files & Multi-Agent Logic
+let activeAgentId = 'MoltyClaw';
+let agentListCache = [];
+
+async function loadAgentList() {
+    try {
+        const res = await fetch('/api/agents');
+        const data = await res.json();
+        agentListCache = data.agents || [];
+        renderAgentList();
+        
+        // Ensure an agent is selected
+        if (!agentListCache.find(a => a.id === activeAgentId) && activeAgentId !== '__NEW__') {
+            activeAgentId = 'MoltyClaw';
+        }
+        selectAgent(activeAgentId);
+    } catch(e) { console.error('Error fetching agents', e); }
+}
+
+function renderAgentList() {
+    const container = document.getElementById('agent-list-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    // Update count
+    const countEl = document.getElementById('agents-count-text');
+    if (countEl) countEl.innerText = `${agentListCache.length} configured.`;
+    
+    agentListCache.forEach(agent => {
+        const row = document.createElement('div');
+        row.className = `agent-row ${agent.id === activeAgentId ? 'active' : ''}`;
+        row.onclick = () => selectAgent(agent.id);
+        
+        // Pick an icon/emoji based on agent name or role for flair
+        let avatar = agent.is_master ? '🤖' : '👤';
+        if (agent.name.toLowerCase().includes('don')) avatar = '🎨';
+        if (agent.name.toLowerCase().includes('harry')) avatar = '📊';
+        if (agent.name.toLowerCase().includes('pete')) avatar = '💻';
+        if (agent.name.toLowerCase().includes('peggy')) avatar = '👱‍♀️';
+
+        row.innerHTML = `
+            <div class="agent-avatar">${avatar}</div>
+            <div class="agent-info" style="flex: 1;">
+                <div class="agent-title">${escapeHTML(agent.name)}</div>
+                <div class="agent-sub mono">${escapeHTML(agent.id.toLowerCase())}</div>
+            </div>
+            ${agent.is_master ? '<span class="agent-pill">default</span>' : ''}
+        `;
+        container.appendChild(row);
+    });
+    
+    // Add New Agent button
+    const addRow = document.createElement('div');
+    addRow.className = `agent-row ${activeAgentId === '__NEW__' ? 'active' : ''}`;
+    addRow.onclick = () => selectAgent('__NEW__');
+    addRow.innerHTML = `
+        <div class="agent-avatar" style="background:transparent; border: 1px dashed #4b5563; color:#ef4444">+</div>
+        <div class="agent-info">
+            <div class="agent-title" style="color:#ef4444">Criar Especialista</div>
+            <div class="agent-sub" style="color:#7f1d1d">novo obreiro</div>
+        </div>
+    `;
+    container.appendChild(addRow);
+}
+
+function selectAgent(agentId) {
+    activeAgentId = agentId;
+    renderAgentList();
+    
+    const placeholder = document.getElementById('agent-selection-placeholder');
+    const container = document.getElementById('agent-details-container');
+    
+    if (!agentId) {
+        placeholder.style.display = 'block';
+        container.style.display = 'none';
+        return;
+    }
+    
+    placeholder.style.display = 'none';
+    container.style.display = 'flex';
+    
+    const coreBtn = document.getElementById('btn-agent-core');
+    const ctxBtn = document.getElementById('btn-agent-context');
+    const cfgBtn = document.getElementById('btn-agent-config');
+    
+    const nameEl = document.getElementById('selected-agent-name');
+    const idEl = document.getElementById('selected-agent-id');
+    const avatarEl = document.getElementById('selected-agent-avatar');
+    const badgeEl = document.getElementById('selected-agent-badge');
+    
+    if (agentId === '__NEW__') {
+        nameEl.innerText = "Novo Especialista";
+        idEl.innerText = "worker_agent";
+        avatarEl.innerText = "+";
+        badgeEl.style.display = "none";
+
+        cfgBtn.style.display = 'block';
+        switchAgentSegment('config');
+        
+        document.getElementById('agent-form-id').value = '';
+        document.getElementById('agent-form-id').disabled = false;
+        document.getElementById('agent-form-id').focus();
+        document.getElementById('agent-form-name').value = '';
+        document.getElementById('agent-form-description').value = '';
+        document.getElementById('agent-form-provider').value = 'mistral';
+        document.getElementById('agent-form-env').value = '';
+        document.getElementById('agent-form-tools-local').value = 'DDG_SEARCH, READ_PAGE';
+        document.getElementById('agent-form-tools-mcp').value = '';
+        document.getElementById('btn-delete-agent').style.display = 'none';
+        
+        // Hide Core since new agents don't have files until saved
+        coreBtn.style.display = 'none';
+        ctxBtn.style.display = 'none';
+    } else {
+        const agent = agentListCache.find(a => a.id === agentId);
+        if(!agent) return;
+        
+        nameEl.innerText = agent.name;
+        idEl.innerText = agent.id.toLowerCase();
+        
+        // Pick an icon/emoji
+        let avatar = agent.is_master ? '🤖' : '👤';
+        if (agent.name.toLowerCase().includes('don')) avatar = '🎨';
+        if (agent.name.toLowerCase().includes('harry')) avatar = '📊';
+        if (agent.name.toLowerCase().includes('pete')) avatar = '💻';
+        if (agent.name.toLowerCase().includes('peggy')) avatar = '👱‍♀️';
+        avatarEl.innerText = avatar;
+
+        if (agent.is_master) {
+            badgeEl.style.display = 'inline-block';
+            badgeEl.innerText = 'default';
+            cfgBtn.style.display = 'inline-block'; // Agora aparece para o mestre também
+        } else {
+            badgeEl.style.display = 'none';
+            cfgBtn.style.display = 'inline-block';
+        }
+
+        coreBtn.style.display = 'inline-block';
+        ctxBtn.style.display = 'inline-block';
+        
+        // Fill form
+        document.getElementById('agent-form-id').value = agent.id;
+        document.getElementById('agent-form-id').disabled = true;
+        document.getElementById('agent-form-name').value = agent.name || '';
+        document.getElementById('agent-form-description').value = agent.description || '';
+        document.getElementById('agent-form-provider').value = agent.provider || 'mistral';
+        document.getElementById('agent-form-tools-local').value = (agent.tools_local || []).join(', ');
+        document.getElementById('agent-form-tools-mcp').value = (agent.tools_mcp || []).join(', ');
+        document.getElementById('agent-form-env').value = (agent.env_vars || []).join('\n');
+        
+        document.getElementById('btn-delete-agent').style.display = agent.is_master ? 'none' : 'block';
+        
+        if (activeAgentId !== agentId || !document.querySelector('.agent-segment.active')) {
+            switchAgentSegment('core');
+        }
+        
+        loadAgentFiles();
+    }
+}
+
+async function saveAgentConfig() {
+    const idField = document.getElementById('agent-form-id');
+    const id = idField.value.trim();
+    if(!id) return alert('Insira um ID para o sub-agente (Letras minúsculas e sublinhados, ex: criador_de_tweets).');
+    
+    const btn = event.target;
+    const oldTxt = btn.innerText;
+    btn.innerText = "Salvando...";
+    btn.disabled = true;
+    
+    const envText = document.getElementById('agent-form-env').value;
+    const envVars = {};
+    envText.split('\n').forEach(line => {
+        if(line.includes('=')) {
+            const parts = line.split('=');
+            envVars[parts[0].trim()] = parts.slice(1).join('=').trim();
+        }
+    });
+    
+    const payload = {
+        id: id,
+        name: document.getElementById('agent-form-name').value || id,
+        description: document.getElementById('agent-form-description').value,
+        provider: document.getElementById('agent-form-provider').value,
+        tools_local: document.getElementById('agent-form-tools-local').value.split(',').map(s=>s.trim()).filter(Boolean),
+        tools_mcp: document.getElementById('agent-form-tools-mcp').value.split(',').map(s=>s.trim()).filter(Boolean),
+        env_vars: envVars
+    };
+    
+    try {
+        const res = await fetch('/api/agents', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        if(res.ok) {
+            alert('Especialista salvo com sucesso e adicionado na sua agência MoltyClaw!');
+            await loadAgentList();
+            selectAgent(payload.id);
+        } else {
+            const err = await res.json();
+            alert('Falha ao salvar agente: ' + err.error);
+        }
+    } catch(e) {
+        alert('Erro de conexão.');
+    } finally {
+        btn.innerText = oldTxt;
+        btn.disabled = false;
+    }
+}
+
+async function deleteAgent() {
+    if (!activeAgentId || activeAgentId === 'MoltyClaw' || activeAgentId === '__NEW__') return;
+    
+    if (!confirm(`Tem certeza que deseja excluir o agente '${activeAgentId}'? Isso apagará sua configuração, alma e memória permanentemente.`)) {
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/agents/${activeAgentId}`, {
+            method: 'DELETE'
+        });
+        
+        if (res.ok) {
+            alert('Agente removido com sucesso.');
+            await loadAgentList();
+        } else {
+            const err = await res.json();
+            alert('Erro ao excluir: ' + err.error);
+        }
+    } catch(e) {
+        alert('Erro de conexão.');
+    }
+}
+
 let currentAgentFile = 'soul';
 let agentFilesContent = {
     soul: '',
@@ -365,11 +601,12 @@ let agentFilesContent = {
 
 async function loadAgentFiles() {
     try {
-        const memRes = await fetch('/api/agent/memory');
+        const query = `?agent=${activeAgentId}`;
+        const memRes = await fetch('/api/agent/memory' + query);
         const memData = await memRes.json();
         agentFilesContent['memory'] = memData.content || '';
 
-        const soulRes = await fetch('/api/agent/soul');
+        const soulRes = await fetch('/api/agent/soul' + query);
         const soulData = await soulRes.json();
         agentFilesContent['soul'] = soulData.content || '';
 
@@ -396,13 +633,15 @@ function selectAgentFile(fileId) {
 
     const titleEl = document.getElementById('current-editor-title');
     const pathEl = document.getElementById('current-editor-path');
+    
+    const rootPath = activeAgentId === 'MoltyClaw' ? '~/.moltyclaw/' : `~/.moltyclaw/agents/${activeAgentId}/`;
 
     if (fileId === 'soul') {
         titleEl.innerText = 'SOUL.md';
-        pathEl.innerText = 'c:\\Users\\Cliente\\OpenPy\\SOUL.md';
+        pathEl.innerText = rootPath + 'SOUL.md';
     } else {
         titleEl.innerText = 'MEMORY.md';
-        pathEl.innerText = 'c:\\Users\\Cliente\\OpenPy\\MEMORY.md';
+        pathEl.innerText = rootPath + 'MEMORY.md';
     }
 }
 
@@ -420,7 +659,7 @@ async function saveCurrentAgentFile() {
     btn.innerText = "Salvando...";
 
     try {
-        const res = await fetch(`/api/agent/${currentAgentFile}`, {
+        const res = await fetch(`/api/agent/${currentAgentFile}?agent=${activeAgentId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content })
@@ -585,20 +824,25 @@ async function installMCP(event, mcpId) {
 
 // Segment switching within the Agent View
 function switchAgentSegment(segment) {
-    // Buttons
-    document.querySelectorAll('.segment-btn').forEach(btn => btn.classList.remove('active'));
+    // Tabs
+    document.querySelectorAll('.agent-tab').forEach(tab => tab.classList.remove('active'));
     document.getElementById(`btn-agent-${segment}`).classList.add('active');
 
     // Content containers
     const coreSeg = document.getElementById('agent-segment-core');
     const contextSeg = document.getElementById('agent-segment-context');
+    const configSeg = document.getElementById('agent-segment-config');
+
+    [coreSeg, contextSeg, configSeg].forEach(s => {
+        if(s) s.style.display = 'none';
+    });
 
     if (segment === 'core') {
-        coreSeg.style.display = 'flex';
-        contextSeg.style.display = 'none';
+        if(coreSeg) coreSeg.style.display = 'flex';
+    } else if (segment === 'config') {
+        if(configSeg) configSeg.style.display = 'flex';
     } else {
-        coreSeg.style.display = 'none';
-        contextSeg.style.display = 'flex';
+        if(contextSeg) contextSeg.style.display = 'flex';
     }
 }
 
