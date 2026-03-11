@@ -2,7 +2,11 @@ const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const inputWrapper = document.querySelector('.input-wrapper');
-const agentStatus = document.getElementById('agent-status');
+const agentStatus = document.getElementById('agent-status-nav');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const appSidebar = document.getElementById('app-sidebar');
+const themeToggle = document.getElementById('theme-toggle');
+const themeBtns = document.querySelectorAll('.theme-btn');
 
 // Helper to escape HTML to prevent XSS (if we weren't using DOMPurify, but we are)
 const escapeHTML = (str) => str.replace(/[&<>'"]/g,
@@ -230,18 +234,65 @@ function closeSidebar() {
     document.getElementById('sidebar-overlay').classList.remove('active');
 }
 
-// Wire hamburger menu button
+// Sidebar Toggle Logic
+if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', () => {
+        appSidebar.classList.toggle('collapsed');
+        // Save preference
+        localStorage.setItem('sidebar-collapsed', appSidebar.classList.contains('collapsed'));
+    });
+}
+
+// Restore sidebar state
+if (localStorage.getItem('sidebar-collapsed') === 'true') {
+    appSidebar.classList.add('collapsed');
+}
+
+// Mobile Overlay
 const menuToggle = document.querySelector('.menu-toggle');
 if (menuToggle) {
     menuToggle.addEventListener('click', () => {
-        const sidebar = document.querySelector('.sidebar');
-        if (sidebar.classList.contains('open')) {
-            closeSidebar();
-        } else {
-            openSidebar();
-        }
+        openSidebar();
     });
 }
+
+// Theme Switching Logic
+function applyTheme(theme) {
+    const body = document.body;
+    themeToggle.setAttribute('data-selected', theme);
+
+    // Update button states
+    themeBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-theme') === theme);
+    });
+
+    if (theme === 'system') {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        body.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    } else {
+        body.setAttribute('data-theme', theme);
+    }
+
+    localStorage.setItem('molty-theme', theme);
+}
+
+// Listen for system theme changes
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    if (localStorage.getItem('molty-theme') === 'system') {
+        document.body.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+    }
+});
+
+// Wire up theme buttons
+themeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        applyTheme(btn.getAttribute('data-theme'));
+    });
+});
+
+// Initial Theme Load
+const savedTheme = localStorage.getItem('molty-theme') || 'light';
+applyTheme(savedTheme);
 
 // Polling status on startup to update "Ready" dot
 async function checkStatus() {
@@ -473,28 +524,24 @@ function renderMCPGrid() {
         const isInstalled = installedMcps.includes(mcp.id);
         const card = document.createElement('div');
 
-        // Estilos CSS inline para o modo premium da WebUI
-        card.style.background = '#ffffff';
-        card.style.border = isInstalled ? '2px solid #22c55e' : '1px solid #e2e8f0';
-        card.style.borderRadius = '12px';
-        card.style.padding = '20px';
-        card.style.display = 'flex';
-        card.style.flexDirection = 'column';
-        card.style.gap = '12px';
-        card.style.boxShadow = isInstalled ? '0 4px 15px rgba(34, 197, 94, 0.15)' : '0 4px 6px -1px rgba(0, 0, 0, 0.05)';
-        card.style.transition = 'all 0.3s ease';
+        // Usar variáveis CSS ou classes para suportar o Dark Mode
+        card.className = 'mcp-card';
+        if (isInstalled) card.classList.add('installed');
 
         card.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <h3 style="margin: 0; font-size: 16px; color: #0f172a;"><i class="fa-solid fa-cube" style="color: ${isInstalled ? '#22c55e' : '#ef4444'}; margin-right: 8px;"></i>${mcp.name}</h3>
-                ${isInstalled ? '<span style="background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: bold;"><i class="fa-solid fa-check" style="margin-right: 4px;"></i>Ativo</span>' : ''}
+            <div class="mcp-card-header">
+                <h3 class="mcp-card-title">
+                    <i class="fa-solid fa-cube" style="color: ${isInstalled ? '#22c55e' : '#ef4444'}; margin-right: 8px;"></i>
+                    ${mcp.name}
+                </h3>
+                ${isInstalled ? '<span class="mcp-badge-active"><i class="fa-solid fa-check" style="margin-right: 4px;"></i>Ativo</span>' : ''}
             </div>
-            <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5; flex-grow: 1;">${mcp.description}</p>
-            <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; font-family: monospace; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: #f8fafc; padding: 5px; border-radius: 4px;">
+            <p class="mcp-card-desc">${mcp.description}</p>
+            <div class="mcp-card-command">
                 > ${mcp.command} ${mcp.args[0] ? mcp.args[0] : ''}
             </div>
-            <div style="margin-top: 10px;">
-                <button class="btn-primary" style="width: 100%; justify-content: center; ${isInstalled ? 'background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; border: none; font-weight: normal;' : 'background-color: #0f172a; border-color: #0f172a;'}" 
+            <div class="mcp-card-footer">
+                <button class="btn-primary mcp-install-btn" 
                     ${isInstalled ? 'disabled' : ''} 
                     onclick="installMCP(event, '${mcp.id}')">
                     ${isInstalled ? 'Configurado no start_moltyclaw' : '<i class="fa-solid fa-download" style="margin-right: 5px;"></i> Instalar Módulo'}
@@ -534,4 +581,93 @@ async function installMCP(event, mcpId) {
         event.currentTarget.innerHTML = originalBtnContent;
         event.currentTarget.disabled = false;
     }
+}
+
+// Segment switching within the Agent View
+function switchAgentSegment(segment) {
+    // Buttons
+    document.querySelectorAll('.segment-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`btn-agent-${segment}`).classList.add('active');
+
+    // Content containers
+    const coreSeg = document.getElementById('agent-segment-core');
+    const contextSeg = document.getElementById('agent-segment-context');
+
+    if (segment === 'core') {
+        coreSeg.style.display = 'flex';
+        contextSeg.style.display = 'none';
+    } else {
+        coreSeg.style.display = 'none';
+        contextSeg.style.display = 'flex';
+    }
+}
+
+async function importContext() {
+    // Reset modal to first stage
+    goToStage('prompt');
+    document.getElementById('context-input-text').value = '';
+    document.getElementById('import-context-modal').classList.add('active');
+}
+
+function closeImportModal() {
+    document.getElementById('import-context-modal').classList.remove('active');
+}
+
+function goToStage(stage) {
+    // Hide all stages
+    document.querySelectorAll('.modal-stage').forEach(s => s.classList.remove('active'));
+    // Show target stage
+    const target = document.getElementById(`stage-${stage}`);
+    if (target) target.classList.add('active');
+
+    // Update title based on stage
+    const title = document.getElementById('modal-title');
+    if (stage === 'prompt') title.innerText = 'Extract Context';
+    if (stage === 'input') title.innerText = 'Import Knowledge';
+    if (stage === 'loading') title.innerText = 'Assimilating...';
+    if (stage === 'review') title.innerText = 'Review Memory';
+    if (stage === 'success') title.innerText = 'Done!';
+}
+
+function copyPrompt() {
+    const promptText = document.getElementById('extraction-prompt').innerText;
+    navigator.clipboard.writeText(promptText).then(() => {
+        alert('Prompt copiado! Cole no seu outro assistente.');
+    });
+}
+
+async function processContext() {
+    const contextData = document.getElementById('context-input-text').value.trim();
+    if (!contextData) {
+        alert('Por favor, insira o contexto extraído.');
+        return;
+    }
+
+    goToStage('loading');
+
+    try {
+        const response = await fetch('/api/agent/import_context', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: contextData })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            // Show new memory for review
+            document.getElementById('new-memory-preview').value = data.new_content;
+            goToStage('review');
+        } else {
+            const err = await response.json();
+            alert(`Erro na assimilação: ${err.error}`);
+            goToStage('input');
+        }
+    } catch (e) {
+        alert('Erro de rede ao processar contexto.');
+        goToStage('input');
+    }
+}
+
+async function exportContext() {
+    alert('Export Context: Preparando pacote de assimilação... O MoltyClaw vai gerar um arquivo comprimido com tudo o que aprendeu sobre seu estilo para ser usado em outros modelos.');
 }

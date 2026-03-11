@@ -6,6 +6,11 @@ import os
 import signal
 import json
 
+MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
+os.makedirs(MOLTY_DIR, exist_ok=True)
+MOLTY_MCP_DIR = os.path.join(MOLTY_DIR, "mcp_modules")
+os.makedirs(MOLTY_MCP_DIR, exist_ok=True)
+
 # Usando as bibliotecas rich que já temos instaladas para um menu maravilhoso
 from rich.console import Console
 from rich.panel import Panel
@@ -140,8 +145,23 @@ def cli_doctor():
             content = f.read()
             if 'MISTRAL_API_KEY=' in content:
                 console.print("[bold green]✔[/bold green] Chave da Mistral configurada.")
+                
+                # Check model
+                import re
+                model_match = re.search(r'MISTRAL_MODEL=(.*)', content)
+                model_name = model_match.group(1).strip() if model_match else "mistral-medium (padrão)"
+                console.print(f"[bold cyan]ℹ[/bold cyan] Modelo Mistral: [yellow]{model_name}[/yellow]")
             else:
                 console.print("[bold yellow]⚠[/bold yellow] Chave MISTRAL_API_KEY ausente.")
+
+            if 'GEMINI_API_KEY=' in content:
+                console.print("[bold green]✔[/bold green] Chave do Gemini configurada.")
+                import re
+                model_match = re.search(r'GEMINI_MODEL=(.*)', content)
+                model_name = model_match.group(1).strip() if model_match else "gemini-1.5-flash (padrão)"
+                console.print(f"[bold cyan]ℹ[/bold cyan] Modelo Gemini: [yellow]{model_name}[/yellow]")
+            else:
+                console.print("[bold yellow]⚠[/bold yellow] Chave GEMINI_API_KEY ausente.")
     else:
         console.print("[bold red]❌[/bold red] Arquivo .env ausente.")
     sys.exit(0)
@@ -389,6 +409,7 @@ def cli_start_bots(target):
         os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
         os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
         os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
+        os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
         active_threads.extend(run_whatsapp())
         time.sleep(1)
         active_threads.extend(run_discord())
@@ -396,6 +417,8 @@ def cli_start_bots(target):
         active_threads.extend(run_telegram())
         time.sleep(1)
         active_threads.extend(run_twitter())
+        time.sleep(1)
+        active_threads.extend(run_bluesky())
     elif target == "discord":
         os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
         active_threads.extend(run_discord())
@@ -405,11 +428,11 @@ def cli_start_bots(target):
     elif target == "telegram":
         os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
         active_threads.extend(run_telegram())
-    elif target == "twitter":
-        os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
-        active_threads.extend(run_twitter())
+    elif target == "bluesky":
+        os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
+        active_threads.extend(run_bluesky())
     else:
-        console.print("[bold red]Alvo inválido! Use: discord, whatsapp, telegram, twitter ou all[/bold red]")
+        console.print("[bold red]Alvo inválido! Use: discord, whatsapp, telegram, twitter, bluesky ou all[/bold red]")
         sys.exit(1)
         
     try:
@@ -936,6 +959,7 @@ if __name__ == "__main__":
             choices=[
                 questionary.Choice("⚡  Mistral AI      (MISTRAL_API_KEY)",     value="1"),
                 questionary.Choice("🌐  OpenRouter      (OPENROUTER_API_KEY)",  value="2"),
+                questionary.Choice("♊  Google Gemini    (GEMINI_API_KEY)",      value="3"),
             ],
             style=molty_style,
         ).ask()
@@ -944,10 +968,13 @@ if __name__ == "__main__":
         console.print("\n[bold yellow] Provedor de IA:[/bold yellow]")
         console.print("1. [bold cyan]Mistral AI[/bold cyan]")
         console.print("2. [bold magenta]OpenRouter[/bold magenta]")
-        provider_choice = Prompt.ask("Selecione", choices=["1", "2"], default="1")
+        console.print("3. [bold blue]Google Gemini[/bold blue]")
+        provider_choice = Prompt.ask("Selecione", choices=["1", "2", "3"], default="1")
 
     if provider_choice == "2":
         os.environ["MOLTY_PROVIDER"] = "openrouter"
+    elif provider_choice == "3":
+        os.environ["MOLTY_PROVIDER"] = "gemini"
     else:
         os.environ["MOLTY_PROVIDER"] = "mistral"
 
@@ -1017,27 +1044,29 @@ if __name__ == "__main__":
 
 
         
+    # ── Prepara o ambiente ──────────────────────────────────────────────────
+    if "whatsapp" in selected: os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
+    if "discord" in selected:  os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
+    if "telegram" in selected: os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
+    if "twitter" in selected:  os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
+    if "bluesky" in selected:  os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
+
     # ── Lança os conectores selecionados ──────────────────────────────────────
     active_threads = []
 
     if "whatsapp" in selected:
-        os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
         active_threads.extend(run_whatsapp())
         time.sleep(1)
     if "discord" in selected:
-        os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
         active_threads.extend(run_discord())
         time.sleep(1)
     if "telegram" in selected:
-        os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
         active_threads.extend(run_telegram())
         time.sleep(1)
     if "twitter" in selected:
-        os.environ["MOLTY_TWITTER_ACTIVE"] = "1"
         active_threads.extend(run_twitter())
         time.sleep(1)
     if "bluesky" in selected:
-        os.environ["MOLTY_BLUESKY_ACTIVE"] = "1"
         active_threads.extend(run_bluesky())
         time.sleep(1)
 

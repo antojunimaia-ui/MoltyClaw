@@ -55,7 +55,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         import time
         from pathlib import Path
-        temp_dir = Path("temp")
+        import os
+        temp_dir = Path(os.path.join(os.path.expanduser("~"), ".moltyclaw", "temp"))
         temp_dir.mkdir(exist_ok=True)
         file_path = temp_dir / f"telegram_audio_{int(time.time())}.ogg"
         await file.download_to_drive(file_path)

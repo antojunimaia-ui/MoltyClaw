@@ -109,7 +109,8 @@ class MoltyClawDiscordBot(discord.Client):
                 if attachment.content_type and ('audio' in attachment.content_type or attachment.filename.endswith('.ogg')):
                     import time
                     from pathlib import Path
-                    temp_dir = Path("temp")
+                    import os
+                    temp_dir = Path(os.path.join(os.path.expanduser("~"), ".moltyclaw", "temp"))
                     temp_dir.mkdir(exist_ok=True)
                     file_path = temp_dir / f"discord_audio_{int(time.time())}.ogg"
                     await attachment.save(file_path)

@@ -13,7 +13,7 @@ from rich.console import Console
 console = Console()
 load_dotenv()
 
-BLUESKY_HANDLE   = os.getenv("BLUESKY_HANDLE")    # ex: seunome.bsky.social
+BLUESKY_HANDLE   = os.getenv("BLUESKY_HANDLE", "").lstrip("@")    # ex: seunome.bsky.social
 BLUESKY_PASSWORD = os.getenv("BLUESKY_APP_PASSWORD")  # App Password (não a senha principal)
 
 # Intervalo de polling (segundos). Bluesky não tem rate limits super rígidos,
@@ -71,6 +71,8 @@ async def main_loop():
         console.print(f"[bold blue]🦋 Conectado no Bluesky como @{my_handle} (DID: {my_did})[/bold blue]")
     except Exception as e:
         console.print(f"[bold red]❌ Falha ao autenticar no Bluesky: {e}[/bold red]")
+        if agent.mcp_hub:
+            await agent.mcp_hub.cleanup()
         await agent.close_browser()
         return
 

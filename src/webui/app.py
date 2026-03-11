@@ -18,6 +18,7 @@ from src.moltyclaw import MoltyClaw
 from rich.console import Console
 
 console = Console()
+MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
 app = Flask(__name__, template_folder="templates", static_folder="static")
 load_dotenv()
 
@@ -71,7 +72,7 @@ import re
 
 @app.route("/temp/<path:filename>")
 def serve_temp(filename):
-    return send_from_directory(os.path.abspath("temp"), filename)
+    return send_from_directory(os.path.abspath(os.path.join(MOLTY_DIR, "temp")), filename)
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -85,9 +86,9 @@ def chat():
         
     uploaded_file = request.files.get("file")
     if uploaded_file and uploaded_file.filename:
-        os.makedirs("temp", exist_ok=True)
+        os.makedirs(os.path.join(MOLTY_DIR, "temp"), exist_ok=True)
         filename = secure_filename(uploaded_file.filename)
-        filepath = os.path.join("temp", f"webui_{filename}")
+        filepath = os.path.join(MOLTY_DIR, "temp", f"webui_{filename}")
         uploaded_file.save(filepath)
         user_msg += f"\n\n[SISTEMA: O usuário acabou de te enviar via WebUI o seguinte arquivo. Caminho salvo com sucesso: {os.path.abspath(filepath)}]"
         
@@ -177,7 +178,7 @@ def stop_integration(name):
     if name in active_processes:
         for p in active_processes[name]:
             p.terminate()
-        del active_processes[name]
+        active_processes.pop(name, None)
         return True
     return False
 
@@ -214,7 +215,7 @@ def manage_agent_file(file):
         return jsonify({"error": "Arquivo inválido"}), 400
         
     filename = "MEMORY.md" if file == "memory" else "SOUL.md"
-    filepath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', filename))
+    filepath = os.path.join(MOLTY_DIR, filename)
     
     if request.method == "GET":
         try:
@@ -230,6 +231,70 @@ def manage_agent_file(file):
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
         return jsonify({"success": True})
+
+@app.route("/api/agent/import_context", methods=["POST"])
+def import_context():
+    if not ready:
+        return jsonify({"error": "Agente não está pronto."}), 503
+        
+    data = request.json
+    imported_data = data.get("context", "")
+    if not imported_data:
+        return jsonify({"error": "Nenhum dado fornecido."}), 400
+        
+    # Caminho do MEMORY.md
+    memory_path = os.path.join(MOLTY_DIR, 'MEMORY.md')
+    current_memory = ""
+    if os.path.exists(memory_path):
+        with open(memory_path, "r", encoding="utf-8") as f:
+            current_memory = f.read()
+            
+    # Prompt de Assimilação
+    assimilation_prompt = f"""
+Você é o Agente de Assimilação de Contexto do MoltyClaw.
+O usuário está importando dados de contexto de outro agente/IA.
+Seu objetivo é fundir esse novo contexto com o MEMORY.md atual do MoltyClaw.
+
+REGRAS:
+1. Preserve fatos importantes (Identidade, Carreira, Projetos).
+2. Não duplique informações que já existem.
+3. Se houver informações conflitantes, prefira as mais detalhadas.
+4. Mantenha o estilo e estrutura Markdown do MEMORY.md original.
+5. Retorne APENAS o novo conteúdo completo para o arquivo MEMORY.md. Não adicione comentários externos.
+
+MEMORY.md ATUAL:
+---
+{current_memory}
+---
+
+DADOS IMPORTADOS PARA ASSIMILAR:
+---
+{imported_data}
+---
+
+Retorne o conteúdo revisado do MEMORY.md:
+"""
+
+    try:
+        # Chama o agente para processar a fusão
+        assert agent is not None, "Agent is not initialized"
+        assert loop is not None, "Loop is not initialized"
+        fut = asyncio.run_coroutine_threadsafe(
+            agent.ask(prompt=assimilation_prompt, silent=True), 
+            loop
+        )
+        new_memory_content = fut.result(timeout=120)
+        
+        # Limpa blocos de código se o modelo teimar em colocar
+        new_memory_content = new_memory_content.replace("```markdown", "").replace("```", "").strip()
+        
+        # Salva o novo MEMORY.md
+        with open(memory_path, "w", encoding="utf-8") as f:
+            f.write(new_memory_content)
+            
+        return jsonify({"success": True, "new_content": new_memory_content})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/mcp/list", methods=["GET"])
 def list_mcps():
@@ -265,7 +330,7 @@ def list_mcps():
     ]
 
     installed_ids = []
-    mcp_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'mcp_servers.json'))
+    mcp_path = os.path.join(MOLTY_DIR, "mcp_servers.json")
     if os.path.exists(mcp_path):
         try:
             with open(mcp_path, 'r', encoding='utf-8') as f:

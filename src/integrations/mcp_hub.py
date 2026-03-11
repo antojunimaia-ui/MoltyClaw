@@ -12,7 +12,10 @@ class MCPHub:
         self.sessions: Dict[str, Any] = {}
         self.exit_stack = AsyncExitStack()
 
-    async def connect_servers(self, config_path: str = "mcp_servers.json"):
+    async def connect_servers(self, config_path: str = None):
+        if not config_path:
+            config_path = os.path.join(os.path.expanduser("~"), ".moltyclaw", "mcp_servers.json")
+            
         if not os.path.exists(config_path):
             console.print(f"[dim yellow]Nenhum arquivo {config_path} encontrado. Pulando inicialização de servidores MCP externos.[/dim yellow]")
             return

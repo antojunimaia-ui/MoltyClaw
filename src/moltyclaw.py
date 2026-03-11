@@ -2,6 +2,9 @@ import os
 import asyncio
 import traceback
 import re
+
+MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
+os.makedirs(MOLTY_DIR, exist_ok=True)
 import sys
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
@@ -25,6 +28,10 @@ except ImportError:
         ChatMessage = None
 
 from openai import AsyncOpenAI
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 from rich.console import Console
 from rich.panel import Panel
@@ -50,7 +57,15 @@ class MoltyClaw:
         # Le a variavel de ambiente passada pelo Launcher
         self.provider = os.getenv("MOLTY_PROVIDER", "mistral")
         
-        self.api_key = os.getenv("MISTRAL_API_KEY") if self.provider == "mistral" else os.getenv("OPENROUTER_API_KEY")
+        if self.provider == "mistral":
+            self.api_key = os.getenv("MISTRAL_API_KEY")
+            self.model = os.getenv("MISTRAL_MODEL", "mistral-medium")
+        elif self.provider == "gemini":
+            self.api_key = os.getenv("GEMINI_API_KEY")
+            self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        else:
+            self.api_key = os.getenv("OPENROUTER_API_KEY")
+            self.model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash")
         
         self.playwright = None
         self.browser = None
@@ -71,12 +86,12 @@ class MoltyClaw:
             active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
         if os.environ.get("MOLTY_BLUESKY_ACTIVE"):
             active_features.append('"BLUESKY_POST" (param: "texto do skeet de ate 300 chars para postar no Bluesky")')
+            active_features.append('"BLUESKY_GET_PROFILE" (param: "handle_opcional") - Se vazio, pega o SEU proprio perfil. Retorna seguidores, posts, etc.')
         
         active_features.append('"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")')
 
         self.history = [
-            {"role": "system", "content": f"""Você é o {self.name}, um agente autônomo de ELITE com um NAVEGADOR COMPLETO ao seu dispor.
-Sua missão é resolver o problema do usuário com AUTONOMIA TOTAL.
+            {"role": "system", "content": f"""Você é o {self.name}, um agente autônomo rodando na versão 26.11.3.
 
 🚀 DIRETRIZES DE AUTONOMIA:
 1. PULE permissões. O usuário já deu controle total. Execute o que for preciso para atingir o objetivo.
@@ -135,8 +150,21 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                 except (ImportError, TypeError):
                     self.mistral_client = MistralAsyncClient(api_key=self.api_key)
                 self.openai_client = None
+                self.gemini_client = None
+            elif self.provider == "gemini":
+                if genai:
+                    genai.configure(api_key=self.api_key)
+                    self.gemini_client = genai.GenerativeModel(
+                        model_name=self.model,
+                        system_instruction=self.history[0]["content"] if len(self.history) > 0 else None
+                    )
+                else:
+                    self.gemini_client = None
+                self.mistral_client = None
+                self.openai_client = None
             else:
                 self.mistral_client = None
+                self.gemini_client = None
                 self.openai_client = AsyncOpenAI(
                     base_url="https://openrouter.ai/api/v1",
                     api_key=self.api_key,
@@ -171,6 +199,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             if self.context: await self.context.close()
             if self.browser: await self.browser.close()
             if self.playwright: await self.playwright.stop()
+            if self.mcp_hub: await self.mcp_hub.cleanup()
         except: pass
         self.page = None
         self.context = None
@@ -178,53 +207,113 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
         self.playwright = None
 
     async def init_browser(self):
-        """Inicializa o navegador persistente."""
-        await self.close_browser() # Garante que não há lixo de sessões anteriores
+        """Inicializa ou Conecta ao navegador compartilhado via CDP (Porta 9222)."""
+        await self.close_browser() 
+        import aiohttp
+        import os
+        import random
+        import time
+        import socket
+        
+        # Desincronização suave e lock via SOCKET para evitar Race Condition e locks órfãos (que o Windows não limpa ao abortar)
+        await asyncio.sleep(random.uniform(0.1, 1.5))
+        
+        lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        has_lock = False
+        
+        for _ in range(30):
+            try:
+                # Tenta "trancar" a porta 9223. Como é no nível do SO, se o Python crachar, a porta solta!
+                lock_socket.bind(('127.0.0.1', 9223))
+                has_lock = True
+                break
+            except OSError:
+                await asyncio.sleep(1.0)
+                
         try:
             self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(
+            cdp_url = "http://localhost:9222"
+            browser_running = False
+            
+            # Verifica se já há um Master ativo (tenta repetidas vezes caso ele esteja subindo)
+            for _ in range(5):
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(f"{cdp_url}/json/version", timeout=1.5) as resp:
+                            if resp.status == 200: 
+                                browser_running = True
+                                break
+                except:
+                    await asyncio.sleep(0.5)
+
+            if browser_running:
+                try:
+                    self.browser = await self.playwright.chromium.connect_over_cdp(cdp_url)
+                    # No CDP, tentamos reusar o contexto padrão ou o primeiro disponível
+                    if self.browser.contexts:
+                        self.context = self.browser.contexts[0]
+                    else:
+                        self.context = await self.browser.new_context()
+                    
+                    self.page = await self.context.new_page()
+                    console.print(f"[info][{self.name}] 🔗 Conectado ao Navegador Compartilhado (Master já estava ativo)![/info]")
+                    return
+                except Exception as e:
+                    console.print(f"[warning][{self.name}] Falha ao conectar via CDP, tentando lançar novo: {e}[/warning]")
+
+            # Se não havia um rodando, lança o Master com Sessão Persistente (uma única janela global!)
+            import os
+            self.context = await self.playwright.chromium.launch_persistent_context(
+                user_data_dir=os.path.join(MOLTY_DIR, 'browser_profile'),
                 headless=False,
                 channel="msedge",
                 ignore_default_args=["--enable-automation"],
                 args=[
+                    '--remote-debugging-port=9222', # Habilita o compartilhamento
                     '--disable-blink-features=AutomationControlled',
                     '--disable-infobars',
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-extensions',
                     '--window-position=0,0'
-                ]
-            )
-            self.context = await self.browser.new_context(
+                ],
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0",
                 viewport={"width": 1366, "height": 768},
-                device_scale_factor=1,
-                has_touch=False,
-                is_mobile=False,
                 locale='pt-BR',
                 timezone_id='America/Sao_Paulo',
                 color_scheme='dark'
             )
             
-            # Força a remoção profunda da assinatura webdriver do JS
-            await self.context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-            """)
-            self.page = await self.context.new_page()
+            # Persistent context não expõe 'browser' de forma robusta e nem precisamos.
+            self.browser = self.context.browser
             
-            # Applica o stealth pro google maldito não bugar a pesquisa com Captcha
+            await self.context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+            
+            # launch_persistent_context já inicializa com uma aba (tab) aberta default no navegador.
+            if self.context.pages:
+                self.page = self.context.pages[0]
+            else:
+                self.page = await self.context.new_page()
+            
             try:
                 from playwright_stealth import Stealth
                 await Stealth().apply_stealth_async(self.context)
-                console.print(f"[info][{self.name}] 🥷 Stealth Anti-Bot Mode Ativado no Browser![/info]")
-            except ImportError as e:
-                console.print(f"[warning][{self.name}] playwright-stealth ausente ou com problema ({e}). O navegador operará em modo normal (suscetível a Captcha).[/warning]")
+                console.print(f"[info][{self.name}] 🥷 Stealth Anti-Bot Mode Ativado no Browser Principal (Master)![/info]")
+            except ImportError:
+                pass
                 
-            console.print(f"[info][{self.name}] Navegador interno persistente inicializado![/info]")
+            console.print(f"[info][{self.name}] Navegador Master Inicializado na Porta 9222![/info]")
+            
+            # Aguarda o Chromium preparar todos os binds antes de soltar o lock para as demais integrações!
+            await asyncio.sleep(2.0)
+            
         except Exception as e:
             console.print(f"[error]Erro ao iniciar navegador: {e}[/error]")
+        finally:
+            if has_lock:
+                try:
+                    lock_socket.close()
+                except: pass
 
     async def execute_terminal_command(self, command: str) -> str:
         if os.environ.get("MOLTY_MODE", "private") == "public":
@@ -381,9 +470,9 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             elif action == "SCREENSHOT":
                 import os
                 import time
-                os.makedirs("temp", exist_ok=True)
+                os.makedirs(os.path.join(MOLTY_DIR, "temp"), exist_ok=True)
                 filename = f"screenshot_{int(time.time())}.png"
-                path_str = os.path.join("temp", filename)
+                path_str = os.path.join(MOLTY_DIR, "temp", filename)
                 await self.page.screenshot(path=path_str, full_page=False)
                 return f"Screenshot capturado com sucesso. Se o usuário pediu a imagem, você DEVE dizer essa exata frase no meio do seu texto de volta para ele: [SCREENSHOT_TAKEN: {filename}]"
                 
@@ -394,16 +483,16 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
         import datetime
         import glob
         
-        mem_dir = "memory"
+        mem_dir = os.path.join(MOLTY_DIR, "memory")
         if not os.path.exists(mem_dir):
             os.makedirs(mem_dir)
             
         today_md = os.path.join(mem_dir, datetime.datetime.now().strftime("%Y-%m-%d") + ".md")
-        long_term_md = "MEMORY.md"
+        long_term_md = os.path.join(MOLTY_DIR, "MEMORY.md")
 
         try:
             if action == "SOUL_UPDATE":
-                with open("SOUL.md", "w", encoding="utf-8") as f:
+                with open(os.path.join(MOLTY_DIR, "SOUL.md"), "w", encoding="utf-8") as f:
                     f.write(param)
                 return "✅ Arquivo SOUL.md atualizado com sucesso! Sua 'alma' foi reescrita e recarregada."
 
@@ -584,6 +673,40 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             except Exception as ex:
                 return f"Erro na API do Twitter (X) v2: {ex}"
 
+        if action == "BLUESKY_POST" or action == "BLUESKY_GET_PROFILE":
+            try:
+                import os, asyncio
+                from atproto import Client
+                handle = os.getenv("BLUESKY_HANDLE", "").lstrip("@")
+                password = os.getenv("BLUESKY_APP_PASSWORD")
+                if not handle or not password:
+                    return "Erro: Credenciais do Bluesky ausentes no .env."
+                
+                client = Client()
+                # O login do atproto é síncrono, então rodamos em thread para não travar o bot
+                await asyncio.to_thread(client.login, handle, password)
+                
+                if action == "BLUESKY_POST":
+                    text = param.strip()
+                    if len(text) > 300: text = text[:297] + "..."
+                    await asyncio.to_thread(client.send_post, text=text)
+                    return "Skeet postado com sucesso no Bluesky!"
+                
+                elif action == "BLUESKY_GET_PROFILE":
+                    target = param.strip() or handle
+                    profile = await asyncio.to_thread(client.get_profile, actor=target)
+                    return (
+                        f"Perfil de {profile.handle}:\n"
+                        f"- Nome: {profile.display_name or 'N/A'}\n"
+                        f"- Seguidores: {profile.followers_count}\n"
+                        f"- Seguindo: {profile.follows_count}\n"
+                        f"- Posts: {profile.posts_count}\n"
+                        f"- Bio: {(profile.description or '').strip()[:150]}"
+                    )
+            except Exception as e:
+                import traceback
+                return f"Erro na integração Bluesky: {str(e)}\n{traceback.format_exc() if 'DEBUG' in os.environ else ''}"
+
         parts = param.split("|")
         target = parts[0].strip()
         text = parts[1].strip() if len(parts) > 1 else ""
@@ -715,12 +838,12 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             return f"Exceção Módulo YouTube ({action}): {e}"
 
     async def update_system_prompt_with_memory(self):
-        long_term = "MEMORY.md"
+        long_term = os.path.join(MOLTY_DIR, "MEMORY.md")
         memory_data = ""
         soul_data = ""
         
-        if os.path.exists("SOUL.md"):
-            with open("SOUL.md", "r", encoding="utf-8") as fs:
+        if os.path.exists(os.path.join(MOLTY_DIR, "SOUL.md")):
+            with open(os.path.join(MOLTY_DIR, "SOUL.md"), "r", encoding="utf-8") as fs:
                 s_content = fs.read()
                 if s_content.strip():
                     soul_data = "\n--- SOUL.md (ESTA É A SUA ALMA - QUEM VOCÊ É) ---\n" + s_content + "\n[IMPORTANTE: Esses são os traços da sua personalidade e evolução.]\n"
@@ -798,8 +921,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             return ""
 
     async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None):
-        if not self.mistral_client and not self.openai_client:
-            console.print("[warning]Nenhuma IA (Mistral ou OpenRouter) configurada.[/warning]")
+        if not self.mistral_client and not self.openai_client and not self.gemini_client:
+            console.print("[warning]Nenhuma IA (Mistral, Gemini ou OpenRouter) configurada.[/warning]")
             return
             
         if prompt:
@@ -851,7 +974,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                                 method = self.mistral_client.chat.stream_async
                                 
                             res_or_coro = method(
-                                model="mistral-large-latest",
+                                model=self.model,
                                 messages=sanitized_history
                             )
                             if asyncio.iscoroutine(res_or_coro) or hasattr(res_or_coro, '__await__'):
@@ -861,7 +984,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                         else:
                             converted_legacy = [ChatMessage(role=m["role"], content=m["content"]) for m in sanitized_history]
                             async_response = self.mistral_client.chat_stream(
-                                model="mistral-large-latest",
+                                model=self.model,
                                 messages=converted_legacy
                             )
                         break
@@ -871,12 +994,32 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                             await asyncio.sleep(2 + _retry)
                         else:
                             raise e
+            elif self.provider == "gemini":
+                for _retry in range(4):
+                    try:
+                        # Converte história para o formato Gemini (user/model)
+                        contents = []
+                        for m in self.history:
+                            if m["role"] == "system": continue # Já está no system_instruction
+                            role = "user" if m["role"] == "user" else "model"
+                            contents.append({"role": role, "parts": [m["content"]]})
+                        
+                        # Gemini streaming é assíncrono
+                        async_response = await self.gemini_client.generate_content_async(
+                            contents,
+                            stream=True
+                        )
+                        break
+                    except Exception as e:
+                        if _retry < 3:
+                            console.print(f"[warning]>> Instabilidade na API Gemini detectada (Erro {str(e)[:40]}...) - Reconectando em breve...[/warning]")
+                            await asyncio.sleep(2 + _retry)
+                        else: raise e
             else:
                 for _retry in range(4):
                     try:
-                        model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash") # Modelo rapido para o openrouter como fallback
                         async_response = await self.openai_client.chat.completions.create(
-                            model=model_name,
+                            model=self.model,
                             messages=self.history,
                             stream=True
                         )
@@ -916,13 +1059,15 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                                 _buffer_txt = ""
                     return _buffer_txt, _in_tool_mode, _response_chunks
 
-                def extract_text(_chunk):
+                def extract_text(_chunk, _provider=None):
                     try:
-                        with open("dump_mistral.txt", "a") as f:
-                            f.write(f"CHUNK DATA: {getattr(_chunk, 'data', 'no-data')} | CHUNK CLASS: {type(_chunk)}\n")
-                        import json
+                        if _provider == "gemini":
+                            return _chunk.text
+                        
+                        # Fallback para outros formatos (Mistral/OpenRouter/OpenAI)
                         if hasattr(_chunk, "data") and isinstance(_chunk.data, str):
                             if _chunk.data == "[DONE]": return None
+                            import json
                             d = json.loads(_chunk.data)
                             if "choices" in d and len(d["choices"]) > 0:
                                 delta = d["choices"][0].get("delta", {})
@@ -931,6 +1076,8 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                             return _chunk.data.choices[0].delta.content
                         elif hasattr(_chunk, "choices") and getattr(_chunk, "choices", None):
                             return _chunk.choices[0].delta.content
+                        elif hasattr(_chunk, "index") and hasattr(_chunk, "delta"): # OpenAI Pure
+                            return _chunk.delta.content
                         elif hasattr(_chunk, "content"):
                             return _chunk.content
                     except Exception:
@@ -939,12 +1086,14 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
 
                 if hasattr(async_response, '__aiter__'):
                     async for chunk in async_response:
-                        t = extract_text(chunk)
-                        buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
+                        t = extract_text(chunk, self.provider)
+                        if t:
+                            buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
                 else:
                     for chunk in async_response:
-                        t = extract_text(chunk)
-                        buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
+                        t = extract_text(chunk, self.provider)
+                        if t:
+                            buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
             
             if not is_tool_response and not silent:
                 print()
@@ -1055,10 +1204,12 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                         if tool_callback: await tool_callback(f"[{action}]")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
-                    elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND", "X_POST"]:
+                    elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND", "X_POST", "BLUESKY_POST", "BLUESKY_GET_PROFILE"]:
                         if not silent: 
                             if action == "X_POST":
                                 console.print(f"\n[info]🌐 Módulo Social Envio ({action}):[/info] Destino -> Twitter Timeline")
+                            elif action.startswith("BLUESKY"):
+                                console.print(f"\n[info]🦋 Módulo Bluesky ({action}):[/info] {param}")
                             else:
                                 console.print(f"\n[info]🌐 Módulo Social Envio ({action}):[/info] Destino -> {param.split('|')[0] if '|' in param else param}")
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
@@ -1090,7 +1241,7 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                                 
                         import time
                         from pathlib import Path
-                        temp_dir = Path("temp")
+                        temp_dir = Path(os.path.join(MOLTY_DIR, "temp"))
                         temp_dir.mkdir(exist_ok=True)
                         audio_path = temp_dir / f"molty_reply_{int(time.time())}.mp3"
                         # Utilizando edge-tts nativamente via asyncio para evitar problemas de escape no subprocesso

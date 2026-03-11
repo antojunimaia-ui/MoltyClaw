@@ -22,3 +22,4 @@ flask
 mcp
 atproto
 questionary
+google-generativeai
