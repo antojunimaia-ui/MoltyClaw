@@ -74,6 +74,39 @@ import re
 def serve_temp(filename):
     return send_from_directory(os.path.abspath(os.path.join(MOLTY_DIR, "temp")), filename)
 
+agent_instances = {}
+
+def get_or_create_agent(agent_id="MoltyClaw"):
+    global agent, ready
+    if agent_id == "MoltyClaw":
+        return agent
+    
+    if agent_id not in agent_instances:
+        console.print(f"[info]🆕 Criando instância para sub-agente: {agent_id}[/info]")
+        # Busca config para pegar o nome real se existir
+        agents_dir = os.path.join(MOLTY_DIR, "agents", agent_id)
+        name = agent_id
+        if os.path.exists(os.path.join(agents_dir, "config.json")):
+            try:
+                with open(os.path.join(agents_dir, "config.json"), "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    name = cfg.get("name", agent_id)
+            except: pass
+        
+        # Carrega o .env do agente para o ambiente temporariamente se existir
+        env_path = os.path.join(agents_dir, ".env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=True)
+
+        new_agent = MoltyClaw(name=name, agent_id=agent_id)
+        # O sub-agente no WebUI compartilha o browser do gateway (via CDP)
+        fut = asyncio.run_coroutine_threadsafe(new_agent.init_browser(), loop)
+        fut.result(timeout=30)
+        
+        agent_instances[agent_id] = new_agent
+        
+    return agent_instances[agent_id]
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     if not ready:
@@ -81,9 +114,13 @@ def chat():
          
     if request.is_json:
         user_msg = request.json.get("message", "")
+        req_agent_id = request.json.get("agent_id", "MoltyClaw")
     else:
         user_msg = request.form.get("message", "")
+        req_agent_id = request.form.get("agent_id", "MoltyClaw")
         
+    target_agent = get_or_create_agent(req_agent_id)
+    
     uploaded_file = request.files.get("file")
     if uploaded_file and uploaded_file.filename:
         os.makedirs(os.path.join(MOLTY_DIR, "temp"), exist_ok=True)
@@ -95,8 +132,8 @@ def chat():
         ext = filename.split(".")[-1].lower()
         if ext in ['mp3', 'ogg', 'wav', 'm4a']:
             try:
-                # Roda a transcrição na thread do asyncio
-                fut = asyncio.run_coroutine_threadsafe(agent.transcribe_audio(filepath), loop)
+                # Roda a transcrição na thread do asyncio usando o agente alvo
+                fut = asyncio.run_coroutine_threadsafe(target_agent.transcribe_audio(filepath), loop)
                 text = fut.result(timeout=60)
                 if text:
                     user_msg += f"\n(Áudio Anexado Transcrito usando Voxtral Mini): '{text}'"
@@ -116,7 +153,7 @@ def chat():
 
     async def run_ask():
         try:
-            res = await agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
+            res = await target_agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
             if res and isinstance(res, str) and "[AUDIO_REPLY:" in res:
                 match = re.search(r'\[AUDIO_REPLY:\s*([^\]]+)\]', res)
                 if match:
@@ -147,7 +184,7 @@ def chat():
 import subprocess
 active_processes = {}
 
-def start_integration(name):
+def start_integration(name, agent_id="MoltyClaw"):
     cmd_map = {
         "whatsapp": ["python src/integrations/whatsapp_server.py", "node src/integrations/whatsapp_bridge.js"],
         "discord": ["python src/integrations/discord_bot.py"],
@@ -158,8 +195,30 @@ def start_integration(name):
     
     if name not in cmd_map: return False
     
+    # Busca o nome real do agente
+    agent_name = agent_id
+    if agent_id != "MoltyClaw":
+        config_path = os.path.join(MOLTY_DIR, "agents", agent_id, "config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    agent_name = cfg.get("name", agent_id)
+            except: pass
+
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
+    
+    # Carrega .env do agente se for um sub-agente
+    if agent_id != "MoltyClaw":
+        agent_env = os.path.join(MOLTY_DIR, "agents", agent_id, ".env")
+        if os.path.exists(agent_env):
+            load_dotenv(agent_env, override=True)
+            # Como a Popen herda o env atual de quem chama se não passarmos, 
+            # e load_dotenv mexe no os.environ do processo ATUAL (app.py),
+            # precisamos garantir que o env do Popen reflita isso.
+            env = os.environ.copy()
+
     if name == "whatsapp": env["MOLTY_WHATSAPP_ACTIVE"] = "1"
     if name == "discord": env["MOLTY_DISCORD_ACTIVE"] = "1"
     if name == "telegram": env["MOLTY_TELEGRAM_ACTIVE"] = "1"
@@ -167,41 +226,54 @@ def start_integration(name):
     if name == "bluesky": env["MOLTY_BLUESKY_ACTIVE"] = "1"
     
     procs = []
-    for cmd in cmd_map[name]:
+    for base_cmd in cmd_map[name]:
+        # Adiciona argumentos de agente se for script python
+        cmd = base_cmd
+        if cmd.startswith("python"):
+            cmd += f' --agent "{agent_id}" --name "{agent_name}"'
+            
         p = subprocess.Popen(cmd, shell=True, env=env)
         procs.append(p)
     
-    active_processes[name] = procs
+    # Chave única por integração e agente para permitir múltiplos agentes simultâneos
+    key = f"{name}_{agent_id}"
+    active_processes[key] = procs
     return True
 
-def stop_integration(name):
-    if name in active_processes:
-        for p in active_processes[name]:
+def stop_integration(name, agent_id="MoltyClaw"):
+    key = f"{name}_{agent_id}"
+    if key in active_processes:
+        for p in active_processes[key]:
             p.terminate()
-        active_processes.pop(name, None)
+        active_processes.pop(key, None)
         return True
     return False
 
 @app.route("/api/integrations", methods=["GET"])
 def get_integrations():
-    status = {
-        "whatsapp": "whatsapp" in active_processes and any(p.poll() is None for p in active_processes["whatsapp"]),
-        "discord": "discord" in active_processes and any(p.poll() is None for p in active_processes["discord"]),
-        "telegram": "telegram" in active_processes and any(p.poll() is None for p in active_processes["telegram"]),
-        "twitter": "twitter" in active_processes and any(p.poll() is None for p in active_processes["twitter"]),
-        "bluesky": "bluesky" in active_processes and any(p.poll() is None for p in active_processes["bluesky"])
-    }
+    # Retorna o status de quais integrações estão ativas e para qual agente
+    status = {}
+    for key, procs in active_processes.items():
+        if any(p.poll() is None for p in procs):
+            # Decompõe a chave ex: discord_MoltyClaw
+            parts = key.split("_")
+            int_name = parts[0]
+            agent_id = "_".join(parts[1:])
+            if int_name not in status: status[int_name] = []
+            status[int_name].append(agent_id)
+            
     return jsonify(status)
 
 @app.route("/api/integrations/<action>", methods=["POST"])
 def toggle_integration(action):
     data = request.json
     name = data.get("name")
+    agent_id = data.get("agent_id", "MoltyClaw")
     
     if action == "start":
-        succ = start_integration(name)
+        succ = start_integration(name, agent_id)
     elif action == "stop":
-        succ = stop_integration(name)
+        succ = stop_integration(name, agent_id)
     else:
         return jsonify({"error": "Ação inválida"}), 400
         
@@ -242,6 +314,16 @@ def manage_agent_file(file):
         content = data.get("content", "")
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
+        return jsonify({"success": True})
+
+@app.route("/api/bindings", methods=["GET", "POST"])
+def manage_bindings():
+    from routing import load_bindings, save_bindings
+    if request.method == "GET":
+        return jsonify(load_bindings())
+    if request.method == "POST":
+        bindings = request.json
+        save_bindings(bindings)
         return jsonify({"success": True})
 
 @app.route("/api/agents", methods=["GET"])

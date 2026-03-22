@@ -18,34 +18,44 @@ console = Console()
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-agent = None
+from routing import resolve_agent
 
-async def post_init(application: ApplicationBuilder) -> None:
-    """Função executada após o bot no Telegram iniciar"""
-    global agent
-    console.print("[bold green]Inicializando navegador do MoltyClaw para o Telegram...[/bold green]")
-    agent = MoltyClaw(name="MoltyClaw (Telegram)")
-    await agent.init_browser()
-    if agent.mcp_hub:
-        await agent.mcp_hub.connect_servers()
-    console.print("[bold green]Navegador e conectores MCP ligados e prontos para pesquisas![/bold green]")
+agent_instances = {}
+
+async def get_agent(agent_id):
+    if agent_id in agent_instances:
+        return agent_instances[agent_id]
     
-    bot = application.bot
-    bot_info = await bot.get_me()
-    console.print(f"[bold blue]🤖 MoltyClaw conectado no Telegram como @{bot_info.username}![/bold blue]")
+    console.print(f"[dim]>> Criando instância dinâmica para o agente: {agent_id}[/dim]")
+    new_agent = MoltyClaw(agent_id=agent_id)
+    await new_agent.init_browser()
+    if new_agent.mcp_hub:
+        await new_agent.mcp_hub.connect_servers()
+    
+    agent_instances[agent_id] = new_agent
+    return new_agent
+
+async def post_init(application) -> None:
+    # Apenas loga que o Gateway está pronto
+    bot_info = await application.bot.get_me()
+    console.print(f"[bold blue]🤖 Gateway Telegram conectado como @{bot_info.username}![/bold blue]")
+    console.print("[dim]Aguardando mensagens para roteamento dinâmico...[/dim]")
 
 async def stop_agent() -> None:
-    global agent
-    if agent:
-        console.print("[bold yellow]Desligando navegador...[/bold yellow]")
+    for agent_id, agent in agent_instances.items():
+        console.print(f"[bold yellow]Desligando navegador do agente {agent_id}...[/bold yellow]")
         await agent.close_browser()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message: return
     
+    # Rota dinâmica baseado no OpenClaw Strategy
+    peer_id = str(update.message.from_user.id)
+    chat_id = str(update.message.chat.id)
+    target_agent_id = resolve_agent(channel="telegram", peer_id=peer_id, guild_id=chat_id)
+    target_agent = await get_agent(target_agent_id)
+
     # Se a mensagem tiver texto puro, extrai
-
-
     user_text = ""
     if update.message.text:
         user_text = update.message.text.strip()
@@ -55,14 +65,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         import time
         from pathlib import Path
-        import os
         temp_dir = Path(os.path.join(os.path.expanduser("~"), ".moltyclaw", "temp"))
         temp_dir.mkdir(exist_ok=True)
         file_path = temp_dir / f"telegram_audio_{int(time.time())}.ogg"
         await file.download_to_drive(file_path)
         
-        console.print("[info]🎧 Áudio do Telegram recebido, transcrevendo...[/info]")
-        transcribed = await agent.transcribe_audio(str(file_path))
+        console.print(f"[info]🎧 Áudio do Telegram recebido para {target_agent_id}, transcrevendo...[/info]")
+        transcribed = await target_agent.transcribe_audio(str(file_path))
         if transcribed:
             user_text = f"(Áudio Transcrito do Usuário): '{transcribed}'"
             console.print(f"[bold yellow]Transcrição:[/] {transcribed}")
@@ -75,7 +84,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not user_text:
         return
         
-    console.print(f"[debug] Incoming msg: '{user_text}' from '{update.message.from_user.username}' chat type: '{update.message.chat.type}'")
+    console.print(f"[debug] Incoming msg to {target_agent_id}: '{user_text[:50]}...' from '{update.message.from_user.username}' chat type: '{update.message.chat.type}'")
 
     # Evita que o bot responda a si mesmo (raro no telegram, mas por prevenção)
     if update.message.from_user.is_bot:
@@ -125,8 +134,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except:
         pass
 
+    # Callback de announce: sub-agentes em background usam isso pra mandar resultado de volta
+    async def reply_callback(message: str):
+        try:
+            # Quebra em chunks se necessário (Telegram limita 4096 chars)
+            for i in range(0, len(message), 4000):
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=message[i:i+4000]
+                )
+        except Exception as _cb_err:
+            console.print(f"[error]Erro no announce callback do sub-agente: {_cb_err}[/error]")
+
     try:
-        reply = await agent.ask(user_text)
+        reply = await target_agent.ask(user_text, reply_callback=reply_callback)
+
         
         import re
         media_path = None
@@ -169,6 +191,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("🚨 Mals aí, fundi um pino aqui tentando processar sua mensagem! 🤖💥")
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description="MoltyClaw Telegram Bot")
+    parser.add_argument("--agent", type=str, help="ID do Agente para carregar", default="MoltyClaw")
+    parser.add_argument("--name", type=str, help="Nome visível do bot", default=None)
+    args = parser.parse_args()
+
+    # Se for um sub-agente, tenta carregar o .env dele PRIMEIRO para sobrepor o token se necessário
+    if args.agent != "MoltyClaw":
+        agent_env = os.path.join(os.path.expanduser("~"), ".moltyclaw", "agents", args.agent, ".env")
+        if os.path.exists(agent_env):
+            console.print(f"[dim]>> Carregando configurações específicas do agente '{args.agent}'...[/dim]")
+            load_dotenv(agent_env, override=True)
+            # Atualiza o token se ele existir no .env do agente
+            TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or TELEGRAM_TOKEN
+
     if not TELEGRAM_TOKEN:
         console.print("[bold red]❌ ERRO: A variável TELEGRAM_TOKEN não foi encontrada no seu .env![/bold red]")
         console.print("[yellow]Fale com o @BotFather no Telegram para criar seu app e adicione o Token no .env![/yellow]")
@@ -179,8 +216,22 @@ if __name__ == '__main__':
                 warnings.simplefilter("ignore", DeprecationWarning)
                 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             
+        # Pega nome final
+        bot_name = args.name if args.name else f"{args.agent} (Telegram)"
+        
+        # Injeta o factory de post_init com o agente correto
+        async def agent_post_init(application):
+            global agent
+            console.print(f"[bold green]Inicializando navegador para o Agente '{args.agent}' no Telegram...[/bold green]")
+            agent = MoltyClaw(name=bot_name, agent_id=args.agent)
+            await agent.init_browser()
+            if agent.mcp_hub:
+                await agent.mcp_hub.connect_servers()
+            bot_info = await application.bot.get_me()
+            console.print(f"[bold blue]🤖 Agente '{args.agent}' conectado como @{bot_info.username}![/bold blue]")
+
         # Cria e constrói a aplicação do Telegram Python Bot
-        app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+        app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(agent_post_init).build()
 
         # Monitora qualquer mensagem que não seja um comando slash (/)
         app.add_handler(MessageHandler(~filters.COMMAND, handle_message))

@@ -8,9 +8,10 @@ from rich.console import Console
 console = Console()
 
 class MCPHub:
-    def __init__(self):
+    def __init__(self, allowed_servers=None):
         self.sessions: Dict[str, Any] = {}
         self.exit_stack = AsyncExitStack()
+        self.allowed_servers = set(allowed_servers) if allowed_servers else None  # None = todos permitidos
 
     async def connect_servers(self, config_path: str = None):
         if not config_path:
@@ -33,6 +34,11 @@ class MCPHub:
             from mcp.client.stdio import stdio_client
             
             for server_name, server_config in mcp_servers.items():
+                # Verifica se este servidor é permitido para este agente
+                if self.allowed_servers is not None and server_name not in self.allowed_servers:
+                    console.print(f"[dim yellow]Servidor MCP '{server_name}' não permitido para este agente. Pulando...[/dim yellow]")
+                    continue
+                
                 try:
                     console.print(f"[dim cyan]Conectando ao servidor MCP: {server_name}...[/dim cyan]")
                     

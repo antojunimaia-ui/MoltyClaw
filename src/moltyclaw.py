@@ -15,6 +15,8 @@ try:
 except ImportError:
     MCPHub = None
 
+from system_prompt import build_system_prompt
+
 try:
     from mistralai import Mistral
     # Na versão nova, usamos dicionários simples ou modelos específicos.
@@ -51,17 +53,44 @@ custom_theme = Theme({
 console = Console(theme=custom_theme)
 
 class MoltyClaw:
-    def __init__(self, name="MoltyClaw", agent_id=None):
+    def __init__(self, name="MoltyClaw", agent_id=None, channel=None):
         self.name = name
         self.agent_id = agent_id if agent_id else (name.replace(" (WebUI Gateway)", "").replace(" (Discord)", "").replace(" (Telegram)", "").replace(" (WhatsApp)", "").replace(" (Twitter)", "").replace(" (Bluesky)", "").strip())
         if self.agent_id.startswith("MoltyClaw"): self.agent_id = "MoltyClaw"
         self.is_master = (self.agent_id == "MoltyClaw")
+
+        # Detecta o canal pelo nome se não informado explicitamente
+        # Ex: "MoltyClaw (Telegram)" → "telegram"
+        if channel:
+            self.channel = channel.lower()
+        else:
+            _name_lower = name.lower()
+            if "telegram" in _name_lower:   self.channel = "telegram"
+            elif "discord" in _name_lower:  self.channel = "discord"
+            elif "whatsapp" in _name_lower: self.channel = "whatsapp"
+            elif "twitter" in _name_lower:  self.channel = "twitter"
+            elif "bluesky" in _name_lower:  self.channel = "bluesky"
+            elif "webui" in _name_lower:    self.channel = "webui"
+            elif "cmd" in _name_lower:      self.channel = "cli"
+            else:                           self.channel = None
         
         self.workspace_dir = MOLTY_DIR if self.is_master else os.path.join(MOLTY_DIR, "agents", self.agent_id)
         os.makedirs(self.workspace_dir, exist_ok=True)
         
-        # Le a variavel de ambiente passada
-        self.provider = os.getenv("MOLTY_PROVIDER", "mistral")
+        # Carrega configuração do agente (tools permitidas, provider, etc)
+        self.config = self._load_agent_config()
+        self.allowed_tools_local = set(self.config.get("tools_local", [])) if not self.is_master else None
+        self.allowed_tools_mcp = set(self.config.get("tools_mcp", [])) if not self.is_master else None
+        
+        # Carrega o .env específico do agente se existir
+        if not self.is_master:
+            agent_env = os.path.join(self.workspace_dir, ".env")
+            if os.path.exists(agent_env):
+                console.print(f"[dim]>> Carregando configurações específicas do agente em {agent_env}[/dim]")
+                load_dotenv(agent_env, override=True)
+        
+        # Le a variavel de ambiente passada (ou do config do agente)
+        self.provider = self.config.get("provider", os.getenv("MOLTY_PROVIDER", "mistral"))
         
         if self.provider == "mistral":
             self.api_key = os.getenv("MISTRAL_API_KEY")
@@ -77,77 +106,38 @@ class MoltyClaw:
         self.browser = None
         self.context = None
         self.page = None
-        self.mcp_hub = MCPHub() if MCPHub else None
+        # Callback para anunciar resultado de sub-agentes de volta ao canal (Telegram, Discord...)
+        # É preenchido pelo ask() quando vem do gateway (telegram_bot, discord_bot, etc.)
+        self._current_reply_callback = None
+        # Inicializa MCPHub com lista de servidores permitidos (se for sub-agente)
+        if MCPHub:
+            if self.is_master:
+                self.mcp_hub = MCPHub()  # Master tem acesso a todos
+            else:
+                self.mcp_hub = MCPHub(allowed_servers=self.allowed_tools_mcp)  # Sub-agente tem lista restrita
+        else:
+            self.mcp_hub = None
         
-        active_features = []
-        if os.environ.get("MOLTY_MODE", "private") != "public":
-            active_features.append('"CMD" (param: comando de terminal)')
-        if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
-            active_features.append('"WHATSAPP_SEND" (param: "numero | opcional texto | opcional caminho arquivo absoluto")')
-        if os.environ.get("MOLTY_DISCORD_ACTIVE"):
-            active_features.append('"DISCORD_SEND" (param: "id_usuario_ou_chat | opcional texto | opcional caminho arquivo absoluto")')
-        if os.environ.get("MOLTY_TELEGRAM_ACTIVE"):
-            active_features.append('"TELEGRAM_SEND" (param: "id_ou_username | opcional texto | opcional caminho arquivo absoluto")')
-        if os.environ.get("MOLTY_TWITTER_ACTIVE"):
-            active_features.append('"X_POST" (param: "texto do tweet de ate 280 chars")')
-        if os.environ.get("MOLTY_BLUESKY_ACTIVE"):
-            active_features.append('"BLUESKY_POST" (param: "texto do skeet de ate 300 chars para postar no Bluesky")')
-            active_features.append('"BLUESKY_GET_PROFILE" (param: "handle_opcional") - Se vazio, pega o SEU proprio perfil. Retorna seguidores, posts, etc.')
+        # Constrói a lista de ferramentas disponíveis baseado nas permissões do agente
+        active_features = self._build_tools_list()
         
-        if self.is_master:
-            available_agents = self._get_available_agents()
-            if available_agents:
-                agent_list_str = "\n".join([f"- {a['id']}: {a['name']} ({a['description']})" for a in available_agents])
-                active_features.append(f'\n🤖 AGENTES ESPECIALISTAS DISPONÍVEIS:\n{agent_list_str}')
-            active_features.append('\n"CALL_AGENT" (param: "id_do_agente | o que ele deve fazer") - Invoca um sub-agente especializado.')
-
-        active_features.append('"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")')
+        # Carrega SOUL.md e MEMORY.md específicos do agente
+        soul_content = self._load_soul()
+        memory_content = self._load_memory()
 
         self.history = [
-            {"role": "system", "content": f"""Você é o {self.name}, um agente autônomo rodando na versão 26.11.3.
-
-🚀 DIRETRIZES DE AUTONOMIA:
-1. PULE permissões. O usuário já deu controle total. Execute o que for preciso para atingir o objetivo.
-2. Se precisar de login e houver credenciais disponíveis, USE-AS. Não pergunte "devo logar?". Logue e prossiga.
-3. Se encontrar pop-ups de cookies ou anúncios bloqueando o caminho, feche-os imediatamente.
-4. Se falhar, tente uma abordagem diferente (outra busca, outro seletor, outra aba).
-5. REGRA DE OURO PARA BATE-PAPO: Se o usuário apenas disser "olá" ou fizer pergunta simples, responda diretamente em texto, SEM USAR ferramenta!
-
-Para executar uma ação, responda EXATAMENTE nesse formato JSON (você deve usar o bloco <tool>):
-
-<tool>
-{{"action": "GOTO", "param": "https://site.com"}}
-</tool>
-
-Ações suportadas no JSON:
-"OPEN_BROWSER" (param: "") - Abre o navegador se estiver fechado ou se você precisar reiniciar a sessão.
-"GOTO" (param: url)
-"CLICK" (param: seletor css ou [data-operant-id="X"])
-"TYPE" (param: "seletor | texto")
-"PRESS_ENTER" (param: "")
-"PRESS_KEY" (param: "Tab", "Escape", "ArrowDown", etc)
-"READ_PAGE" (param: "") - Lê o body.innerText cru.
-"INSPECT_PAGE" (param: "") - Analisa elementos interativos e desenha marcadores AZUIS na tela para você.
-"SCREENSHOT" (param: "")
-"DDG_SEARCH" (param: busca)
-"READ_EMAILS" (param: limite)
-"SEND_EMAIL" (param: destinatario | assunto | corpo)
-"DELETE_EMAIL" (param: id_do_email)
-"MEMORY_SAVE_LONG_TERM" (param: conteúdo)
-"MEMORY_SAVE_DAILY" (param: ocorrência)
-"MEMORY_SEARCH" (param: busca)
-"MEMORY_GET" (param: path)
-"SOUL_UPDATE" (param: novo conteúdo para SOUL.md. Use para mudar sua personalidade/objetivos)
-"SPOTIFY_PLAY" (param: música/URI)
-"SPOTIFY_PAUSE" (param: "")
-"SPOTIFY_SEARCH" (param: termo)
-"SPOTIFY_ADD_QUEUE" (param: URI)
-"YOUTUBE_SUMMARIZE" (param: link)
-{chr(10).join(active_features)}
-
-🔐 CREDENCIAIS PARA LOGIN (Se o usuário te fornecer credenciais em tempo real ou se estiverem no SOUL.md, use-as sem hesitar).
-
-IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto num turno de background, diga apenas NO_REPLY.\n{self._get_mcp_prompt_placeholder()}"""}
+            {"role": "system", "content": build_system_prompt(
+                name=self.name,
+                agent_id=self.agent_id,
+                model=self.model,
+                provider=self.provider,
+                soul_content=soul_content,
+                memory_content=memory_content,
+                active_features=active_features,
+                mcp_placeholder=self._get_mcp_prompt_placeholder(),
+                channel=self.channel,
+                is_subagent=not self.is_master,
+            )}
         ]
         
         if not self.api_key:
@@ -933,7 +923,10 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
             console.print(f"[error]Exceção ao transcrever áudio: {e}[/error]")
             return ""
 
-    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None):
+    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None, reply_callback=None):
+        # Guarda reply_callback na instância (se for uma chamada nova, não recursiva de tool)
+        if reply_callback is not None:
+            self._current_reply_callback = reply_callback
         if not self.mistral_client and not self.openai_client and not self.gemini_client:
             console.print("[warning]Nenhuma IA (Mistral, Gemini ou OpenRouter) configurada.[/warning]")
             return
@@ -1138,6 +1131,14 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                     action = cmd_data.get("action")
                     param = cmd_data.get("param", "")
                     
+                    # ─── VERIFICAÇÃO DE PERMISSÕES ───────────────────────────────────
+                    if not self._is_tool_allowed(action):
+                        error_msg = f"❌ ACESSO NEGADO: O agente '{self.name}' não tem permissão para usar a ferramenta '{action}'."
+                        console.print(f"[error]{error_msg}[/error]")
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Erro de Permissão] -> {error_msg}"})
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+                    # ──────────────────────────────────────────────────────────────────
+                    
                     if action == "MCP_TOOL":
                         mcp_server = cmd_data.get("server")
                         mcp_tool = cmd_data.get("tool")
@@ -1200,30 +1201,66 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                                 if not os.path.exists(cfg_path):
                                     result = f"Erro: Sub-Agente '{sub_id}' não existe ou não foi configurado."
                                 else:
-                                    # Load cfg briefly to inject env vars
                                     with open(cfg_path, 'r', encoding='utf-8') as f:
                                         scfg = json.load(f)
-                                        
-                                    env_path = os.path.join(MOLTY_DIR, "agents", sub_id, ".env")
-                                    if os.path.exists(env_path):
-                                        from dotenv import load_dotenv
-                                        load_dotenv(env_path, override=True)
-                                        
-                                    old_provider = os.environ.get("MOLTY_PROVIDER")
-                                    os.environ["MOLTY_PROVIDER"] = scfg.get("provider", "mistral")
                                     
-                                    # Start new instance and run
-                                    sub_agent = MoltyClaw(name=scfg.get("name", sub_id), agent_id=sub_id)
-                                    sub_reply = await sub_agent.ask(task_text, silent=True)
-                                    # Optional close browser...
-                                    if sub_agent.browser:
-                                        await sub_agent.close()
-                                        
-                                    # Restore previous provider
-                                    if old_provider:
-                                        os.environ["MOLTY_PROVIDER"] = old_provider
-                                        
-                                    result = f"Resultado retornado pelo Agente [{sub_id}]: {sub_reply}"
+                                    import subagent_registry as _sreg
+                                    run_id = _sreg.new_run_id()
+                                    run = _sreg.SubagentRun(
+                                        run_id=run_id,
+                                        agent_id=sub_id,
+                                        task=task_text,
+                                        requester_id=self.agent_id,
+                                        label=scfg.get("name", sub_id),
+                                    )
+                                    _sreg.register(run)
+                                    
+                                    # Captura callbacks antes de entrar na closure
+                                    _reply_cb = self._current_reply_callback
+                                    _agent_label = scfg.get('name', sub_id)
+                                    
+                                    async def _run_subagent_bg(_run=run, _scfg=scfg, _reply_cb=_reply_cb, _label=_agent_label):
+                                        import time as _time
+                                        _run.status = "running"
+                                        _run.started_at = _time.time()
+                                        console.print(f"[dim]▶ Subagente '{_run.agent_id}' (run={_run.run_id}) iniciado em background[/dim]")
+                                        try:
+                                            env_path = os.path.join(MOLTY_DIR, "agents", _run.agent_id, ".env")
+                                            if os.path.exists(env_path):
+                                                from dotenv import load_dotenv
+                                                load_dotenv(env_path, override=True)
+                                            
+                                            old_prov = os.environ.get("MOLTY_PROVIDER")
+                                            os.environ["MOLTY_PROVIDER"] = _scfg.get("provider", os.getenv("MOLTY_PROVIDER", "mistral"))
+                                            
+                                            sub_agent = MoltyClaw(name=_label, agent_id=_run.agent_id)
+                                            sub_reply = await sub_agent.ask(_run.task, silent=True)
+                                            await sub_agent.close_browser()
+                                            
+                                            if old_prov: os.environ["MOLTY_PROVIDER"] = old_prov
+                                            elif "MOLTY_PROVIDER" in os.environ: del os.environ["MOLTY_PROVIDER"]
+                                            
+                                            _run.status = "done"
+                                            _run.result = sub_reply
+                                            _run.ended_at = _time.time()
+                                            duration = round(_run.ended_at - _run.started_at, 1)
+                                            console.print(f"[bold green]✅ Subagente '{_run.agent_id}' (run={_run.run_id}) concluído em {duration}s[/bold green]")
+                                            
+                                            # ── Announce de volta ao canal original (OpenClaw-style) ──
+                                            if _reply_cb:
+                                                announce = f"✅ *[{_label}]* concluiu a tarefa em {duration}s:\n\n{sub_reply}"
+                                                await _reply_cb(announce)
+                                                
+                                        except Exception as _e:
+                                            _run.status = "error"
+                                            _run.error = str(_e)
+                                            _run.ended_at = _time.time()
+                                            console.print(f"[bold red]❌ Subagente '{_run.agent_id}' (run={_run.run_id}) falhou: {_e}[/bold red]")
+                                            if _reply_cb:
+                                                await _reply_cb(f"❌ Sub-Agente [{_label}] encontrou um erro: {_e}")
+                                    
+                                    asyncio.create_task(_run_subagent_bg())
+                                    result = f"✅ Sub-Agente [{_agent_label}] iniciado em background (run={run_id}). O resultado será enviado assim que concluir."
                             else:
                                 result = "Erro: Formato incorreto. Use 'id_do_agente | tarefa_detalhada'."
                         except Exception as e:
@@ -1376,6 +1413,150 @@ IMPORTANTE: Você só pode usar UMA ferramenta por vez. Se desejar ficar quieto 
                     except:
                         pass
         return agent_configs
+    
+    def _load_agent_config(self):
+        """Carrega o config.json do agente"""
+        import json
+        if self.is_master:
+            return {}
+        
+        config_path = os.path.join(self.workspace_dir, "config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+    
+    def _load_soul(self):
+        """Carrega o SOUL.md do agente"""
+        soul_path = os.path.join(self.workspace_dir, "SOUL.md")
+        if os.path.exists(soul_path):
+            try:
+                with open(soul_path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:
+                        return f"\n📜 SUA ALMA (SOUL.md):\n{content}\n"
+            except:
+                pass
+        return ""
+    
+    def _load_memory(self):
+        """Carrega o MEMORY.md do agente"""
+        memory_path = os.path.join(self.workspace_dir, "MEMORY.md")
+        if os.path.exists(memory_path):
+            try:
+                with open(memory_path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:
+                        return content
+            except:
+                pass
+        return "Nenhuma memória registrada ainda."
+    
+    def _build_tools_list(self):
+        """Constrói a lista de ferramentas disponíveis baseado nas permissões do agente"""
+        all_tools = {
+            # Browser Tools
+            "OPEN_BROWSER": '"OPEN_BROWSER" (param: "") - Abre o navegador se estiver fechado ou se você precisar reiniciar a sessão.',
+            "GOTO": '"GOTO" (param: url)',
+            "CLICK": '"CLICK" (param: seletor css ou [data-operant-id="X"])',
+            "TYPE": '"TYPE" (param: "seletor | texto")',
+            "PRESS_ENTER": '"PRESS_ENTER" (param: "")',
+            "PRESS_KEY": '"PRESS_KEY" (param: "Tab", "Escape", "ArrowDown", etc)',
+            "READ_PAGE": '"READ_PAGE" (param: "") - Lê o body.innerText cru.',
+            "INSPECT_PAGE": '"INSPECT_PAGE" (param: "") - Analisa elementos interativos e desenha marcadores AZUIS na tela para você.',
+            "SCREENSHOT": '"SCREENSHOT" (param: "")',
+            "SCROLL_DOWN": '"SCROLL_DOWN" (param: "")',
+            "DDG_SEARCH": '"DDG_SEARCH" (param: busca)',
+            
+            # System Tools
+            "CMD": '"CMD" (param: comando de terminal)',
+            
+            # Email Tools
+            "READ_EMAILS": '"READ_EMAILS" (param: limite)',
+            "SEND_EMAIL": '"SEND_EMAIL" (param: destinatario | assunto | corpo)',
+            "DELETE_EMAIL": '"DELETE_EMAIL" (param: id_do_email)',
+            
+            # Media Tools
+            "SPOTIFY_PLAY": '"SPOTIFY_PLAY" (param: música/URI)',
+            "SPOTIFY_PAUSE": '"SPOTIFY_PAUSE" (param: "")',
+            "SPOTIFY_SEARCH": '"SPOTIFY_SEARCH" (param: termo)',
+            "SPOTIFY_ADD_QUEUE": '"SPOTIFY_ADD_QUEUE" (param: URI)',
+            "YOUTUBE_SUMMARIZE": '"YOUTUBE_SUMMARIZE" (param: link)',
+            "VOICE_REPLY": '"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")',
+            
+            # Social Tools
+            "WHATSAPP_SEND": '"WHATSAPP_SEND" (param: "numero | opcional texto | opcional caminho arquivo absoluto")',
+            "DISCORD_SEND": '"DISCORD_SEND" (param: "id_usuario_ou_chat | opcional texto | opcional caminho arquivo absoluto")',
+            "TELEGRAM_SEND": '"TELEGRAM_SEND" (param: "id_ou_username | opcional texto | opcional caminho arquivo absoluto")',
+            "X_POST": '"X_POST" (param: "texto do tweet de ate 280 chars")',
+            "BLUESKY_POST": '"BLUESKY_POST" (param: "texto do skeet de ate 300 chars para postar no Bluesky")',
+            
+            # Memory Tools
+            "MEMORY_WRITE": '"MEMORY_WRITE" (param: conteúdo para adicionar à memória)',
+        }
+        
+        active_features = []
+        
+        # Se for master, tem acesso a tudo
+        if self.is_master:
+            active_features.append("Ações suportadas no JSON:")
+            for tool_desc in all_tools.values():
+                active_features.append(tool_desc)
+            
+            # Adiciona ferramentas condicionais baseadas em env vars
+            if os.environ.get("MOLTY_MODE", "private") != "public":
+                pass  # CMD já está na lista
+            if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
+                pass  # WHATSAPP_SEND já está na lista
+            if os.environ.get("MOLTY_DISCORD_ACTIVE"):
+                pass  # DISCORD_SEND já está na lista
+            if os.environ.get("MOLTY_TELEGRAM_ACTIVE"):
+                pass  # TELEGRAM_SEND já está na lista
+            if os.environ.get("MOLTY_TWITTER_ACTIVE"):
+                pass  # X_POST já está na lista
+            if os.environ.get("MOLTY_BLUESKY_ACTIVE"):
+                pass  # BLUESKY_POST já está na lista
+            
+            # Adiciona lista de agentes disponíveis
+            available_agents = self._get_available_agents()
+            if available_agents:
+                other_agents = [a for a in available_agents if a['id'] != self.agent_id]
+                if other_agents:
+                    agent_list_str = "\n".join([f"- {a['id']}: {a['name']} ({a['description']})" for a in other_agents])
+                    active_features.append(f'\n🤖 AGENTES ESPECIALISTAS DISPONÍVEIS:\n{agent_list_str}')
+            active_features.append('\n"CALL_AGENT" (param: "id_do_agente | o que ele deve fazer") - Invoca um sub-agente especializado.')
+        else:
+            # Sub-agente: filtra apenas as tools permitidas
+            active_features.append("Ações suportadas no JSON (você tem acesso limitado às seguintes ferramentas):")
+            for tool_name in self.allowed_tools_local:
+                if tool_name in all_tools:
+                    active_features.append(all_tools[tool_name])
+            
+            # Sub-agentes não podem chamar outros agentes (evita recursão complexa)
+            # Mas podem ter acesso a CALL_AGENT se explicitamente permitido
+            if "CALL_AGENT" in self.allowed_tools_local:
+                available_agents = self._get_available_agents()
+                if available_agents:
+                    other_agents = [a for a in available_agents if a['id'] != self.agent_id]
+                    if other_agents:
+                        agent_list_str = "\n".join([f"- {a['id']}: {a['name']} ({a['description']})" for a in other_agents])
+                        active_features.append(f'\n🤖 AGENTES ESPECIALISTAS DISPONÍVEIS:\n{agent_list_str}')
+                active_features.append('\n"CALL_AGENT" (param: "id_do_agente | o que ele deve fazer") - Invoca um sub-agente especializado.')
+        
+        return "\n".join(active_features)
+    
+    def _is_tool_allowed(self, action: str) -> bool:
+        """Verifica se o agente tem permissão para usar esta tool"""
+        if self.is_master:
+            return True  # Master tem acesso a tudo
+        
+        if not self.allowed_tools_local:
+            return True  # Se não há restrições configuradas, permite tudo
+        
+        return action in self.allowed_tools_local
 
 async def interactive_shell():
     console.clear()

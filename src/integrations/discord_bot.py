@@ -24,33 +24,36 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
+from routing import resolve_agent
+
 class MoltyClawDiscordBot(discord.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.agent = MoltyClaw(name="MoltyClaw (Discord)")
+        # Cache de instâncias de agentes para evitar re-inicializar o browser toda hora
+        self.agent_instances = {}
+        # Agente padrão (será usado se o router falhar ou para status)
+        self.default_agent_id = "MoltyClaw"
+
+    async def get_agent(self, agent_id):
+        if agent_id in self.agent_instances:
+            return self.agent_instances[agent_id]
+        
+        console.print(f"[dim]>> Criando instância dinâmica para o agente: {agent_id}[/dim]")
+        # Instancia o agente. O MoltyClaw já carrega o .env correto baseado no agent_id no __init__
+        new_agent = MoltyClaw(agent_id=agent_id)
+        await new_agent.init_browser()
+        if new_agent.mcp_hub:
+            await new_agent.mcp_hub.connect_servers()
+        
+        self.agent_instances[agent_id] = new_agent
+        return new_agent
 
     async def setup_hook(self):
-        # Essa função do discord.Client é ideal para inicializar o Browser assíncrono!
-        console.print("[bold green]Inicializando navegador do MoltyClaw para o Discord...[/bold green]")
-        await self.agent.init_browser()
-        if self.agent.mcp_hub:
-            await self.agent.mcp_hub.connect_servers()
-        console.print("[bold green]Navegador e conectores MCP ligados e prontos para pesquisas![/bold green]")
+        console.print("[bold green]Inicializando Gateway do Discord (Aguardando mensagens para rotear)...[/bold green]")
 
     async def on_ready(self):
-        console.print(f"[bold blue]🤖 Conectado no Discord escutando como {self.user}![/bold blue]")
-        
-        # Tenta renomear o Bot automaticamente na plataforma (Atenção: o Discord bloqueia se tentar muitas vezes)
-        try:
-            if self.user.name != "MoltyClaw":
-                await self.user.edit(username="MoltyClaw")
-                console.print("[dim green]>> Nome de usuário do bot alterado para 'MoltyClaw'![/dim green]")
-        except Exception as e:
-            console.print(f"[dim yellow]>> Aviso: Não foi possível alterar o username sozinho (Rate Limit?): {e}[/dim yellow]")
-        
-        # Define a descrição/status visual embaixo do nome do bot (Playing / Jogando)
-        await self.change_presence(activity=discord.Game(name="Hello, I am MoltyClaw, your best friend 🤖"))
-        console.print("[dim green]>> Presença visual do bot atualizada com sucesso![/dim green]")
+        console.print(f"[bold blue]🤖 Gateway Discord Conectado como {self.user}![/bold blue]")
+        await self.change_presence(activity=discord.Game(name="Routing messages to Specialist Agents 🖥️"))
 
     async def on_message(self, message):
         # Ignora mensagens enviadas pelo próprio bot (previne loops infinitos)
@@ -100,7 +103,13 @@ class MoltyClawDiscordBot(discord.Client):
             return
             
         if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
+            # Rota automatica baseada no OpenClaw Strategy
+            guild_id = str(message.guild.id) if message.guild else None
+            peer_id = str(message.author.id)
             
+            target_agent_id = resolve_agent(channel="discord", peer_id=peer_id, guild_id=guild_id)
+            target_agent = await self.get_agent(target_agent_id)
+
             # Pega o texto da mensagem e remove a marcação de arroba (@MoltyClaw)
             user_text = message.content.replace(f'<@{self.user.id}>', '').strip()
             
@@ -115,8 +124,8 @@ class MoltyClawDiscordBot(discord.Client):
                     file_path = temp_dir / f"discord_audio_{int(time.time())}.ogg"
                     await attachment.save(file_path)
                     
-                    console.print("[info]🎧 Áudio do Discord detectado, transcrevendo...[/info]")
-                    transcribed = await self.agent.transcribe_audio(str(file_path))
+                    console.print(f"[info]🎧 Áudio do Discord detectado para {target_agent_id}, transcrevendo...[/info]")
+                    transcribed = await target_agent.transcribe_audio(str(file_path))
                     if transcribed:
                         user_text += f"\n(Áudio Anexado Transcrito do Usuário): '{transcribed}'"
                         console.print(f"[bold yellow]Transcrição:[/] {transcribed}")
@@ -133,15 +142,15 @@ class MoltyClawDiscordBot(discord.Client):
                         break
             
             if in_same_vc:
-                user_text += "\n\n[INSTRUÇÃO DE SISTEMA: Você está na mesma sala de voz que o usuário no Discord! Seu áudio será roteado ativamente pra ele escutar! MUDANÇA DE ROTINA: USE A TOOL 'VOICE_REPLY' OBRIGATORIAMENTE PARA GERAR A SUA RESPOSTA EM ÁUDIO NESTE TURNO, DO CONTRÁRIO ELE SÓ VERÁ TEXTO CALADO E ACHARÁ QUE VOCÊ QUEBROU!]"
+                user_text += f"\n\n[INSTRUÇÃO DE SISTEMA: Você ({target_agent_id}) está na mesma sala de voz que o usuário no Discord! Seu áudio será roteado ativamente pra ele escutar! MUDANÇA DE ROTINA: USE A TOOL 'VOICE_REPLY' OBRIGATORIAMENTE PARA GERAR A SUA RESPOSTA EM ÁUDIO NESTE TURNO, DO CONTRÁRIO ELE SÓ VERÁ TEXTO CALADO E ACHARÁ QUE VOCÊ QUEBROU!]"
 
-            console.print(f"\n[bold magenta]📩 Mensagem Discord ({message.author}):[/bold magenta] {user_text[:200]}...")
+            console.print(f"\n[bold magenta]📩 Mensagem Discord para {target_agent_id} ({message.author}):[/bold magenta] {user_text[:200]}...")
             
             # Coloca a interface do Discord mostrando o indicativo "MoltyClaw está digitando..."
             async with message.channel.typing():
                 try:
                     # Chama o motor inteligência artificial que consome ferramentas
-                    reply = await self.agent.ask(user_text)
+                    reply = await target_agent.ask(user_text)
                     
                     import re
                     media_path = None
@@ -200,6 +209,21 @@ class MoltyClawDiscordBot(discord.Client):
                     await message.channel.send("Mals aí, fundi um pino aqui tentando processar sua mensagem! 🤖💥")
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="MoltyClaw Discord Bot")
+    parser.add_argument("--agent", type=str, help="ID do Agente para carregar", default="MoltyClaw")
+    parser.add_argument("--name", type=str, help="Nome visível do bot", default=None)
+    args = parser.parse_args()
+
+    # Se for um sub-agente, tenta carregar o .env dele PRIMEIRO para sobrepor o token se necessário
+    if args.agent != "MoltyClaw":
+        agent_env = os.path.join(os.path.expanduser("~"), ".moltyclaw", "agents", args.agent, ".env")
+        if os.path.exists(agent_env):
+            console.print(f"[dim]>> Carregando configurações específicas do agente '{args.agent}'...[/dim]")
+            load_dotenv(agent_env, override=True)
+            # Atualiza o token se ele existir no .env do agente
+            DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or DISCORD_TOKEN
+
     if not DISCORD_TOKEN:
         console.print("[bold red]❌ ERRO: A variável DISCORD_TOKEN não foi encontrada no seu .env![/bold red]")
         console.print("[yellow]Edite o arquivo .env e adicione seu token igual o exemplo abaixo:[/yellow]")
@@ -210,7 +234,10 @@ if __name__ == "__main__":
         intents.message_content = True
         intents.voice_states = True # Pra saber quem ta em call
         
+        bot_name = args.name if args.name else f"{args.agent} (Discord)"
         client = MoltyClawDiscordBot(intents=intents)
+        # Re-inicializa o agente com o ID e nome corretos
+        client.agent = MoltyClaw(name=bot_name, agent_id=args.agent)
         
         # Seta o loop do windows pra evitar bug de subprocess assíncrono
         if os.name == 'nt':

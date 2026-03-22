@@ -99,15 +99,19 @@ function renderMarkdownWithMedia(text) {
 }
 
 async function sendMessage() {
-    const text = messageInput.value.trim();
+    const textInput = messageInput.value.trim();
     const fileInput = document.getElementById('fileAttachment');
     const file = fileInput ? fileInput.files[0] : null;
 
-    if (!text && !file) return;
+    if (!textInput && !file) return;
 
-    let userDisplay = text;
+    const currentAgentId = document.getElementById('chat-agent-select').value;
+    let userDisplay = textInput;
+    if (currentAgentId !== 'MoltyClaw') {
+        userDisplay = `**[Talking to ${currentAgentId}]**\n` + userDisplay;
+    }
+
     let localPreviewUrl = null;
-
     if (file) {
         if (file.type.startsWith('image/')) {
             localPreviewUrl = URL.createObjectURL(file);
@@ -128,7 +132,8 @@ async function sendMessage() {
     agentStatus.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" style="margin-right:4px;"></i>Thinking...';
 
     const formData = new FormData();
-    formData.append("message", text);
+    formData.append("message", textInput);
+    formData.append("agent_id", currentAgentId);
     if (file) {
         formData.append("file", file);
     }
@@ -341,6 +346,8 @@ function switchTab(tabId) {
 
     if (tabId === 'integrations') {
         fetchIntegrations();
+    } else if (tabId === 'routing') {
+        fetchBindings();
     } else if (tabId === 'agent') {
         loadAgentList();
     } else if (tabId === 'mcp') {
@@ -366,13 +373,68 @@ async function loadAgentList() {
         const data = await res.json();
         agentListCache = data.agents || [];
         renderAgentList();
+        updateChatAgentSelector();
         
         // Ensure an agent is selected
         if (!agentListCache.find(a => a.id === activeAgentId) && activeAgentId !== '__NEW__') {
             activeAgentId = 'MoltyClaw';
         }
         selectAgent(activeAgentId);
+        // Populate all select elements that need agent list
+        document.querySelectorAll('.all-agents-select').forEach(sel => {
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="MoltyClaw">MoltyClaw</option>';
+            agentListCache.forEach(agent => {
+                const opt = document.createElement('option');
+                opt.value = agent.id;
+                opt.textContent = agent.name || agent.id;
+                sel.appendChild(opt);
+            });
+            if (currentVal) sel.value = currentVal;
+        });
     } catch(e) { console.error('Error fetching agents', e); }
+}
+
+function updateChatAgentSelector() {
+    const select = document.getElementById('chat-agent-select');
+    if (!select) return;
+    
+    const currentVal = select.value;
+    select.innerHTML = '<option value="MoltyClaw">MoltyClaw (Master)</option>';
+    
+    agentListCache.forEach(agent => {
+        if (!agent.is_master) {
+            const opt = document.createElement('option');
+            opt.value = agent.id;
+            opt.textContent = `${agent.name} (${agent.id})`;
+            select.appendChild(opt);
+        }
+    });
+    
+    // Update all integration selectors too
+    document.querySelectorAll('.agent-select-small').forEach(intSelect => {
+        const intVal = intSelect.value;
+        intSelect.innerHTML = '<option value="MoltyClaw">MoltyClaw</option>';
+        agentListCache.forEach(a => {
+            if (!a.is_master) {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name;
+                intSelect.appendChild(opt);
+            }
+        });
+        if (Array.from(intSelect.options).some(o => o.value === intVal)) intSelect.value = intVal;
+    });
+
+    if (Array.from(select.options).some(o => o.value === currentVal)) {
+        select.value = currentVal;
+    }
+}
+
+function onChatAgentChange() {
+    const agentId = document.getElementById('chat-agent-select').value;
+    chatContainer.innerHTML += `<div class="system-welcome">Switching context to ${agentId}...</div>`;
+    scrollToBottom();
 }
 
 function renderAgentList() {
@@ -463,8 +525,17 @@ function selectAgent(agentId) {
         document.getElementById('agent-form-description').value = '';
         document.getElementById('agent-form-provider').value = 'mistral';
         document.getElementById('agent-form-env').value = '';
-        document.getElementById('agent-form-tools-local').value = 'DDG_SEARCH, READ_PAGE';
-        document.getElementById('agent-form-tools-mcp').value = '';
+        
+        // Desmarcar todas as tools nativas exceto DDG_SEARCH e READ_PAGE
+        document.querySelectorAll('.native-tool-check').forEach(cb => {
+            cb.checked = (cb.value === 'DDG_SEARCH' || cb.value === 'READ_PAGE');
+        });
+        
+        // Desmarcar todos os MCP servers
+        document.querySelectorAll('.mcp-server-check').forEach(cb => {
+            cb.checked = false;
+        });
+        
         document.getElementById('btn-delete-agent').style.display = 'none';
         
         // Hide Core since new agents don't have files until saved
@@ -503,8 +574,21 @@ function selectAgent(agentId) {
         document.getElementById('agent-form-name').value = agent.name || '';
         document.getElementById('agent-form-description').value = agent.description || '';
         document.getElementById('agent-form-provider').value = agent.provider || 'mistral';
-        document.getElementById('agent-form-tools-local').value = (agent.tools_local || []).join(', ');
-        document.getElementById('agent-form-tools-mcp').value = (agent.tools_mcp || []).join(', ');
+        
+        // Preencher checkboxes de tools nativas
+        const nativeTools = agent.tools_local || [];
+        document.querySelectorAll('.native-tool-check').forEach(cb => {
+            cb.checked = nativeTools.includes(cb.value);
+        });
+        
+        // Preencher checkboxes de MCP servers (será feito após carregar a lista)
+        setTimeout(() => {
+            const mcpServers = agent.tools_mcp || [];
+            document.querySelectorAll('.mcp-server-check').forEach(cb => {
+                cb.checked = mcpServers.includes(cb.value);
+            });
+        }, 500);
+        
         document.getElementById('agent-form-env').value = (agent.env_vars || []).join('\n');
         
         document.getElementById('btn-delete-agent').style.display = agent.is_master ? 'none' : 'block';
@@ -536,13 +620,21 @@ async function saveAgentConfig() {
         }
     });
     
+    // Coletar tools nativas selecionadas
+    const selectedNativeTools = Array.from(document.querySelectorAll('.native-tool-check:checked'))
+        .map(cb => cb.value);
+    
+    // Coletar servidores MCP selecionados
+    const selectedMcpServers = Array.from(document.querySelectorAll('.mcp-server-check:checked'))
+        .map(cb => cb.value);
+    
     const payload = {
         id: id,
         name: document.getElementById('agent-form-name').value || id,
         description: document.getElementById('agent-form-description').value,
         provider: document.getElementById('agent-form-provider').value,
-        tools_local: document.getElementById('agent-form-tools-local').value.split(',').map(s=>s.trim()).filter(Boolean),
-        tools_mcp: document.getElementById('agent-form-tools-mcp').value.split(',').map(s=>s.trim()).filter(Boolean),
+        tools_local: selectedNativeTools,
+        tools_mcp: selectedMcpServers,
         env_vars: envVars
     };
     
@@ -591,6 +683,59 @@ async function deleteAgent() {
     } catch(e) {
         alert('Erro de conexão.');
     }
+}
+
+// ─── Tools Selector Functions ───────────────────────────────────────────────
+
+function selectAllTools(select) {
+    const checkboxes = document.querySelectorAll('.native-tool-check');
+    checkboxes.forEach(cb => cb.checked = select);
+}
+
+async function loadMcpToolsSelector() {
+    const container = document.getElementById('mcp-tools-selector');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="mcp-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Carregando servidores MCP...</div>';
+    
+    try {
+        const res = await fetch('/api/mcp/list');
+        const data = await res.json();
+        const installedMcps = data.installed || [];
+        
+        if (installedMcps.length === 0) {
+            container.innerHTML = '<div class="mcp-loading" style="color: var(--text-muted);"><i class="fa-solid fa-info-circle"></i> Nenhum servidor MCP instalado. Vá para a aba MCP para instalar.</div>';
+            return;
+        }
+        
+        container.innerHTML = '';
+        
+        installedMcps.forEach(mcpId => {
+            const mcpInfo = (data.mcps || []).find(m => m.id === mcpId);
+            const mcpName = mcpInfo ? mcpInfo.name : mcpId;
+            const mcpDesc = mcpInfo ? mcpInfo.description : 'Servidor MCP instalado';
+            
+            const item = document.createElement('div');
+            item.className = 'mcp-server-item';
+            item.innerHTML = `
+                <input type="checkbox" class="mcp-server-check" value="${mcpId}" id="mcp-${mcpId}">
+                <div class="mcp-server-info">
+                    <div class="mcp-server-name">${mcpName}</div>
+                    <div class="mcp-server-desc">${mcpDesc}</div>
+                </div>
+                <span class="mcp-server-badge">Instalado</span>
+            `;
+            container.appendChild(item);
+        });
+    } catch (e) {
+        console.error('Erro ao carregar MCPs:', e);
+        container.innerHTML = '<div class="mcp-loading" style="color: #ef4444;"><i class="fa-solid fa-exclamation-triangle"></i> Erro ao carregar servidores MCP</div>';
+    }
+}
+
+// Carregar MCP tools quando a aba Agent Config for aberta
+function onAgentConfigSegmentOpen() {
+    loadMcpToolsSelector();
 }
 
 let currentAgentFile = 'soul';
@@ -687,13 +832,19 @@ async function saveCurrentAgentFile() {
 async function fetchIntegrations() {
     try {
         const res = await fetch('/api/integrations');
-        const data = await res.json();
+        const data = await res.json(); // format { "discord": ["MoltyClaw", "goku"], ... }
 
-        // Update toggles based on status map
-        for (const [key, active] of Object.entries(data)) {
-            const toggle = document.getElementById(`toggle-${key}`);
-            if (toggle) toggle.checked = active;
-        }
+        const platforms = ['whatsapp', 'discord', 'telegram', 'twitter', 'bluesky'];
+        platforms.forEach(p => {
+            const activeList = data[p] || [];
+            const toggle = document.getElementById(`toggle-${p}`);
+            const activeDiv = document.getElementById(`active-${p}`);
+            
+            if (toggle) toggle.checked = activeList.length > 0;
+            if (activeDiv) {
+                activeDiv.innerHTML = activeList.map(id => `<span class="int-agent-pill">${id}</span>`).join('');
+            }
+        });
     } catch (e) {
         console.error('Failed to fetch integrations', e);
     }
@@ -701,6 +852,8 @@ async function fetchIntegrations() {
 
 async function toggleIntegration(name) {
     const toggle = document.getElementById(`toggle-${name}`);
+    const agentSelect = document.getElementById(`select-${name}`);
+    const agentId = agentSelect ? agentSelect.value : 'MoltyClaw';
     const action = toggle.checked ? 'start' : 'stop';
 
     toggle.disabled = true; // Prevent spamming
@@ -708,7 +861,7 @@ async function toggleIntegration(name) {
         const res = await fetch(`/api/integrations/${action}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
+            body: JSON.stringify({ name, agent_id: agentId })
         });
 
         if (!res.ok) {
@@ -841,6 +994,8 @@ function switchAgentSegment(segment) {
         if(coreSeg) coreSeg.style.display = 'flex';
     } else if (segment === 'config') {
         if(configSeg) configSeg.style.display = 'flex';
+        // Carregar MCP tools quando abrir a aba de configuração
+        loadMcpToolsSelector();
     } else {
         if(contextSeg) contextSeg.style.display = 'flex';
     }
@@ -912,6 +1067,95 @@ async function processContext() {
     }
 }
 
-async function exportContext() {
-    alert('Export Context: Preparando pacote de assimilação... O MoltyClaw vai gerar um arquivo comprimido com tudo o que aprendeu sobre seu estilo para ser usado em outros modelos.');
+async function fetchBindings() {
+    try {
+        const response = await fetch('/api/bindings');
+        const bindings = await response.json();
+        renderBindings(bindings);
+    } catch (e) {
+        console.error("Erro ao buscar bindings:", e);
+    }
+}
+
+function renderBindings(bindings) {
+    const list = document.getElementById('bindings-list');
+    list.innerHTML = '';
+    
+    bindings.forEach((b, index) => {
+        const tr = document.createElement('tr');
+        const m = b.match || {};
+        
+        let context = `<strong>Canal:</strong> ${escapeHTML(m.channel || '-')}`;
+        if (m.guild_id) context += `<br><strong>Guild/Chat:</strong> ${escapeHTML(m.guild_id)}`;
+        if (m.peer_id) context += `<br><strong>Peer/User:</strong> ${escapeHTML(m.peer_id)}`;
+        
+        tr.innerHTML = `
+            <td>${escapeHTML(m.channel || '-')}</td>
+            <td><span class="agent-pill">${escapeHTML(b.agent_id)}</span></td>
+            <td class="context-cell">${context}</td>
+            <td>
+                <button class="icon-btn delete" onclick="deleteBinding(${index})" title="Remover Regra">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </td>
+        `;
+        list.appendChild(tr);
+    });
+}
+
+async function addBinding() {
+    const platform = document.getElementById('route-platform').value;
+    const agent = document.getElementById('route-agent').value;
+    const guild = document.getElementById('route-guild').value.trim();
+    const peer = document.getElementById('route-peer').value.trim();
+    
+    const newBinding = {
+        agent_id: agent,
+        match: {
+            channel: platform
+        }
+    };
+    
+    if (guild) newBinding.match.guild_id = guild;
+    if (peer) newBinding.match.peer_id = peer;
+    
+    try {
+        const currentResp = await fetch('/api/bindings');
+        const bindings = await currentResp.json();
+        bindings.push(newBinding);
+        
+        await fetch('/api/bindings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bindings)
+        });
+        
+        // Limpar campos
+        document.getElementById('route-guild').value = '';
+        document.getElementById('route-peer').value = '';
+        
+        fetchBindings();
+    } catch (e) {
+        alert("Erro ao adicionar binding.");
+    }
+}
+
+async function deleteBinding(index) {
+    if (!confirm("Remover esta regra de roteamento?")) return;
+    
+    try {
+        const currentResp = await fetch('/api/bindings');
+        let bindings = await currentResp.json();
+        bindings.splice(index, 1);
+        
+        await fetch('/api/bindings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bindings)
+        });
+        
+        fetchBindings();
+    } catch (e) {
+        alert("Erro ao remover binding.");
+    }
 }
