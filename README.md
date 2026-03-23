@@ -1,13 +1,6 @@
 # 🤖 MoltyClaw — O Agente Autônomo Definitivo
 
-```text
-███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗
-████╗ ████║██╔═══██╗██║  ╚══██╔══╝╚██╗ ██╔╝██╔════╝██║     ██╔══██╗██║    ██║
-██╔████╔██║██║   ██║██║     ██║    ╚████╔╝ ██║     ██║     ███████║██║ █╗ ██║
-██║╚██╔╝██║██║   ██║██║     ██║     ╚██╔╝  ██║     ██║     ██╔══██║██║███╗██║
-██║ ╚═╝ ██║╚██████╔╝███████╗██║      ██║   ╚██████╗███████╗██║  ██║╚███╔███╔╝
-╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝      ╚═╝    ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
-```
+![MoltyClaw Banner](MoltyClaw-Banner.png)
 
 > **MoltyClaw** é um agente de IA autônomo e local, construído em Python, que opera o seu computador Windows e a Internet em tempo real com autonomia total. Ele não fica preso em uma janela de chat — ele age, pesquisa, clica, organiza arquivos, manda mensagens, controla música, delega tarefas a sub-agentes e responde a você por WhatsApp, Discord e Telegram simultaneamente.
 

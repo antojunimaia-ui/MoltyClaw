@@ -16,6 +16,7 @@ except ImportError:
     MCPHub = None
 
 from system_prompt import build_system_prompt
+from config_loader import get_config
 
 try:
     from mistralai import Mistral
@@ -92,15 +93,19 @@ class MoltyClaw:
         # Le a variavel de ambiente passada (ou do config do agente)
         self.provider = self.config.get("provider", os.getenv("MOLTY_PROVIDER", "mistral"))
         
+        # Carrega Configuração Global do moltyclaw.json
+        molty_config = get_config()
+        p_cfg = molty_config.get("providers", {}).get(self.provider, {})
+
         if self.provider == "mistral":
-            self.api_key = os.getenv("MISTRAL_API_KEY")
-            self.model = os.getenv("MISTRAL_MODEL", "mistral-medium")
+            self.api_key = p_cfg.get("api_key") or os.getenv("MISTRAL_API_KEY")
+            self.model = p_cfg.get("model") or os.getenv("MISTRAL_MODEL", "mistral-medium")
         elif self.provider == "gemini":
-            self.api_key = os.getenv("GEMINI_API_KEY")
-            self.model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+            self.api_key = p_cfg.get("api_key") or os.getenv("GEMINI_API_KEY")
+            self.model = p_cfg.get("model") or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         else:
-            self.api_key = os.getenv("OPENROUTER_API_KEY")
-            self.model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash")
+            self.api_key = p_cfg.get("api_key") or os.getenv("OPENROUTER_API_KEY")
+            self.model = p_cfg.get("model") or os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash")
         
         self.playwright = None
         self.browser = None

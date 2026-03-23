@@ -19,10 +19,17 @@ def _new_tcp_init(self, *args, **kwargs):
 aiohttp.TCPConnector.__init__ = _new_tcp_init
 
 from rich.console import Console
+from config_loader import get_config
+
 console = Console()
 load_dotenv()
 
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+# Carrega do moltyclaw.json
+molty_config = get_config()
+d_cfg = molty_config.get("channels", {}).get("discord", {})
+
+DISCORD_TOKEN = d_cfg.get("bot_token") or os.getenv("DISCORD_TOKEN")
+DISCORD_ALLOWED_USERS = d_cfg.get("allowed_users") or os.getenv("DISCORD_ALLOWED_USERS", "")
 
 from routing import resolve_agent
 
@@ -60,7 +67,7 @@ class MoltyClawDiscordBot(discord.Client):
         if message.author == self.user:
             return
             
-        allowed_users = os.getenv("DISCORD_ALLOWED_USERS", "")
+        allowed_users = DISCORD_ALLOWED_USERS
         if allowed_users.strip():
             allowed_list = [u.strip() for u in allowed_users.split(",")]
             if str(message.author.id) not in allowed_list:
@@ -118,7 +125,6 @@ class MoltyClawDiscordBot(discord.Client):
                 if attachment.content_type and ('audio' in attachment.content_type or attachment.filename.endswith('.ogg')):
                     import time
                     from pathlib import Path
-                    import os
                     temp_dir = Path(os.path.join(os.path.expanduser("~"), ".moltyclaw", "temp"))
                     temp_dir.mkdir(exist_ok=True)
                     file_path = temp_dir / f"discord_audio_{int(time.time())}.ogg"

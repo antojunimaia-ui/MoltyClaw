@@ -13,11 +13,18 @@ sys.stderr.reconfigure(encoding='utf-8')
 
 from moltyclaw import MoltyClaw
 from rich.console import Console
+from config_loader import get_config
 
 console = Console()
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+# Carrega do moltyclaw.json
+molty_config = get_config()
+t_cfg = molty_config.get("channels", {}).get("telegram", {})
+
+TELEGRAM_TOKEN = t_cfg.get("bot_token") or os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_ALLOWED_USERS = t_cfg.get("allowed_users") or os.getenv("TELEGRAM_ALLOWED_USERS", "")
+
 from routing import resolve_agent
 
 agent_instances = {}
@@ -90,7 +97,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message.from_user.is_bot:
         return
 
-    allowed_users = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+    allowed_users = TELEGRAM_ALLOWED_USERS
     if allowed_users.strip():
         allowed_list = [u.strip() for u in allowed_users.split(",")]
         user_id = str(update.message.from_user.id)
