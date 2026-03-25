@@ -1,4 +1,4 @@
-![MoltyClaw Banner](MoltyClaw-Banner.png)
+﻿![MoltyClaw Banner](MoltyClaw-Banner.png)
 <p align="center">
   **MoltyClaw toma atitudes, não importa aonde você esteja.**
 </p>
@@ -649,6 +649,7 @@ moltyclaw --help       # Lista todos os comandos disponíveis
 
 ---
 
+
 ## <a id="instalacao"></a>🛠️ Instalação e Configuração
 
 ### Requisitos
@@ -687,87 +688,117 @@ Você pode usar variáveis de ambiente no `.env` ou o novo arquivo centralizado 
 
 **Opção B: Tradicional `.env`:**
 
-# ─── IA PRINCIPAL (escolha um provider) ─────────────────
-
+```env
+# ─── IA PRINCIPAL (escolha um provider) ─────────────────────────────────────
 MOLTY_PROVIDER=mistral             # mistral | gemini | openrouter
 
 # Mistral
-
 MISTRAL_API_KEY=sua_chave_mistral_aqui
 MISTRAL_MODEL=mistral-medium       # ou mistral-large-latest, devstral-small...
 
 # Gemini
-
 GEMINI_API_KEY=sua_chave_gemini_aqui
 GEMINI_MODEL=gemini-2.0-flash
 
 # OpenRouter (acessa qualquer modelo via API unificada)
-
 OPENROUTER_API_KEY=sua_chave_openrouter_aqui
 OPENROUTER_MODEL=google/gemini-2.5-flash
 
-# ─── INTEGRAÇÕES SOCIAIS ────────────────────────────────
+# ─── INTEGRAÇÕES SOCIAIS ─────────────────────────────────────────────────────
+DISCORD_BOT_TOKEN=seu_token_discord
+DISCORD_ALLOWED_USERS=123456789,987654321
 
-DISCORD_TOKEN=seu_token_discord_aqui
-TELEGRAM_TOKEN=se## <a id="workspace"></a>📁 Arquitetura de Arquivos (Padrão Workspace)
+TELEGRAM_BOT_TOKEN=seu_token_telegram
+TELEGRAM_ALLOWED_USERS=@seunome,123456789
 
-```text
-MoltyClaw/
-│
-├── start_moltyclaw.py         # Entry point e CLI central
-├── src/
-│   ├── moltyclaw.py           # Kernel Principal
-│   ├── system_prompt.py       # Builder de Prompt Dinâmico
-│   ├── scheduler.py           # Motor de Agendamento
-│   ├── routing.py             # Roteador de Canais → Agentes
-│   ├── integrations/          # Módulos de WhatsApp, Discord, MCP, etc.
-│   └── webui/                 # Backend Flask e Dashboard
-└── ...
+WHATSAPP_ALLOWED_NUMBERS=5511999999999,5511888888888
 
-# Dados em runtime (Persistentes):
-~/.moltyclaw/
-├── moltyclaw.json             # Configuração Global Centralizada
-├── jobs.json                  # Tarefas agendadas
-├── bindings.json              # Mapeamento Canal → Agente
-├── browser_profile/           # Sessão persistente do Edge
-└── workspace/                 # Workspace Global do Master
-    ├── SOUL.md
-    ├── MEMORY.md
-    ├── IDENTITY.md
-    └── USER.md
-└── agents/
-    └── <NomeAgente>/
-        ├── config.json
-        ├── .env               # Secrets específicos (opcional)
-        └── workspace/         # Workspace Isolado do Sub-Agente
-            ├── SOUL.md
-            └── ...
+X_API_KEY=sua_api_key_twitter
+X_API_SECRET=seu_api_secret_twitter
+X_ACCESS_TOKEN=seu_access_token
+X_ACCESS_SECRET=seu_access_secret
+
+BLUESKY_HANDLE=seunome.bsky.social
+BLUESKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+BLUESKY_ALLOWED_HANDLES=
+
+# ─── E-MAIL ──────────────────────────────────────────────────────────────────
+GMAIL_USER=seuemail@gmail.com
+GMAIL_APP_PASSWORD=sua_app_password_gmail
+
+# ─── SPOTIFY ─────────────────────────────────────────────────────────────────
+SPOTIFY_CLIENT_ID=seu_client_id
+SPOTIFY_CLIENT_SECRET=seu_client_secret
+SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+```
+
+**3. Instale as dependências Python:**
+
+```bash
+pip install -r requirements.txt
+playwright install msedge
+```
+
+**4. Instale as dependências Node.js (apenas para WhatsApp):**
+
+```bash
+npm install
+```
+
+**5. Inicie o MoltyClaw:**
+
+```bash
+python start_moltyclaw.py
 ```
 
 ---
 
-> **⚠️ Aviso de Segurança:** O MoltyClaw opera com as mesmas permissões do usuário Windows que iniciou o processo. O agente tem acesso ao CMD, ao sistema de arquivos e à internet. Configure as whitelists corretamente e não compartilhe o modo `--share` em redes públicas sem autenticação adicional. Revise o `SOUL.md` para impor restrições de comportamento conforme necessário.
-��─ index.html     # HTML base do dashboard
-│   │
-│   └── integrations/
-│       ├── whatsapp_server.py # Servidor AIOHTTP da integração WhatsApp (Python-side)
-│       ├── whatsapp_bridge.js # Bridge Node.js que conecta ao WhatsApp Web via QR
-│       ├── discord_bot.py     # Bot Discord com discord.py
-│       ├── telegram_bot.py    # Bot Telegram com python-telegram-bot
-│       ├── twitter_bot.py     # Bot Twitter/X com tweepy (API v2)
-│       └── bluesky_bot.py     # Bot Bluesky com atproto
+
+## <a id="workspace"></a>📁 Arquitetura de Arquivos (Padrão Workspace)
+
+### Repositório (código-fonte)
+
+```
+MoltyClaw/
+├── src/
+│   ├── moltyclaw.py           # Classe principal — loop cognitivo e tool-use
+│   ├── system_prompt.py       # Construção dinâmica do System Prompt
+│   ├── config_loader.py       # Carrega moltyclaw.json e .env
+│   ├── routing.py             # Roteamento canal → agente
+│   ├── scheduler.py           # Motor de agendamento de jobs
+│   ├── subagent_registry.py   # Rastreamento de runs de sub-agentes
+│   ├── heartbeat.py           # Tarefas proativas periódicas
+│   ├── integrations/
+│   │   ├── mcp_hub.py         # Gerenciador de servidores MCP (Stdio)
+│   │   ├── discord_bot.py     # Bot Discord com discord.py
+│   │   ├── telegram_bot.py    # Bot Telegram com python-telegram-bot
+│   │   ├── whatsapp_server.py # Servidor Python que recebe mensagens do bridge
+│   │   ├── whatsapp_bridge.js # Bridge Node.js + whatsapp-web.js
+│   │   ├── twitter_bot.py     # Bot Twitter/X com tweepy (API v2)
+│   │   └── bluesky_bot.py     # Bot Bluesky com atproto
+│   └── webui/
+│       ├── app.py             # Servidor Flask + endpoints SSE
+│       ├── templates/
+│       │   └── index.html     # Interface principal
+│       └── static/
+│           ├── script.js      # Lógica frontend (chat, SSE, abas)
+│           └── style.css      # Estilos dark mode
 │
 ├── mcp_servers.json           # Configuração dos servidores MCP ativos
 ├── mcp_servers.example.json   # Template de referência para MCPs
+├── start_moltyclaw.py         # Ponto de entrada / launcher interativo
 ├── requirements.txt           # Dependências Python
 └── .env                       # Variáveis de ambiente (NÃO versionar!)
+```
 
-# Dados em runtime (fora do repositório)
+### Dados em runtime (fora do repositório)
 
+```
 ~/.moltyclaw/
-├── SOUL.md                    # Identidade do Master
-├── MEMORY.md                  # Hipocampo do Master
+├── SOUL.md                    # Identidade e personalidade do Master
+├── MEMORY.md                  # Memória de longo prazo do Master
 ├── bindings.json              # Regras de roteamento canal → agente
+├── moltyclaw.json             # Configuração centralizada (opcional)
 ├── browser_profile/           # Perfil persistente do Edge (cookies, logins)
 ├── temp/                      # Screenshots e áudios temporários
 ├── memory/                    # Diários diários (YYYY-MM-DD.md)
@@ -777,9 +808,8 @@ MoltyClaw/
         ├── SOUL.md            # Alma própria do sub-agente
         ├── MEMORY.md          # Memória própria do sub-agente
         └── .env               # Chaves de API próprias (opcional, override do global)
-
 ```
 
 ---
 
-> **⚠️ Aviso de Segurança:** O MoltyClaw opera com as mesmas permissões do usuário Windows que iniciou o processo. O agente tem acesso ao CMD, ao sistema de arquivos e à internet. Configure as whitelists corretamente e não compartilhe o modo `--share` em redes públicas sem autenticação adicional. Revise o `SOUL.md` para impor restrições de comportamento conforme necessário.
+> ⚠️ **Aviso de Segurança:** O MoltyClaw opera com as mesmas permissões do usuário Windows que iniciou o processo. O agente tem acesso ao CMD, ao sistema de arquivos e à internet. Configure as whitelists corretamente e não compartilhe o modo `--share` em redes públicas sem autenticação adicional. Revise o `SOUL.md` para impor restrições de comportamento conforme necessário.
