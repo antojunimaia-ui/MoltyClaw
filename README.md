@@ -9,25 +9,25 @@
 
 ## 📋 Índice
 
-1. [Visão Geral e Filosofia](#-visão-geral-e-filosofia)
-2. [O Loop Cognitivo — Como o Agente Pensa](#-o-loop-cognitivo---como-o-agente-pensa)
-3. [Ferramentas Disponíveis — O Arsenal Completo](#-ferramentas-disponíveis---o-arsenal-completo)
-4. [Alma e Memória Persistente (A Tríade de Consciência)](#-alma-e-memória-persistente-a-tríade-de-consciência)
-5. [Stealth Headless Browser & Playwright](#-stealth-headless-browser--playwright)
-6. [Operant ID — Visão DOM Lógica](#-operant-id---visão-dom-lógica)
-7. [Integração MCP — Model Context Protocol](#-integração-mcp---model-context-protocol)
-8. [Integrações Sociais](#-integrações-sociais)
-9. [IA de Voz — Audição e Síntese](#-ia-de-voz---audição-e-síntese)
-10. [Sistema de Sub-Agentes (Swarm)](#-sistema-de-sub-agentes-swarm)
-11. [Agendador (Scheduler) — Tarefas Recorrentes](#-agendador-scheduler---tarefas-recorrentes)
-12. [WebUI Dashboard](#-webui-dashboard)
-13. [CLI Global — Comandos de Linha de Comando](#-cli-global---comandos-de-linha-de-comando)
-14. [Instalação e Configuração](#-instalação-e-configuração)
-15. [Arquitetura de Arquivos (Padrão Workspace)](#-arquitetura-de-arquivos-padrão-workspace)
+1. [Visão Geral e Filosofia](#visao-geral)
+2. [O Loop Cognitivo — Como o Agente Pensa](#o-loop-cognitivo)
+3. [Ferramentas Disponíveis — O Arsenal Completo](#ferramentas-disponiveis)
+4. [Alma e Memória Persistente (A Tríade de Consciência)](#alma-e-memoria)
+5. [Stealth Headless Browser & Playwright](#stealth-browser)
+6. [Operant ID — Visão DOM Lógica](#operant-id)
+7. [Integração MCP — Model Context Protocol](#mcp)
+8. [Integrações Sociais](#integracoes-sociais)
+9. [IA de Voz — Audição e Síntese](#voz)
+10. [Sistema de Sub-Agentes (Swarm)](#sub-agentes)
+11. [Agendador (Scheduler) — Tarefas Recorrentes](#agendador)
+12. [WebUI Dashboard](#webui)
+13. [CLI Global — Comandos de Linha de Comando](#cli)
+14. [Instalação e Configuração](#instalacao)
+15. [Arquitetura de Arquivos (Padrão Workspace)](#workspace)
 
 ---
 
-## 🧭 Visão Geral e Filosofia
+## <a id="visao-geral"></a>🧭 Visão Geral e Filosofia
 
 O MoltyClaw nasceu de uma pergunta simples: **por que um agente de IA precisa ficar preso em uma janela de chat?**
 
@@ -47,7 +47,7 @@ O modelo base pode ser **Mistral AI**, **Google Gemini** ou qualquer modelo via 
 
 ---
 
-## 🧠 O Loop Cognitivo — Como o Agente Pensa
+## <a id="o-loop-cognitivo"></a>🧠 O Loop Cognitivo — Como o Agente Pensa
 
 O mecanismo central do MoltyClaw é implementado na classe `MoltyClaw` dentro de `src/moltyclaw.py`, especificamente no método `.ask()`.
 
@@ -101,7 +101,7 @@ O MoltyClaw não usa o sistema nativo de "function calling" da OpenAI/Mistral pa
 
 ---
 
-## 🔧 Ferramentas Disponíveis — O Arsenal Completo
+## <a id="ferramentas-disponiveis"></a>🔧 Ferramentas Disponíveis — O Arsenal Completo
 
 Cada ferramenta abaixo é uma ação que a IA pode invocar autonomamente. O LLM aprende quais existem através do System Prompt.
 
@@ -195,7 +195,7 @@ Configuração via `.env`: `GMAIL_USER` e `GMAIL_APP_PASSWORD`.
 
 ---
 
-### 🪄 Alma e Memória Persistente (A Tríade de Consciência)
+### <a id="alma-e-memoria"></a>🪄 Alma e Memória Persistente (A Tríade de Consciência)
 
 O MoltyClaw agora utiliza uma arquitetura baseada em **Workspaces**. Cada agente (Master ou Sub-Agente) opera dentro de uma subpasta `/workspace` onde residem seus arquivos de identidade e memória.
 
@@ -229,7 +229,7 @@ Se este arquivo estiver presente, o agente o lê na primeira interação para co
 
 ---
 
-## 🥷 Stealth Headless Browser & Playwright
+## <a id="stealth-browser"></a>🥷 Stealth Headless Browser & Playwright
 
 ### O Problema: Detecção de Bots
 
@@ -256,7 +256,7 @@ O resultado é uma sessão de browser que, para todos os efeitos dos sistemas an
 
 ---
 
-## 🎯 Operant ID — Visão DOM Lógica
+## <a id="operant-id"></a>🎯 Operant ID — Visão DOM Lógica
 
 ### O Problema: LLMs não entendem HTML cru
 
@@ -287,7 +287,7 @@ O Python mapeia o seletor de volta para o elemento DOM e o Playwright executa um
 
 ---
 
-## 🔌 Integração MCP — Model Context Protocol
+## <a id="mcp"></a>🔌 Integração MCP — Model Context Protocol
 
 ### O que é MCP?
 
@@ -344,7 +344,7 @@ moltyclaw mcp uninstall meu_servidor_db
 
 ---
 
-## 📱 Integrações Sociais
+## <a id="integracoes-sociais"></a>📱 Integrações Sociais
 
 As integrações do MoltyClaw são **módulos desacoplados** — cada um roda em sua própria thread/processo, mas todos compartilham o mesmo núcleo `MoltyClaw` e, portanto, as mesmas ferramentas, SOUL e MEMORY.
 
@@ -445,7 +445,7 @@ O Bluesky opera sobre o **AT Protocol**, um padrão aberto e descentralizado. A 
 
 ---
 
-## 🎙️ IA de Voz — Audição e Síntese
+## <a id="voz"></a>🎙️ IA de Voz — Audição e Síntese
 
 ### Audição — Transcrição via Voxtral (Mistral)
 
@@ -467,7 +467,7 @@ Quando a IA invoca `VOICE_REPLY`:
 
 ---
 
-## 🤖 Sistema de Sub-Agentes (Swarm)
+## <a id="sub-agentes"></a>🤖 Sistema de Sub-Agentes (Swarm)
 
 O MoltyClaw suporta um sistema de **sub-agentes especializados** que operam em paralelo como um Swarm controlado.
 
@@ -533,7 +533,7 @@ Via `bindings.json`, diferentes usuários/grupos podem ser atendidos por sub-age
 
 ---
 
-## ⏲️ Agendador (Scheduler) — Tarefas Recorrentes
+## <a id="agendador"></a>⏲️ Agendador (Scheduler) — Tarefas Recorrentes
 
 O MoltyClaw possui um motor de agendamento que permite à IA executar tarefas de forma proativa sem intervenção humana.
 
@@ -543,7 +543,7 @@ O MoltyClaw possui um motor de agendamento que permite à IA executar tarefas de
 
 ---
 
-## 🖥️ WebUI Dashboard
+## <a id="webui"></a>🖥️ WebUI Dashboard
 
 O MoltyClaw possui um painel web completo construído com **Flask** (backend) + HTML/CSS/JS vanilla (frontend).
 
@@ -597,7 +597,7 @@ Frontend acumula tokens e renderiza Markdown incrementalmente
 
 ---
 
-## 💻 CLI Global — Comandos de Linha de Comando
+## <a id="cli"></a>💻 CLI Global — Comandos de Linha de Comando
 
 Após selecionar a opção **"Configurar 'moltyclaw' Global"** no Launcher, o executável é adicionado ao PATH do Windows.
 
@@ -649,7 +649,7 @@ moltyclaw --help       # Lista todos os comandos disponíveis
 
 ---
 
-## 🛠️ Instalação e Configuração
+## <a id="instalacao"></a>🛠️ Instalação e Configuração
 
 ### Requisitos
 
@@ -709,7 +709,7 @@ OPENROUTER_MODEL=google/gemini-2.5-flash
 # ─── INTEGRAÇÕES SOCIAIS ────────────────────────────────
 
 DISCORD_TOKEN=seu_token_discord_aqui
-TELEGRAM_TOKEN=se## 📁 Arquitetura de Arquivos (Padrão Workspace)
+TELEGRAM_TOKEN=se## <a id="workspace"></a>📁 Arquitetura de Arquivos (Padrão Workspace)
 
 ```text
 MoltyClaw/
