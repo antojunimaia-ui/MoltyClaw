@@ -108,9 +108,10 @@
                         <div class="header-right">
                             <div class="agent-selector-chat">
                                 <i class="fa-solid fa-robot"></i>
-                                <select id="chat-agent-select" class="agent-select-small all-agents-select" onchange="updateChatAgent()" title="Select your main agent">
-                                <option value="MoltyClaw">MoltyClaw</option>
-                            </select>
+                                <select id="chat-agent-select" class="agent-select-small all-agents-select"
+                                    onchange="updateChatAgent()" title="Select your main agent">
+                                    <option value="MoltyClaw">MoltyClaw</option>
+                                </select>
                             </div>
                         </div>
                     </header>
@@ -159,11 +160,13 @@
                                 <div class="int-active-agents" id="active-whatsapp"></div>
                             </div>
                             <div class="int-controls">
-                                <select class="agent-select-small" id="select-whatsapp" title="Select agent for WhatsApp">
+                                <select class="agent-select-small" id="select-whatsapp"
+                                    title="Select agent for WhatsApp">
                                     <option value="MoltyClaw">MoltyClaw</option>
                                 </select>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="toggle-whatsapp" onchange="toggleIntegration('whatsapp')">
+                                    <input type="checkbox" id="toggle-whatsapp"
+                                        onchange="toggleIntegration('whatsapp')">
                                     <span class="slider"></span>
                                 </label>
                             </div>
@@ -197,11 +200,13 @@
                                 <div class="int-active-agents" id="active-telegram"></div>
                             </div>
                             <div class="int-controls">
-                                <select class="agent-select-small" id="select-telegram" title="Select agent for Telegram">
+                                <select class="agent-select-small" id="select-telegram"
+                                    title="Select agent for Telegram">
                                     <option value="MoltyClaw">MoltyClaw</option>
                                 </select>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="toggle-telegram" onchange="toggleIntegration('telegram')">
+                                    <input type="checkbox" id="toggle-telegram"
+                                        onchange="toggleIntegration('telegram')">
                                     <span class="slider"></span>
                                 </label>
                             </div>
@@ -340,20 +345,25 @@
                                         </div>
                                         <div>
                                             <div class="card-title" id="selected-agent-name">MoltyClaw</div>
-                                            <div class="card-sub" id="selected-agent-subtitle">Agent workspace and routing.</div>
+                                            <div class="card-sub" id="selected-agent-subtitle">Agent workspace and
+                                                routing.</div>
                                         </div>
                                     </div>
                                     <div class="agent-header-meta">
                                         <div class="mono" id="selected-agent-id">moltyclaw</div>
-                                        <span class="agent-pill" id="selected-agent-badge" style="display: none;">default</span>
+                                        <span class="agent-pill" id="selected-agent-badge"
+                                            style="display: none;">default</span>
                                     </div>
                                 </section>
 
                                 <!-- Agent Tabs -->
                                 <div class="agent-tabs">
-                                    <button class="agent-tab active" id="btn-agent-core" onclick="switchAgentSegment('core')">Identity & Memory</button>
-                                    <button class="agent-tab" id="btn-agent-config" onclick="switchAgentSegment('config')">Setup</button>
-                                    <button class="agent-tab" id="btn-agent-context" onclick="switchAgentSegment('context')">Context</button>
+                                    <button class="agent-tab active" id="btn-agent-core"
+                                        onclick="switchAgentSegment('core')">Identity & Memory</button>
+                                    <button class="agent-tab" id="btn-agent-config"
+                                        onclick="switchAgentSegment('config')">Setup</button>
+                                    <button class="agent-tab" id="btn-agent-context"
+                                        onclick="switchAgentSegment('context')">Context</button>
                                 </div>
 
                                 <!-- Tab Contents -->
@@ -361,13 +371,30 @@
                                     <div class="agent-studio-wrapper">
                                         <!-- Sidebar for files -->
                                         <div class="studio-sidebar">
-                                            <div class="studio-file-card active" id="card-soul" onclick="selectAgentFile('soul')">
+                                            <div class="studio-file-card active" id="card-soul"
+                                                onclick="selectAgentFile('soul')">
                                                 <h4>SOUL.md</h4>
-                                                <span>Persona Identity</span>
+                                                <span>Alma do Agente</span>
                                             </div>
-                                            <div class="studio-file-card" id="card-memory" onclick="selectAgentFile('memory')">
+                                            <div class="studio-file-card" id="card-identity"
+                                                onclick="selectAgentFile('identity')">
+                                                <h4>IDENTITY.md</h4>
+                                                <span>Identidade do Agente</span>
+                                            </div>
+                                            <div class="studio-file-card" id="card-user"
+                                                onclick="selectAgentFile('user')">
+                                                <h4>USER.md</h4>
+                                                <span>Perfil do Usuário</span>
+                                            </div>
+                                            <div class="studio-file-card" id="card-bootstrap"
+                                                onclick="selectAgentFile('bootstrap')">
+                                                <h4>BOOTSTRAP.md</h4>
+                                                <span>Ritual de Despertar</span>
+                                            </div>
+                                            <div class="studio-file-card" id="card-memory"
+                                                onclick="selectAgentFile('memory')">
                                                 <h4>MEMORY.md</h4>
-                                                <span>Persistent Knowledge</span>
+                                                <span>Memórias Longas</span>
                                             </div>
                                         </div>
                                         <!-- Main area -->
@@ -378,10 +405,12 @@
                                                     <span id="current-editor-path">~/.moltyclaw/SOUL.md</span>
                                                 </div>
                                                 <div class="editor-actions">
-                                                    <button class="btn btn-primary btn--sm" onclick="saveCurrentAgentFile()">Salvar</button>
+                                                    <button class="btn btn-primary btn--sm"
+                                                        onclick="saveCurrentAgentFile()">Salvar</button>
                                                 </div>
                                             </div>
-                                            <textarea id="active-editor" class="code-editor" placeholder="Escreva a alma do seu agente aqui..."></textarea>
+                                            <textarea id="active-editor" class="code-editor"
+                                                placeholder="Escreva a alma do seu agente aqui..."></textarea>
                                         </div>
                                     </div>
                                 </div>
@@ -395,11 +424,13 @@
                                             </div>
                                             <div class="form-group">
                                                 <label>Nome Visível</label>
-                                                <input type="text" id="agent-form-name" placeholder="Ex: Molty Pesquisador">
+                                                <input type="text" id="agent-form-name"
+                                                    placeholder="Ex: Molty Pesquisador">
                                             </div>
                                             <div class="form-group">
                                                 <label>Descrição / Objetivo</label>
-                                                <textarea id="agent-form-description" placeholder="O que este agente faz?"></textarea>
+                                                <textarea id="agent-form-description"
+                                                    placeholder="O que este agente faz?"></textarea>
                                             </div>
                                             <div class="form-group">
                                                 <label>Provedor de IA (LLM)</label>
@@ -411,7 +442,9 @@
                                             </div>
                                             <div class="form-group">
                                                 <label>Variáveis de Ambiente (.env) - Ex: CHAVE=valor</label>
-                                                <textarea id="agent-form-env" placeholder="GEMINI_API_KEY=xxx\nOUTRA_KEY=yyy" style="height: 100px;"></textarea>
+                                                <textarea id="agent-form-env"
+                                                    placeholder="GEMINI_API_KEY=xxx\nOUTRA_KEY=yyy"
+                                                    style="height: 100px;"></textarea>
                                             </div>
                                             <div class="form-group">
                                                 <label>🛠️ Tools Nativas Locais</label>
@@ -424,61 +457,71 @@
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="OPEN_BROWSER">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="OPEN_BROWSER">
                                                                     <span class="tool-name">OPEN_BROWSER</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="GOTO">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="GOTO">
                                                                     <span class="tool-name">GOTO</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="READ_PAGE">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="READ_PAGE">
                                                                     <span class="tool-name">READ_PAGE</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="INSPECT_PAGE">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="INSPECT_PAGE">
                                                                     <span class="tool-name">INSPECT_PAGE</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="CLICK">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="CLICK">
                                                                     <span class="tool-name">CLICK</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="TYPE">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="TYPE">
                                                                     <span class="tool-name">TYPE</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="PRESS_ENTER">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="PRESS_ENTER">
                                                                     <span class="tool-name">PRESS_ENTER</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="SCREENSHOT">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="SCREENSHOT">
                                                                     <span class="tool-name">SCREENSHOT</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="SCROLL_DOWN">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="SCROLL_DOWN">
                                                                     <span class="tool-name">SCROLL_DOWN</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="DDG_SEARCH" checked>
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="DDG_SEARCH" checked>
                                                                     <span class="tool-name">DDG_SEARCH</span>
                                                                 </label>
                                                             </div>
@@ -491,7 +534,8 @@
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="CMD">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="CMD">
                                                                     <span class="tool-name">CMD</span>
                                                                 </label>
                                                             </div>
@@ -504,19 +548,22 @@
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="READ_EMAILS">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="READ_EMAILS">
                                                                     <span class="tool-name">READ_EMAILS</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="SEND_EMAIL">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="SEND_EMAIL">
                                                                     <span class="tool-name">SEND_EMAIL</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="DELETE_EMAIL">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="DELETE_EMAIL">
                                                                     <span class="tool-name">DELETE_EMAIL</span>
                                                                 </label>
                                                             </div>
@@ -529,31 +576,36 @@
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="SPOTIFY_PLAY">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="SPOTIFY_PLAY">
                                                                     <span class="tool-name">SPOTIFY_PLAY</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="SPOTIFY_PAUSE">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="SPOTIFY_PAUSE">
                                                                     <span class="tool-name">SPOTIFY_PAUSE</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="SPOTIFY_SEARCH">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="SPOTIFY_SEARCH">
                                                                     <span class="tool-name">SPOTIFY_SEARCH</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="YOUTUBE_SUMMARIZE">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="YOUTUBE_SUMMARIZE">
                                                                     <span class="tool-name">YOUTUBE_SUMMARIZE</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="VOICE_REPLY">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="VOICE_REPLY">
                                                                     <span class="tool-name">VOICE_REPLY</span>
                                                                 </label>
                                                             </div>
@@ -566,31 +618,36 @@
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="WHATSAPP_SEND">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="WHATSAPP_SEND">
                                                                     <span class="tool-name">WHATSAPP_SEND</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="DISCORD_SEND">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="DISCORD_SEND">
                                                                     <span class="tool-name">DISCORD_SEND</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="TELEGRAM_SEND">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="TELEGRAM_SEND">
                                                                     <span class="tool-name">TELEGRAM_SEND</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="X_POST">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="X_POST">
                                                                     <span class="tool-name">X_POST</span>
                                                                 </label>
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="BLUESKY_POST">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="BLUESKY_POST">
                                                                     <span class="tool-name">BLUESKY_POST</span>
                                                                 </label>
                                                             </div>
@@ -603,17 +660,22 @@
                                                             </div>
                                                             <div class="tool-item">
                                                                 <label class="tool-toggle">
-                                                                    <input type="checkbox" class="native-tool-check" value="MEMORY_WRITE">
+                                                                    <input type="checkbox" class="native-tool-check"
+                                                                        value="MEMORY_WRITE">
                                                                     <span class="tool-name">MEMORY_WRITE</span>
                                                                 </label>
                                                             </div>
                                                         </div>
                                                     </div>
                                                     <div class="tools-actions">
-                                                        <button type="button" class="btn-secondary" onclick="selectAllTools(true)" style="font-size: 0.8rem; padding: 6px 12px;">
+                                                        <button type="button" class="btn-secondary"
+                                                            onclick="selectAllTools(true)"
+                                                            style="font-size: 0.8rem; padding: 6px 12px;">
                                                             <i class="fa-solid fa-check-double"></i> Selecionar Todas
                                                         </button>
-                                                        <button type="button" class="btn-secondary" onclick="selectAllTools(false)" style="font-size: 0.8rem; padding: 6px 12px;">
+                                                        <button type="button" class="btn-secondary"
+                                                            onclick="selectAllTools(false)"
+                                                            style="font-size: 0.8rem; padding: 6px 12px;">
                                                             <i class="fa-solid fa-xmark"></i> Desmarcar Todas
                                                         </button>
                                                     </div>
@@ -623,13 +685,17 @@
                                                 <label>🔌 Servidores MCP</label>
                                                 <div class="mcp-selector-container" id="mcp-tools-selector">
                                                     <div class="mcp-loading">
-                                                        <i class="fa-solid fa-circle-notch fa-spin"></i> Carregando servidores MCP...
+                                                        <i class="fa-solid fa-circle-notch fa-spin"></i> Carregando
+                                                        servidores MCP...
                                                     </div>
                                                 </div>
                                             </div>
                                             <div style="display: flex; gap: 10px;">
-                                                <button class="btn-primary" onclick="saveAgentConfig()" style="flex: 1; margin-top: 15px;">Salvar Sub-Agente</button>
-                                                <button class="btn-secondary" id="btn-delete-agent" onclick="deleteAgent()" style="margin-top: 15px; border-color: #ef4444; color: #ef4444; display:none;">Excluir</button>
+                                                <button class="btn-primary" onclick="saveAgentConfig()"
+                                                    style="flex: 1; margin-top: 15px;">Salvar Sub-Agente</button>
+                                                <button class="btn-secondary" id="btn-delete-agent"
+                                                    onclick="deleteAgent()"
+                                                    style="margin-top: 15px; border-color: #ef4444; color: #ef4444; display:none;">Excluir</button>
                                             </div>
                                         </div>
                                     </div>
@@ -673,12 +739,14 @@
                     <header class="main-header">
                         <div class="header-left">
                             <h1 class="page-title">Scheduler (Cron)</h1>
-                            <p class="page-subtitle">Agende batidas de consciência ou tarefas específicas para seu agente monitorar o mundo.</p>
+                            <p class="page-subtitle">Agende batidas de consciência ou tarefas específicas para seu
+                                agente monitorar o mundo.</p>
                         </div>
                     </header>
 
-                    <div class="scheduler-container" style="padding: 20px 40px; display: grid; grid-template-columns: 1fr 350px; gap: 24px; align-items: start;">
-                        
+                    <div class="scheduler-container"
+                        style="padding: 20px 40px; display: grid; grid-template-columns: 1fr 350px; gap: 24px; align-items: start;">
+
                         <!-- Lista de Jobs -->
                         <div class="jobs-column">
                             <h3 style="margin-bottom: 16px;">Ciclos Ativos</h3>
@@ -692,12 +760,12 @@
                             <div class="card" style="position: sticky; top: 20px;">
                                 <h3 style="margin-top:0">Novo Agendamento</h3>
                                 <p class="card-sub" style="margin-bottom: 20px;">Crie uma rotina proativa.</p>
-                                
+
                                 <div class="form-group">
                                     <label>Nome</label>
                                     <input type="text" id="sched-name" placeholder="Ex: Monitor de Preços">
                                 </div>
-                                
+
                                 <div class="form-group" style="margin-top: 12px;">
                                     <label>Intervalo (minutos)</label>
                                     <input type="number" id="sched-interval" value="30">
@@ -705,10 +773,12 @@
 
                                 <div class="form-group" style="margin-top: 12px;">
                                     <label>O que fazer? (Payload/Prompt)</label>
-                                    <textarea id="sched-payload" rows="4" placeholder="Ex: Verifique se houve novos e-mails importantes e me avise."></textarea>
+                                    <textarea id="sched-payload" rows="4"
+                                        placeholder="Ex: Verifique se houve novos e-mails importantes e me avise."></textarea>
                                 </div>
 
-                                <button class="btn primary" style="width: 100%; margin-top: 16px;" onclick="addSchedulerJob()">
+                                <button class="btn primary" style="width: 100%; margin-top: 16px;"
+                                    onclick="addSchedulerJob()">
                                     <i class="fa-solid fa-plus"></i> Criar Tarefa
                                 </button>
                             </div>

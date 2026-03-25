@@ -20,10 +20,36 @@ TOOL_FORMAT_EXAMPLE = '<tool>\n{"action": "GOTO", "param": "https://site.com"}\n
 # Seções individuais (retornam listas de strings, filtradas e juntadas no final)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _build_identity(name: str) -> list[str]:
+def _build_identity(name: str, identity_file_content: str = "") -> list[str]:
+    identity = identity_file_content.strip() if identity_file_content else ""
     return [
         f"Você é o {name}, um agente autônomo pessoal rodando dentro do MoltyClaw v{VERSION}.",
+        identity,
+        ""
+    ] if identity else [
+        f"Você é o {name}, um agente autônomo pessoal rodando dentro do MoltyClaw v{VERSION}.",
+        ""
+    ]
+
+
+def _build_user_section(user_content: str) -> list[str]:
+    user = user_content.strip()
+    if not user:
+        return []
+    return ["## Sobre Seu Usuário", user, ""]
+
+
+def _build_bootstrap_section(bootstrap_content: str) -> list[str]:
+    bootstrap = bootstrap_content.strip()
+    if not bootstrap:
+        return []
+    return [
+        "## ⚠️ INSTRUÇÕES DE INICIALIZAÇÃO (BOOTSTRAP)",
+        "Você encontrou um arquivo BOOTSTRAP.md no seu diretório. Siga as instruções abaixo IMEDIATAMENTE:",
+        bootstrap,
         "",
+        "IMPORTANTE: Não delete este arquivo até que você tenha definido sua IDENTIDADE e o PERFIL DO USUÁRIO com sucesso.",
+        ""
     ]
 
 
@@ -149,6 +175,24 @@ def _build_runtime_line(
     ]
 
 
+def _build_workspace_section(workspace_dir: str, is_minimal: bool) -> list[str]:
+    if is_minimal:
+        return []
+        
+    return [
+        "## Workspace",
+        f"Your working directory is: {workspace_dir}",
+        "Treat this directory as the single global workspace for file operations unless explicitly instructed otherwise.",
+        "These user-editable files are loaded by MoltyClaw and included below in Project Context.",
+        ""
+    ]
+
+def _build_project_context_header(has_files: bool) -> list[str]:
+    if not has_files:
+        return []
+    return ["# Project Context", ""]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Builder principal
 # ──────────────────────────────────────────────────────────────────────────────
@@ -158,7 +202,11 @@ def build_system_prompt(
     agent_id: str,
     model: str,
     provider: str,
+    workspace_dir: str = "",
     soul_content: str = "",
+    identity_content: str = "",
+    user_content: str = "",
+    bootstrap_content: str = "",
     memory_content: str = "",
     active_features: str = "",
     mcp_placeholder: str = "",
@@ -174,10 +222,15 @@ def build_system_prompt(
       - is_subagent=True   → prompt minimal (sub-agentes recebem versão reduzida)
     """
     is_minimal = is_subagent
+    has_files = any([soul_content, identity_content, user_content, bootstrap_content, memory_content])
 
     sections: list[list[str]] = [
-        _build_identity(name),
+        _build_identity(name, identity_content),
+        _build_workspace_section(workspace_dir, is_minimal),
+        _build_project_context_header(has_files),
         _build_soul_section(soul_content),
+        _build_user_section(user_content),
+        _build_bootstrap_section(bootstrap_content),
         _build_autonomy_section(is_minimal),
         _build_tool_format_section(is_minimal),
         _build_tools_section(active_features),

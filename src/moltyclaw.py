@@ -2,6 +2,8 @@ import os
 import asyncio
 import traceback
 import re
+import time
+import shutil
 
 MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
 os.makedirs(MOLTY_DIR, exist_ok=True)
@@ -75,7 +77,8 @@ class MoltyClaw:
             elif "cmd" in _name_lower:      self.channel = "cli"
             else:                           self.channel = None
         
-        self.workspace_dir = MOLTY_DIR if self.is_master else os.path.join(MOLTY_DIR, "agents", self.agent_id)
+        self.base_dir = MOLTY_DIR if self.is_master else os.path.join(MOLTY_DIR, "agents", self.agent_id)
+        self.workspace_dir = os.path.join(self.base_dir, "workspace")
         os.makedirs(self.workspace_dir, exist_ok=True)
         
         # Carrega configuração do agente (tools permitidas, provider, etc)
@@ -85,7 +88,7 @@ class MoltyClaw:
         
         # Carrega o .env específico do agente se existir
         if not self.is_master:
-            agent_env = os.path.join(self.workspace_dir, ".env")
+            agent_env = os.path.join(self.base_dir, ".env") # .env continua na raiz do agente
             if os.path.exists(agent_env):
                 console.print(f"[dim]>> Carregando configurações específicas do agente em {agent_env}[/dim]")
                 load_dotenv(agent_env, override=True)
@@ -126,8 +129,11 @@ class MoltyClaw:
         # Constrói a lista de ferramentas disponíveis baseado nas permissões do agente
         active_features = self._build_tools_list()
         
-        # Carrega SOUL.md e MEMORY.md específicos do agente
+        # Carrega SOUL.md, IDENTITY.md, USER.md, BOOTSTRAP.md e MEMORY.md específicos do agente
         soul_content = self._load_soul()
+        identity_content = self._load_identity()
+        user_content = self._load_user()
+        bootstrap_content = self._load_bootstrap()
         memory_content = self._load_memory()
 
         self.history = [
@@ -136,7 +142,11 @@ class MoltyClaw:
                 agent_id=self.agent_id,
                 model=self.model,
                 provider=self.provider,
+                workspace_dir=self.workspace_dir,
                 soul_content=soul_content,
+                identity_content=identity_content,
+                user_content=user_content,
+                bootstrap_content=bootstrap_content,
                 memory_content=memory_content,
                 active_features=active_features,
                 mcp_placeholder=self._get_mcp_prompt_placeholder(),
@@ -334,7 +344,8 @@ class MoltyClaw:
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                cwd=self.workspace_dir
             )
             stdout, stderr = await process.communicate()
             output = stdout.decode("utf-8", errors="replace").strip()
@@ -477,11 +488,10 @@ class MoltyClaw:
                 return f"🔍 ELEMENTOS INTERATIVOS VISÍVEIS (Marcadores Azuis desenhados na tela! Use os seletores [data-operant-id=\"X\"] para CLICK/TYPE):\n{content}"
                 
             elif action == "SCREENSHOT":
-                import os
-                import time
-                os.makedirs(os.path.join(MOLTY_DIR, "temp"), exist_ok=True)
+                temp_dir = os.path.join(self.base_dir, "temp")
+                os.makedirs(temp_dir, exist_ok=True)
                 filename = f"screenshot_{int(time.time())}.png"
-                path_str = os.path.join(MOLTY_DIR, "temp", filename)
+                path_str = os.path.join(temp_dir, filename)
                 await self.page.screenshot(path=path_str, full_page=False)
                 return f"Screenshot capturado com sucesso. Se o usuário pediu a imagem, você DEVE dizer essa exata frase no meio do seu texto de volta para ele: [SCREENSHOT_TAKEN: {filename}]"
                 
@@ -492,18 +502,28 @@ class MoltyClaw:
         import datetime
         import glob
         
-        mem_dir = os.path.join(MOLTY_DIR, "memory")
-        if not os.path.exists(mem_dir):
-            os.makedirs(mem_dir)
+        # Memória corporificada no Workspace do agente
+        mem_dir = os.path.join(self.workspace_dir, "memory")
+        os.makedirs(mem_dir, exist_ok=True)
             
         today_md = os.path.join(mem_dir, datetime.datetime.now().strftime("%Y-%m-%d") + ".md")
-        long_term_md = os.path.join(MOLTY_DIR, "MEMORY.md")
+        long_term_md = os.path.join(self.workspace_dir, "MEMORY.md")
 
         try:
             if action == "SOUL_UPDATE":
-                with open(os.path.join(MOLTY_DIR, "SOUL.md"), "w", encoding="utf-8") as f:
+                with open(os.path.join(self.workspace_dir, "SOUL.md"), "w", encoding="utf-8") as f:
                     f.write(param)
                 return "✅ Arquivo SOUL.md atualizado com sucesso! Sua 'alma' foi reescrita e recarregada."
+
+            elif action == "IDENTITY_SAVE":
+                with open(os.path.join(self.workspace_dir, "IDENTITY.md"), "w", encoding="utf-8") as f:
+                    f.write(param)
+                return "✅ Arquivo IDENTITY.md atualizado! Sua nova identidade foi salva."
+
+            elif action == "USER_SAVE":
+                with open(os.path.join(self.workspace_dir, "USER.md"), "w", encoding="utf-8") as f:
+                    f.write(param)
+                return "✅ Perfil do usuário (USER.md) atualizado com sucesso!"
 
             elif action == "MEMORY_SAVE_LONG_TERM":
                 with open(long_term_md, "a", encoding="utf-8") as f:
@@ -519,22 +539,31 @@ class MoltyClaw:
             elif action == "MEMORY_SEARCH":
                 query = param.lower()
                 results = []
+                # Busca na memória de longo prazo e no histórico diário específico deste agente
                 check_files = [long_term_md] + glob.glob(f"{mem_dir}/*.md")
                 
                 for fpath in check_files:
                     if os.path.exists(fpath):
-                        with open(fpath, "r", encoding="utf-8") as file:
-                            for idx, line in enumerate(file):
-                                if query in line.lower():
-                                    results.append(f"[{fpath} ln:{idx}] {line.strip()[:100]}...")
+                        try:
+                            with open(fpath, "r", encoding="utf-8") as file:
+                                for idx, line in enumerate(file):
+                                    if query in line.lower():
+                                        rel_path = os.path.relpath(fpath, self.workspace_dir)
+                                        results.append(f"[{rel_path} ln:{idx}] {line.strip()[:100]}...")
+                        except: continue
                 if results:
-                    return "Encontrado em:\n" + "\n".join(results[:15]) + "\n\nUse MEMORY_GET com o nome do arquivo para ler mais detalhes."
+                    return "Encontrado em:\n" + "\n".join(results[:15]) + "\n\nUse MEMORY_GET com o caminho relativo para ler mais detalhes."
                 return "Nenhuma memória semântica encontrada com esse texto."
                 
             elif action == "MEMORY_GET":
-                if not os.path.exists(param):
-                    return "Arquivo não encontrado."
-                with open(param, "r", encoding="utf-8") as f:
+                path = param
+                if not os.path.isabs(path):
+                    path = os.path.join(self.workspace_dir, path)
+                    
+                if not os.path.exists(path):
+                    return f"Arquivo '{param}' não encontrado no workspace."
+                    
+                with open(path, "r", encoding="utf-8") as f:
                     return f.read()[:3000] # Limite para não estourar prompt
                     
         except Exception as e:
@@ -1440,29 +1469,53 @@ class MoltyClaw:
     
     def _load_soul(self):
         """Carrega o SOUL.md do agente"""
-        soul_path = os.path.join(self.workspace_dir, "SOUL.md")
-        if os.path.exists(soul_path):
-            try:
-                with open(soul_path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        return f"\n📜 SUA ALMA (SOUL.md):\n{content}\n"
-            except:
-                pass
+        content = self._read_workspace_file("SOUL.md")
+        if content:
+            return f"\n📜 SUA ALMA (SOUL.md):\n{content}\n"
         return ""
-    
+
+    def _load_identity(self):
+        """Carrega o IDENTITY.md do agente"""
+        return self._read_workspace_file("IDENTITY.md")
+
+    def _load_user(self):
+        """Carrega o USER.md do agente"""
+        return self._read_workspace_file("USER.md")
+
+    def _load_bootstrap(self):
+        """Carrega o BOOTSTRAP.md do agente"""
+        return self._read_workspace_file("BOOTSTRAP.md")
+        
     def _load_memory(self):
         """Carrega o MEMORY.md do agente"""
-        memory_path = os.path.join(self.workspace_dir, "MEMORY.md")
-        if os.path.exists(memory_path):
+        content = self._read_workspace_file("MEMORY.md")
+        return content if content else "Nenhuma memória registrada ainda."
+
+    def _read_workspace_file(self, filename: str) -> str:
+        """Lê um arquivo do workspace com fallback para a raiz do agente e migração automática."""
+        path = os.path.join(self.workspace_dir, filename)
+        
+        # Se não existe no workspace, tenta na base_dir (migração)
+        if not os.path.exists(path):
+            old_path = os.path.join(self.base_dir, filename)
+            if os.path.exists(old_path):
+                try:
+                    import shutil
+                    shutil.move(old_path, path)
+                except:
+                    path = old_path # Fallback se falhar
+            else:
+                # Fallback extremo para o diretório de execução se for master
+                if self.is_master and os.path.exists(filename):
+                    path = filename
+        
+        if os.path.exists(path):
             try:
-                with open(memory_path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        return content
-            except:
-                pass
-        return "Nenhuma memória registrada ainda."
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            except: pass
+        return ""
+
     
     def _build_tools_list(self):
         """Constrói a lista de ferramentas disponíveis baseado nas permissões do agente"""
@@ -1505,6 +1558,9 @@ class MoltyClaw:
             
             # Memory Tools
             "MEMORY_WRITE": '"MEMORY_WRITE" (param: conteúdo para adicionar à memória)',
+            "IDENTITY_SAVE": '"IDENTITY_SAVE" (param: conteúdo completo para IDENTITY.md)',
+            "USER_SAVE": '"USER_SAVE" (param: conteúdo completo para USER.md)',
+            "SOUL_UPDATE": '"SOUL_UPDATE" (param: conteúdo completo para SOUL.md)',
         }
         
         active_features = []

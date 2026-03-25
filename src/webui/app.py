@@ -292,19 +292,40 @@ def toggle_integration(action):
 
 @app.route("/api/agent/<file>", methods=["GET", "POST"])
 def manage_agent_file(file):
-    if file not in ["memory", "soul"]:
+    allowed_files = {
+        "memory": "MEMORY.md",
+        "soul": "SOUL.md",
+        "identity": "IDENTITY.md",
+        "user": "USER.md",
+        "bootstrap": "BOOTSTRAP.md"
+    }
+    
+    if file not in allowed_files:
         return jsonify({"error": "Arquivo inválido"}), 400
         
     agent_id = request.args.get("agent", "MoltyClaw")
     
     if agent_id == "MoltyClaw":
-        folder_path = MOLTY_DIR
+        base_dir = MOLTY_DIR
     else:
-        folder_path = os.path.join(MOLTY_DIR, "agents", agent_id)
-        os.makedirs(folder_path, exist_ok=True)
+        base_dir = os.path.join(MOLTY_DIR, "agents", agent_id)
+        os.makedirs(base_dir, exist_ok=True)
         
-    filename = "MEMORY.md" if file == "memory" else "SOUL.md"
+    folder_path = os.path.join(base_dir, "workspace")
+    os.makedirs(folder_path, exist_ok=True)
+        
+    filename = allowed_files[file]
     filepath = os.path.join(folder_path, filename)
+
+    # Migração automática para a nova estrutura /workspace
+    old_filepath = os.path.join(base_dir, filename)
+    if not os.path.exists(filepath) and os.path.exists(old_filepath):
+        try:
+            import shutil
+            shutil.move(old_filepath, filepath)
+        except Exception as e:
+            print(f"Erro ao migrar arquivo de {old_filepath} para {filepath}: {e}")
+            filepath = old_filepath # Fallback se falhar
     
     if request.method == "GET":
         try:

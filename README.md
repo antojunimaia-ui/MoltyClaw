@@ -1,7 +1,8 @@
-# 🤖 MoltyClaw — O Agente Autônomo Definitivo
-
 ![MoltyClaw Banner](MoltyClaw-Banner.png)
 
+<p align="center">
+  MoltyClaw toma atitudes, não importa aonde você esteja.
+</p>
 > **MoltyClaw** é um agente de IA autônomo e local, construído em Python, que opera o seu computador Windows e a Internet em tempo real com autonomia total. Ele não fica preso em uma janela de chat — ele age, pesquisa, clica, organiza arquivos, manda mensagens, controla música, delega tarefas a sub-agentes e responde a você por WhatsApp, Discord e Telegram simultaneamente.
 
 ---
@@ -18,10 +19,11 @@
 8. [Integrações Sociais](#-integrações-sociais)
 9. [IA de Voz — Audição e Síntese](#-ia-de-voz--audição-e-síntese)
 10. [Sistema de Sub-Agentes (Swarm)](#-sistema-de-sub-agentes-swarm)
-11. [WebUI Dashboard](#-webui-dashboard)
-12. [CLI Global (Comandos de Linha de Comando)](#-cli-global-comandos-de-linha-de-comando)
-13. [Instalação e Configuração](#-instalação-e-configuração)
-14. [Arquitetura de Arquivos](#-arquitetura-de-arquivos)
+11. [Agendador (Scheduler) — Tarefas Recorrentes](#-agendador-scheduler--tarefas-recorrentes)
+12. [WebUI Dashboard](#-webui-dashboard)
+13. [CLI Global (Comandos de Linha de Comando)](#-cli-global-comandos-de-linha-de-comando)
+14. [Instalação e Configuração](#-instalação-e-configuração)
+15. [Arquitetura de Arquivos (Padrão Workspace)](#-arquitetura-de-arquivos-padrão-workspace)
 
 ---
 
@@ -39,8 +41,9 @@ O MoltyClaw rompe com esse paradigma. Ele é projetado como um **agente de açã
 - **Expandir seu próprio poder** conectando-se a servidores MCP externos a quente
 - **Lembrar coerentemente** do usuário através de uma memória em disco de longo prazo
 - **Delegar tarefas** a sub-agentes especializados que rodam em paralelo em background
+- **Trabalhar em Workspaces isolados**, garantindo que cada agente tenha sua própria pasta de arquivos e memórias sem interferência.
 
-O modelo base pode ser **Mistral AI**, **Google Gemini** ou qualquer modelo via **OpenRouter** — configurável por variável de ambiente, inclusive por sub-agente.
+O modelo base pode ser **Mistral AI**, **Google Gemini** ou qualquer modelo via **OpenRouter** — configurável por variável de ambiente ou via arquivo centralizado `moltyclaw.json`.
 
 ---
 
@@ -192,37 +195,37 @@ Configuração via `.env`: `GMAIL_USER` e `GMAIL_APP_PASSWORD`.
 
 ---
 
-## 🪄 Alma e Memória Persistente
+### 🪄 Alma e Memória Persistente (A Tríade de Consciência)
 
-O MoltyClaw possui dois arquivos em disco que definem sua identidade e continuidade cognitiva:
+O MoltyClaw agora utiliza uma arquitetura baseada em **Workspaces**. Cada agente (Master ou Sub-Agente) opera dentro de uma subpasta `/workspace` onde residem seus arquivos de identidade e memória.
+
+#### 📁 A Estrutura de Arquivos por Agente
+
+```
+~/.moltyclaw/ (ou ~/.moltyclaw/agents/<id>/)
+└── workspace/
+    ├── SOUL.md        # Personalidade e comportamento
+    ├── IDENTITY.md    # Fatos fixos sobre quem o agente é
+    ├── USER.md        # O que o agente sabe sobre você (preferências, etc)
+    ├── BOOTSTRAP.md   # Instruções de inicialização rápida
+    └── MEMORY.md      # Memória de longo prazo (hipocampo)
+```
 
 ### `SOUL.md` — A Identidade Inquebrável
 
-É injetado diretamente no **System Prompt** principal de toda sessão, independente do canal (WebUI, Discord, WhatsApp...). Define:
+Define o tom de voz, nível de formalidade e restrições absolutas. É injetado diretamente no System Prompt.
 
-- Quem o agente é e como ele se comporta
-- Tom de voz, nível de formalidade, sarcasmo, etc.
-- Restrições absolutas que ele nunca pode violar
-- Informações fixas sobre o ambiente operativo (ex: nome do usuário, localidade, configurações especiais)
+### `IDENTITY.md` & `USER.md` — O Contexto Estático
 
-Cada sub-agente possui seu próprio `SOUL.md` isolado em `~/.moltyclaw/agents/<id>/SOUL.md`.
-
-Pode ser editado diretamente via WebUI na aba **Agent** sem reiniciar o sistema.
+Enquanto o SOUL define *como* o agente fala, o `IDENTITY.md` define *quem* ele é tecnicamente (ex: "Especialista em Python") e o `USER.md` armazena tudo o que ele aprendeu sobre você para personalizar a experiência.
 
 ### `MEMORY.md` — O Hipocampo Digital
 
-Funciona como a memória de longo prazo. A cada interação relevante, o LLM pode decidir autonomamente invocar a tool `MEMORY_SAVE_LONG_TERM` para registrar fatos novos descobertos durante a conversa:
+Funciona como a memória de longo prazo. A cada interação relevante, o LLM pode decidir autonomamente invocar a tool `MEMORY_SAVE_LONG_TERM` para registrar fatos novos.
 
-```markdown
-- Usuário prefere respostas curtas e diretas
-- Pasta principal de projetos: D:/Dev/
-- Usuário usa Neovim como editor principal
-- Mencionou que trabalha às noites
-```
+### `BOOTSTRAP.md` — O Manual de Instruções
 
-Essa memória é carregada junto com o SOUL.md em cada nova sessão, garantindo que a IA "lembre" de você mesmo após reinicializações. Pode ser resetada com `moltyclaw reset memory`.
-
-Cada sub-agente também possui sua própria `MEMORY.md` isolada.
+Se este arquivo estiver presente, o agente o lê na primeira interação para configurar sua identidade inicial ou realizar uma tarefa de "setup" imediata.
 
 ---
 
@@ -530,9 +533,25 @@ Via `bindings.json`, diferentes usuários/grupos podem ser atendidos por sub-age
 
 ---
 
+## ⏲️ Agendador (Scheduler) — Tarefas Recorrentes
+
+O MoltyClaw possui um motor de agendamento que permite à IA executar tarefas de forma proativa sem intervenção humana.
+
+- **Jobs persistentes**: Salvos em `jobs.json`, eles sobrevivem a reinicializações.
+- **Payload Dinâmico**: O agendador envia um prompt para o agente (ex: "Verifique o clima agora e me avise se vai chover") a cada intervalo de minutos.
+- **Inteligência de Ocupação**: Se o agente estiver ocupado processando uma mensagem do usuário, o agendador aguarda a próxima janela de tempo livre para não interromper o fluxo atual.
+
+---
+
 ## 🖥️ WebUI Dashboard
 
 O MoltyClaw possui um painel web completo construído com **Flask** (backend) + HTML/CSS/JS vanilla (frontend).
+
+### Novidades da V26+
+
+- **🌗 Dark Mode**: Interface otimizada para ambientes escuros por padrão.
+- **🧠 Assimilação de Contexto**: Ferramenta que usa IA para fundir memórias de outros chats ou documentos diretamente no seu `MEMORY.md` sem criar duplicatas.
+- **📅 Gestão de Jobs**: Interface visual para adicionar, remover e monitorar tarefas agendadas.
 
 ### Como Iniciar
 
@@ -550,10 +569,11 @@ No modo `--share`, o Flask levanta em `0.0.0.0:5000` ao invés de `127.0.0.1:500
 
 | Aba | Função |
 |---|---|
-| **💬 Chat** | Interface principal de conversa com streaming de tokens em tempo real via Server-Sent Events (SSE). Suporta markdown, blocos de código, imagens e players de áudio inline |
-| **🔗 Integrations** | Toggles para ligar/desligar os bots (WhatsApp, Discord, Telegram, Twitter) sem reiniciar o sistema. Os status são lidos em tempo real |
-| **🧠 Agent** | Editor ao vivo de `SOUL.md` e `MEMORY.md`. Salva diretamente em disco sem restart |
-| **🔌 Model Context Protocol** | Catálogo curado de servidores MCP para instalação com 1 clique |
+| **💬 Chat** | Interface principal de conversa com streaming de tokens em tempo real via Server-Sent Events (SSE). Suporta markdown, imagens e áudio |
+| **🔗 Integrations** | Toggles para ligar/desligar bots sociais (WhatsApp, Discord, etc) em background |
+| **🧠 Agent** | Editor live de `SOUL`, `MEMORY`, `USER` e `IDENTITY`. |
+| **⏲️ Scheduler** | Painel de controle do motor de agendamento. |
+| **🔌 MCP** | Catálogo e instalador de servidores Model Context Protocol. |
 
 ### Streaming de Respostas
 
@@ -648,109 +668,86 @@ git clone https://github.com/antojunimaia-ui/MoltyClaw.git
 cd MoltyClaw
 ```
 
-**2. Configure o `.env`:**
+**2. Configure o ambiente:**
 
-```env
+Você pode usar variáveis de ambiente no `.env` ou o novo arquivo centralizado `~/.moltyclaw/moltyclaw.json` (recomendado):
+
+**Opção A: `moltyclaw.json` (JSON5 com comentários e variáveis de ambiente)**
+
+```json
+{
+  "providers": {
+    "gemini": {
+      "api_key": "${GEMINI_API_KEY}",
+      "model": "gemini-2.0-flash"
+    }
+  }
+}
+```
+
+**Opção B: Tradicional `.env`:**
+
 # ─── IA PRINCIPAL (escolha um provider) ─────────────────
+
 MOLTY_PROVIDER=mistral             # mistral | gemini | openrouter
 
 # Mistral
+
 MISTRAL_API_KEY=sua_chave_mistral_aqui
 MISTRAL_MODEL=mistral-medium       # ou mistral-large-latest, devstral-small...
 
 # Gemini
+
 GEMINI_API_KEY=sua_chave_gemini_aqui
 GEMINI_MODEL=gemini-2.0-flash
 
 # OpenRouter (acessa qualquer modelo via API unificada)
+
 OPENROUTER_API_KEY=sua_chave_openrouter_aqui
 OPENROUTER_MODEL=google/gemini-2.5-flash
 
 # ─── INTEGRAÇÕES SOCIAIS ────────────────────────────────
+
 DISCORD_TOKEN=seu_token_discord_aqui
-TELEGRAM_TOKEN=seu_token_telegram_aqui
+TELEGRAM_TOKEN=se## 📁 Arquitetura de Arquivos (Padrão Workspace)
 
-# ─── E-MAIL ─────────────────────────────────────────────
-GMAIL_USER=seu_email@gmail.com
-GMAIL_APP_PASSWORD=sua_senha_de_app_google  # Não é sua senha normal!
+```text
+MoltyClaw/
+│
+├── start_moltyclaw.py         # Entry point e CLI central
+├── src/
+│   ├── moltyclaw.py           # Kernel Principal
+│   ├── system_prompt.py       # Builder de Prompt Dinâmico
+│   ├── scheduler.py           # Motor de Agendamento
+│   ├── routing.py             # Roteador de Canais → Agentes
+│   ├── integrations/          # Módulos de WhatsApp, Discord, MCP, etc.
+│   └── webui/                 # Backend Flask e Dashboard
+└── ...
 
-# ─── SPOTIFY ────────────────────────────────────────────
-SPOTIFY_CLIENT_ID=seu_client_id
-SPOTIFY_CLIENT_SECRET=seu_client_secret
-SPOTIFY_REDIRECT_URI=http://localhost:8080
-
-# ─── TWITTER/X ──────────────────────────────────────────
-TWITTER_BEARER_TOKEN=seu_bearer_token
-TWITTER_API_KEY=sua_api_key
-TWITTER_API_SECRET=sua_api_secret
-TWITTER_ACCESS_TOKEN=seu_access_token
-TWITTER_ACCESS_TOKEN_SECRET=seu_access_token_secret
-
-# ─── BLUESKY ────────────────────────────────────────────
-BLUESKY_HANDLE=seunome.bsky.social
-BLUESKY_APP_PASSWORD=sua_app_password
-
-# ─── SEGURANÇA / WHITELISTS ─────────────────────────────
-WHATSAPP_ALLOWED_NUMBERS=5511999999999,5511888888888
-DISCORD_ALLOWED_USERS=123456789012345678
-TELEGRAM_ALLOWED_USERS=seu_usuario,12345678
-BLUESKY_ALLOWED_HANDLES=amigo.bsky.social
-```
-
-**3. Instale as dependências Python:**
-
-```bash
-pip install -r requirements.txt
-playwright install msedge
-```
-
-**4. (Opcional) WhatsApp — dependências Node.js:**
-
-```bash
-npm install whatsapp-web.js qrcode-terminal axios dotenv
-```
-
-**5. Inicie:**
-
-```bash
-python start_moltyclaw.py
+# Dados em runtime (Persistentes):
+~/.moltyclaw/
+├── moltyclaw.json             # Configuração Global Centralizada
+├── jobs.json                  # Tarefas agendadas
+├── bindings.json              # Mapeamento Canal → Agente
+├── browser_profile/           # Sessão persistente do Edge
+└── workspace/                 # Workspace Global do Master
+    ├── SOUL.md
+    ├── MEMORY.md
+    ├── IDENTITY.md
+    └── USER.md
+└── agents/
+    └── <NomeAgente>/
+        ├── config.json
+        ├── .env               # Secrets específicos (opcional)
+        └── workspace/         # Workspace Isolado do Sub-Agente
+            ├── SOUL.md
+            └── ...
 ```
 
 ---
 
-## 📁 Arquitetura de Arquivos
-
-```
-MoltyClaw/
-│
-├── start_moltyclaw.py         # Ponto de entrada. CLI, Menu interativo,
-│                              # Orquestrador multithread, Parser de argumentos
-│
-├── src/
-│   ├── moltyclaw.py           # O Kernel do Agente. Classe MoltyClaw com:
-│   │                          # - Método .ask() com loop Plano→Ação→Observação
-│   │                          # - Parser de tool calls JSON (<tool>...</tool>)
-│   │                          # - Suporte a Mistral / Gemini / OpenRouter
-│   │                          # - Motor Playwright CDP (Stealth + Operant ID)
-│   │                          # - MCPHub (gestão de conexões Stdio com MCP)
-│   │                          # - Sistema de sub-agentes (CALL_AGENT async)
-│   │                          # - Handlers de cada ferramenta
-│   │
-│   ├── subagent_registry.py   # Registro em memória de sub-agentes em background.
-│   │                          # Rastreia run_id, status, timestamps e resultados.
-│   │                          # Inspirado no subagent-registry.ts do OpenClaw.
-│   │
-│   ├── routing.py             # Roteamento dinâmico: decide qual agente responde
-│   │                          # a cada peer/guild/canal via bindings.json
-│   │
-│   ├── webui/
-│   │   ├── app.py             # Backend Flask. Rotas REST + SSE streaming.
-│   │   ├── static/
-│   │   │   ├── script.js      # Frontend JS. Tab switching, SSE consumer,
-│   │   │   │                  # Markdown renderer, Audio player, MCP installer
-│   │   │   └── style.css      # UI premium do dashboard
-│   │   └── templates/
-│   │       └── index.html     # HTML base do dashboard
+> **⚠️ Aviso de Segurança:** O MoltyClaw opera com as mesmas permissões do usuário Windows que iniciou o processo. O agente tem acesso ao CMD, ao sistema de arquivos e à internet. Configure as whitelists corretamente e não compartilhe o modo `--share` em redes públicas sem autenticação adicional. Revise o `SOUL.md` para impor restrições de comportamento conforme necessário.
+��─ index.html     # HTML base do dashboard
 │   │
 │   └── integrations/
 │       ├── whatsapp_server.py # Servidor AIOHTTP da integração WhatsApp (Python-side)
@@ -765,7 +762,8 @@ MoltyClaw/
 ├── requirements.txt           # Dependências Python
 └── .env                       # Variáveis de ambiente (NÃO versionar!)
 
-# Dados em runtime (fora do repositório):
+# Dados em runtime (fora do repositório)
+
 ~/.moltyclaw/
 ├── SOUL.md                    # Identidade do Master
 ├── MEMORY.md                  # Hipocampo do Master
@@ -779,6 +777,7 @@ MoltyClaw/
         ├── SOUL.md            # Alma própria do sub-agente
         ├── MEMORY.md          # Memória própria do sub-agente
         └── .env               # Chaves de API próprias (opcional, override do global)
+
 ```
 
 ---

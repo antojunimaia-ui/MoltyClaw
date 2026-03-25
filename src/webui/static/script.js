@@ -826,19 +826,26 @@ function onAgentConfigSegmentOpen() {
 let currentAgentFile = 'soul';
 let agentFilesContent = {
     soul: '',
-    memory: ''
+    memory: '',
+    identity: '',
+    user: '',
+    bootstrap: ''
 };
 
 async function loadAgentFiles() {
     try {
         const query = `?agent=${activeAgentId}`;
-        const memRes = await fetch('/api/agent/memory' + query);
-        const memData = await memRes.json();
-        agentFilesContent['memory'] = memData.content || '';
-
-        const soulRes = await fetch('/api/agent/soul' + query);
-        const soulData = await soulRes.json();
-        agentFilesContent['soul'] = soulData.content || '';
+        const files = ['memory', 'soul', 'identity', 'user', 'bootstrap'];
+        
+        for (const f of files) {
+            try {
+                const res = await fetch(`/api/agent/${f}${query}`);
+                const data = await res.json();
+                agentFilesContent[f] = data.content || '';
+            } catch (err) {
+                console.warn(`Could not load ${f} for agent ${activeAgentId}`, err);
+            }
+        }
 
         selectAgentFile(currentAgentFile);
     } catch (e) {
@@ -855,24 +862,29 @@ function selectAgentFile(fileId) {
     currentAgentFile = fileId;
 
     document.querySelectorAll('.studio-file-card').forEach(card => card.classList.remove('active'));
-    document.getElementById(`card-${fileId}`).classList.add('active');
+    const targetCard = document.getElementById(`card-${fileId}`);
+    if (targetCard) targetCard.classList.add('active');
 
     if (activeEditor) {
-        activeEditor.value = agentFilesContent[fileId];
+        activeEditor.value = agentFilesContent[fileId] || '';
     }
 
     const titleEl = document.getElementById('current-editor-title');
     const pathEl = document.getElementById('current-editor-path');
     
-    const rootPath = activeAgentId === 'MoltyClaw' ? '~/.moltyclaw/' : `~/.moltyclaw/agents/${activeAgentId}/`;
+    const rootPath = activeAgentId === 'MoltyClaw' ? '~/.moltyclaw/workspace/' : `~/.moltyclaw/agents/${activeAgentId}/workspace/`;
 
-    if (fileId === 'soul') {
-        titleEl.innerText = 'SOUL.md';
-        pathEl.innerText = rootPath + 'SOUL.md';
-    } else {
-        titleEl.innerText = 'MEMORY.md';
-        pathEl.innerText = rootPath + 'MEMORY.md';
-    }
+    const fileMap = {
+        soul: 'SOUL.md',
+        identity: 'IDENTITY.md',
+        user: 'USER.md',
+        bootstrap: 'BOOTSTRAP.md',
+        memory: 'MEMORY.md'
+    };
+
+    const fileName = fileMap[fileId] || 'UNKNOWN.md';
+    titleEl.innerText = fileName;
+    pathEl.innerText = rootPath + fileName;
 }
 
 async function saveCurrentAgentFile() {
