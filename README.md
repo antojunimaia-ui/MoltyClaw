@@ -1,8 +1,8 @@
 ![MoltyClaw Banner](MoltyClaw-Banner.png)
-
 <p align="center">
-  MoltyClaw toma atitudes, não importa aonde você esteja.
+  **MoltyClaw toma atitudes, não importa aonde você esteja.**
 </p>
+
 > **MoltyClaw** é um agente de IA autônomo e local, construído em Python, que opera o seu computador Windows e a Internet em tempo real com autonomia total. Ele não fica preso em uma janela de chat — ele age, pesquisa, clica, organiza arquivos, manda mensagens, controla música, delega tarefas a sub-agentes e responde a você por WhatsApp, Discord e Telegram simultaneamente.
 
 ---
@@ -10,18 +10,18 @@
 ## 📋 Índice
 
 1. [Visão Geral e Filosofia](#-visão-geral-e-filosofia)
-2. [O Loop Cognitivo — Como o Agente Pensa](#-o-loop-cognitivo--como-o-agente-pensa)
-3. [Ferramentas Disponíveis (O Arsenal Completo)](#-ferramentas-disponíveis-o-arsenal-completo)
-4. [Alma e Memória Persistente](#-alma-e-memória-persistente)
+2. [O Loop Cognitivo — Como o Agente Pensa](#-o-loop-cognitivo---como-o-agente-pensa)
+3. [Ferramentas Disponíveis — O Arsenal Completo](#-ferramentas-disponíveis---o-arsenal-completo)
+4. [Alma e Memória Persistente (A Tríade de Consciência)](#-alma-e-memória-persistente-a-tríade-de-consciência)
 5. [Stealth Headless Browser & Playwright](#-stealth-headless-browser--playwright)
-6. [Operant ID — Visão DOM Lógica](#-operant-id--visão-dom-lógica)
-7. [Integração MCP (Model Context Protocol)](#-integração-mcp-model-context-protocol)
+6. [Operant ID — Visão DOM Lógica](#-operant-id---visão-dom-lógica)
+7. [Integração MCP — Model Context Protocol](#-integração-mcp---model-context-protocol)
 8. [Integrações Sociais](#-integrações-sociais)
-9. [IA de Voz — Audição e Síntese](#-ia-de-voz--audição-e-síntese)
+9. [IA de Voz — Audição e Síntese](#-ia-de-voz---audição-e-síntese)
 10. [Sistema de Sub-Agentes (Swarm)](#-sistema-de-sub-agentes-swarm)
-11. [Agendador (Scheduler) — Tarefas Recorrentes](#-agendador-scheduler--tarefas-recorrentes)
+11. [Agendador (Scheduler) — Tarefas Recorrentes](#-agendador-scheduler---tarefas-recorrentes)
 12. [WebUI Dashboard](#-webui-dashboard)
-13. [CLI Global (Comandos de Linha de Comando)](#-cli-global-comandos-de-linha-de-comando)
+13. [CLI Global — Comandos de Linha de Comando](#-cli-global---comandos-de-linha-de-comando)
 14. [Instalação e Configuração](#-instalação-e-configuração)
 15. [Arquitetura de Arquivos (Padrão Workspace)](#-arquitetura-de-arquivos-padrão-workspace)
 
