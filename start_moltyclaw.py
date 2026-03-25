@@ -400,7 +400,7 @@ def cli_update():
     sys.exit(0)
 
 def cli_start_bots(target):
-    console.print(f"[bold magenta]🚀 Inicializando bots ({target}) em modo Bypass...[/bold magenta]")
+    console.print(f"[bold magenta]Inicializando bots ({target}) em modo Bypass...[/bold magenta]")
     os.environ["MOLTY_PROVIDER"] = "mistral" # Provider padrão
     active_threads = []
     

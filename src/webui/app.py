@@ -13,8 +13,9 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR) # Silenciar spams do flask no console
 
 # Adiciona o diretório base para ler os imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from src.moltyclaw import MoltyClaw
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from moltyclaw import MoltyClaw
+from scheduler import SchedulerManager
 from rich.console import Console
 
 console = Console()
@@ -23,6 +24,9 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 load_dotenv()
 
 agent = None
+scheduler = None
+loop = None
+ready = False
 loop = None
 ready = False
 
@@ -40,6 +44,11 @@ def run_agent_loop():
     asyncio.set_event_loop(loop)
     
     agent = MoltyClaw(name="MoltyClaw (WebUI Gateway)")
+    
+    # Inicia o Scheduler Manager
+    global scheduler
+    scheduler = SchedulerManager(agent)
+    loop.create_task(scheduler.run())
     
     # Inicia o Browser do Playwright escondido
     loop.run_until_complete(agent.init_browser())
@@ -545,6 +554,40 @@ def install_mcp():
     except subprocess.CalledProcessError as e:
         return jsonify({"error": "Falha na instalação via CLI."}), 500
 
+@app.route("/api/scheduler/jobs", methods=["GET"])
+def scheduler_jobs():
+    if not scheduler:
+        return jsonify({"error": "Scheduler não iniciado"}), 503
+    return jsonify({"jobs": scheduler.jobs})
+
+@app.route("/api/scheduler/add", methods=["POST"])
+def scheduler_add():
+    if not scheduler:
+        return jsonify({"error": "Scheduler não iniciado"}), 503
+    data = request.json
+    job = scheduler.add_job(
+        name=data.get("name"),
+        description=data.get("description"),
+        interval_min=data.get("interval_min", 15),
+        payload=data.get("payload", "Heartbeat status check.")
+    )
+    return jsonify({"success": True, "job": job})
+
+@app.route("/api/scheduler/remove/<job_id>", methods=["POST"])
+def scheduler_remove(job_id):
+    if not scheduler:
+        return jsonify({"error": "Scheduler não iniciado"}), 503
+    scheduler.remove_job(job_id)
+    return jsonify({"success": True})
+
+@app.route("/api/scheduler/toggle", methods=["POST"])
+def scheduler_toggle():
+    if not scheduler:
+        return jsonify({"error": "Scheduler não iniciado"}), 503
+    data = request.json
+    scheduler.toggle_job(data.get("id"), data.get("enabled"))
+    return jsonify({"success": True})
+
 if __name__ == "__main__":
     host = "0.0.0.0" if os.environ.get("MOLTY_WEBUI_SHARE") == "1" else "127.0.0.1"
     
@@ -560,10 +603,10 @@ if __name__ == "__main__":
         except:
             pass
             
-        console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI Aberta para a Rede/Tailscale![/intense_cyan]")
-        console.print(f"[intense_cyan]🌐 Acesse pelo celular usando: http://{local_ip}:5000[/intense_cyan]")
+        console.print("[intense_cyan]Acordando MoltyClaw WebUI Aberta para a Rede/Tailscale![/intense_cyan]")
+        console.print(f"[intense_cyan]Acesse pelo celular usando: http://{local_ip}:5000[/intense_cyan]")
     else:
-        console.print("[intense_cyan]🚀 Acordando MoltyClaw WebUI Privada... Acesse: http://127.0.0.1:5000[/intense_cyan]")
+        console.print("[intense_cyan]Acordando MoltyClaw WebUI Privada... Acesse: http://127.0.0.1:5000[/intense_cyan]")
         console.print("[dim]Quer acessar do celular na rede? Use: moltyclaw web --share[/dim]")
         
     app.run(host=host, port=5000, debug=False, use_reloader=False)

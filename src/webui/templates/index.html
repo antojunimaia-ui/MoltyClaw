@@ -84,6 +84,14 @@
                             <span>Model Context Protocol</span>
                         </div>
                     </div>
+
+                    <div class="nav-section">
+                        <div class="nav-section-title">CONTROL <span>-</span></div>
+                        <div class="nav-item" id="nav-heartbeat" onclick="switchTab('heartbeat')">
+                            <i class="fa-solid fa-clock"></i>
+                            <span>Scheduler (Cron)</span>
+                        </div>
+                    </div>
                 </div>
             </aside>
 
@@ -657,6 +665,54 @@
                     <div class="mcp-grid" id="mcp-grid"
                         style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
                         <!-- Preenchido via JS -->
+                    </div>
+                </div>
+
+                <!-- Scheduler View -->
+                <div id="view-heartbeat" class="view-content" style="display: none;">
+                    <header class="main-header">
+                        <div class="header-left">
+                            <h1 class="page-title">Scheduler (Cron)</h1>
+                            <p class="page-subtitle">Agende batidas de consciência ou tarefas específicas para seu agente monitorar o mundo.</p>
+                        </div>
+                    </header>
+
+                    <div class="scheduler-container" style="padding: 20px 40px; display: grid; grid-template-columns: 1fr 350px; gap: 24px; align-items: start;">
+                        
+                        <!-- Lista de Jobs -->
+                        <div class="jobs-column">
+                            <h3 style="margin-bottom: 16px;">Ciclos Ativos</h3>
+                            <div id="scheduler-jobs-list" style="display: flex; flex-direction: column; gap: 16px;">
+                                <!-- Preenchido via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Formulário de Criação -->
+                        <div class="form-column">
+                            <div class="card" style="position: sticky; top: 20px;">
+                                <h3 style="margin-top:0">Novo Agendamento</h3>
+                                <p class="card-sub" style="margin-bottom: 20px;">Crie uma rotina proativa.</p>
+                                
+                                <div class="form-group">
+                                    <label>Nome</label>
+                                    <input type="text" id="sched-name" placeholder="Ex: Monitor de Preços">
+                                </div>
+                                
+                                <div class="form-group" style="margin-top: 12px;">
+                                    <label>Intervalo (minutos)</label>
+                                    <input type="number" id="sched-interval" value="30">
+                                </div>
+
+                                <div class="form-group" style="margin-top: 12px;">
+                                    <label>O que fazer? (Payload/Prompt)</label>
+                                    <textarea id="sched-payload" rows="4" placeholder="Ex: Verifique se houve novos e-mails importantes e me avise."></textarea>
+                                </div>
+
+                                <button class="btn primary" style="width: 100%; margin-top: 16px;" onclick="addSchedulerJob()">
+                                    <i class="fa-solid fa-plus"></i> Criar Tarefa
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

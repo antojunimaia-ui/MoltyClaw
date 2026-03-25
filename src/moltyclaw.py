@@ -177,6 +177,7 @@ class MoltyClaw:
                     base_url="https://openrouter.ai/api/v1",
                     api_key=self.api_key,
                 )
+        self.is_busy = False # Flag para o Heartbeat/Background tasks
 
     def _get_mcp_prompt_placeholder(self) -> str:
         return "[MCP_TOOLS_INJECTED_HERE_AUTOMATICALLY]"
@@ -948,6 +949,7 @@ class MoltyClaw:
         if not is_tool_response and not silent:
             console.print(f"\n[moltyclaw]{self.name}:[/moltyclaw]", end=" ")
         
+        self.is_busy = True
         try:
             response_chunks = ""
             
@@ -1393,6 +1395,8 @@ class MoltyClaw:
             err_msg = f"Erro ao comunicar com Mistral: {e}"
             console.print(f"[error]{err_msg}[/error]")
             return err_msg
+        finally:
+            self.is_busy = False
 
     def _get_available_agents(self):
         """Retorna uma lista resumida de todos os sub-agentes criados no .moltyclaw/agents"""

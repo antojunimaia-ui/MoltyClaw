@@ -352,6 +352,8 @@ function switchTab(tabId) {
         loadAgentList();
     } else if (tabId === 'mcp') {
         loadMCPList();
+    } else if (tabId === 'heartbeat') {
+        fetchSchedulerJobs();
     }
 
     // Sync mobile bottom nav active state
@@ -361,6 +363,89 @@ function switchTab(tabId) {
 
     // Close sidebar on mobile after switching tab
     closeSidebar();
+}
+
+async function fetchSchedulerJobs() {
+    try {
+        const res = await fetch('/api/scheduler/jobs');
+        const data = await res.json();
+        renderSchedulerJobs(data.jobs || []);
+    } catch(e) { console.error('Error fetching jobs', e); }
+}
+
+function renderSchedulerJobs(jobs) {
+    const list = document.getElementById('scheduler-jobs-list');
+    if (!list) return;
+    
+    if (jobs.length === 0) {
+        list.innerHTML = `<div class="card"><p class="muted">Nenhuma tarefa agendada.</p></div>`;
+        return;
+    }
+
+    list.innerHTML = jobs.map(job => `
+        <div class="card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-left: 4px solid ${job.enabled ? '#22c55e' : '#94a3b8'};">
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <h4 style="margin:0">${escapeHTML(job.name)}</h4>
+                    ${job.enabled ? '<span class="status-badge ready" style="font-size:9px; padding: 2px 6px;">Ativo</span>' : '<span class="status-badge" style="font-size:9px; padding: 2px 6px;">Pausado</span>'}
+                </div>
+                <p class="card-sub" style="margin: 4px 0;">Intervalo: <strong>${job.interval / 60} min</strong></p>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 5px; font-family: monospace; background: var(--bg-hover); padding: 6px; border-radius: 4px;">
+                    <i class="fa-solid fa-terminal" style="font-size: 9px; margin-right: 4px;"></i> ${escapeHTML(job.payload.substring(0, 80))}${job.payload.length > 80 ? '...' : ''}
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; margin-left: 20px;">
+                <label class="toggle-switch">
+                    <input type="checkbox" ${job.enabled ? 'checked' : ''} onchange="toggleSchedulerJob('${job.id}', this.checked)">
+                    <span class="slider"></span>
+                </label>
+                <button class="btn danger" style="padding: 6px 10px;" onclick="removeSchedulerJob('${job.id}')" title="Excluir">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function addSchedulerJob() {
+    const name = document.getElementById('sched-name').value;
+    const interval_min = document.getElementById('sched-interval').value;
+    const payload = document.getElementById('sched-payload').value;
+
+    if (!name || !payload) return alert("Por favor, preencha o nome e o o comando de voz/texto da tarefa.");
+
+    try {
+        const res = await fetch('/api/scheduler/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, interval_min, payload })
+        });
+        const data = await res.json();
+        if (data.success) {
+            fetchSchedulerJobs();
+            document.getElementById('sched-name').value = '';
+            document.getElementById('sched-payload').value = '';
+        }
+    } catch(e) { console.error('Error adding job', e); }
+}
+
+async function toggleSchedulerJob(id, enabled) {
+    try {
+        await fetch('/api/scheduler/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id, enabled })
+        });
+        fetchSchedulerJobs(); // Refresh visual state (badges)
+    } catch(e) { console.error('Error toggling job', e); }
+}
+
+async function removeSchedulerJob(id) {
+    if (!confirm("Tem certeza que deseja excluir esta tarefa de monitoramento?")) return;
+    try {
+        await fetch(`/api/scheduler/remove/${id}`, { method: 'POST' });
+        fetchSchedulerJobs();
+    } catch(e) { console.error('Error removing job', e); }
 }
 
 // Agent Files & Multi-Agent Logic

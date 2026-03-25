@@ -12,7 +12,7 @@ from typing import Optional
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-VERSION = "26.22.3"
+VERSION = "26.24.3"
 SILENT_TOKEN = "NO_REPLY"
 TOOL_FORMAT_EXAMPLE = '<tool>\n{"action": "GOTO", "param": "https://site.com"}\n</tool>'
 
