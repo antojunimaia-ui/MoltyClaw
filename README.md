@@ -1,6 +1,13 @@
-﻿![MoltyClaw Banner](MoltyClaw-Banner.png)
+![MoltyClaw Banner](MoltyClaw-Banner.png)
+
 <p align="center">
   **MoltyClaw toma atitudes, não importa aonde você esteja.**
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/moltyclaw/"><img src="https://img.shields.io/pypi/v/moltyclaw?style=flat-square&color=00d7ff" alt="PyPI"></a>
+  <a href="https://github.com/antojunimaia-ui/MoltyClaw"><img src="https://img.shields.io/github/stars/antojunimaia-ui/MoltyClaw?style=flat-square&color=00d7ff" alt="Stars"></a>
+  <a href="https://github.com/antojunimaia-ui/MoltyClaw/blob/main/LICENSE"><img src="https://img.shields.io/github/license/antojunimaia-ui/MoltyClaw?style=flat-square&color=00d7ff" alt="License"></a>
 </p>
 
 > **MoltyClaw** é um agente de IA autônomo e local, construído em Python, que opera o seu computador Windows e a Internet em tempo real com autonomia total. Ele não fica preso em uma janela de chat — ele age, pesquisa, clica, organiza arquivos, manda mensagens, controla música, delega tarefas a sub-agentes e responde a você por WhatsApp, Discord e Telegram simultaneamente.
@@ -599,13 +606,16 @@ Frontend acumula tokens e renderiza Markdown incrementalmente
 
 ## <a id="cli"></a>💻 CLI Global — Comandos de Linha de Comando
 
-Após selecionar a opção **"Configurar 'moltyclaw' Global"** no Launcher, o executável é adicionado ao PATH do Windows.
+Após instalar via `pip install moltyclaw` ou selecionar **"Configurar 'moltyclaw' Global"** no Launcher, o comando `moltyclaw` fica disponível globalmente no terminal.
 
 ### Referência Completa de Comandos
 
 ```bash
 # Iniciar o menu interativo
 moltyclaw
+
+# Setup Inicial (Wizard guiado com aviso de segurança)
+moltyclaw onboard          # Configura provedor, modelo, API key e identidade
 
 # WebUI
 moltyclaw web              # WebUI local em 127.0.0.1:5000
@@ -641,14 +651,13 @@ moltyclaw config get MISTRAL_API_KEY                 # Lê variável do .env
 moltyclaw --config                                   # Abre .env no Bloco de Notas
 
 # Manutenção
-moltyclaw update       # git pull + pip install -r requirements.txt
+moltyclaw update       # Verifica releases no GitHub, exibe changelog e atualiza
 moltyclaw reset memory # Limpa o MEMORY.md completamente
 moltyclaw doctor       # Diagnóstico: checa Python, Node, .env, dependências
 moltyclaw --help       # Lista todos os comandos disponíveis
 ```
 
 ---
-
 
 ## <a id="instalacao"></a>🛠️ Instalação e Configuração
 
@@ -660,7 +669,22 @@ moltyclaw --help       # Lista todos os comandos disponíveis
 | Node.js | 18+ (apenas para WhatsApp) |
 | Microsoft Edge | Qualquer versão recente (para Playwright) |
 
-### Passo a Passo
+### Instalação via PyPI (Recomendado)
+
+```bash
+pip install moltyclaw
+playwright install msedge
+moltyclaw onboard
+```
+
+O comando `moltyclaw onboard` inicia um **Wizard de Configuração Guiado** que:
+
+1. Exibe um aviso de segurança (o agente tem controle total sobre o sistema)
+2. Pergunta qual provedor de IA usar (Gemini, Mistral ou OpenRouter)
+3. Solicita a API Key e faz **fetch em tempo real** dos modelos disponíveis
+4. Configura automaticamente o `.env` e cria os arquivos de identidade (`SOUL.md`, `MEMORY.md`)
+
+### Instalação Manual (Desenvolvimento)
 
 **1. Clone o repositório:**
 
@@ -669,9 +693,34 @@ git clone https://github.com/antojunimaia-ui/MoltyClaw.git
 cd MoltyClaw
 ```
 
-**2. Configure o ambiente:**
+**2. Instale em modo desenvolvimento:**
 
-Você pode usar variáveis de ambiente no `.env` ou o novo arquivo centralizado `~/.moltyclaw/moltyclaw.json` (recomendado):
+```bash
+pip install -e .
+playwright install msedge
+```
+
+**3. Execute o Onboarding:**
+
+```bash
+moltyclaw onboard
+```
+
+**4. Instale as dependências Node.js (apenas para WhatsApp):**
+
+```bash
+npm install
+```
+
+**5. Inicie o MoltyClaw:**
+
+```bash
+moltyclaw
+```
+
+### Configuração Manual (Avançado)
+
+Você pode usar variáveis de ambiente no `.env` ou o arquivo centralizado `~/.moltyclaw/moltyclaw.json`:
 
 **Opção A: `moltyclaw.json` (JSON5 com comentários e variáveis de ambiente)**
 
@@ -732,27 +781,7 @@ SPOTIFY_CLIENT_SECRET=seu_client_secret
 SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
 ```
 
-**3. Instale as dependências Python:**
-
-```bash
-pip install -r requirements.txt
-playwright install msedge
-```
-
-**4. Instale as dependências Node.js (apenas para WhatsApp):**
-
-```bash
-npm install
-```
-
-**5. Inicie o MoltyClaw:**
-
-```bash
-python start_moltyclaw.py
-```
-
 ---
-
 
 ## <a id="workspace"></a>📁 Arquitetura de Arquivos (Padrão Workspace)
 
@@ -787,6 +816,8 @@ MoltyClaw/
 ├── mcp_servers.json           # Configuração dos servidores MCP ativos
 ├── mcp_servers.example.json   # Template de referência para MCPs
 ├── start_moltyclaw.py         # Ponto de entrada / launcher interativo
+├── pyproject.toml             # Manifesto PyPI (pip install moltyclaw)
+├── VERSION                    # Versão atual (usada pelo updater e PyPI)
 ├── requirements.txt           # Dependências Python
 └── .env                       # Variáveis de ambiente (NÃO versionar!)
 ```

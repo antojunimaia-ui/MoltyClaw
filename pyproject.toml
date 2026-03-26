@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moltyclaw"
+dynamic = ["version"]
+description = "MoltyClaw — Agente autônomo pessoal com controle total sobre o sistema."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    {name = "Júnior", email = "antojunimaia@users.noreply.github.com"}
+]
+keywords = ["ai", "agent", "autonomous", "moltyclaw", "assistant"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "python-telegram-bot",
+    "playwright",
+    "mistralai",
+    "python-dotenv",
+    "colorama",
+    "rich",
+    "imap_tools",
+    "spotipy",
+    "youtube-transcript-api",
+    "discord.py",
+    "aiohttp",
+    "tweepy",
+    "edge-tts",
+    "playwright-stealth",
+    "openai",
+    "discord-ext-voice-recv",
+    "PyNaCl",
+    "pydub",
+    "soundfile",
+    "SpeechRecognition",
+    "flask",
+    "mcp",
+    "atproto",
+    "questionary",
+    "google-generativeai",
+]
+
+[project.urls]
+Homepage = "https://github.com/antojunimaia-ui/MoltyClaw"
+Repository = "https://github.com/antojunimaia-ui/MoltyClaw"
+
+[project.scripts]
+moltyclaw = "start_moltyclaw:main"
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
+[tool.setuptools]
+py-modules = ["start_moltyclaw"]
+
+[tool.setuptools.packages.find]
+include = ["src*"]

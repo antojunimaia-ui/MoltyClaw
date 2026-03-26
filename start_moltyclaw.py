@@ -391,12 +391,121 @@ def cli_reset_memory():
     sys.exit(0)
 
 def cli_update():
+    import urllib.request
+    from rich.table import Table
+    from rich.markdown import Markdown
+
+    GITHUB_REPO = "antojunimaia-ui/MoltyClaw"
+    RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
+    VERSION_FILE = os.path.join(os.path.dirname(__file__), "VERSION")
+
     console.print(Panel.fit("[bold cyan]🔄 ATUALIZAÇÃO DO MOLTYCLAW[/bold cyan]"))
-    console.print("[dim]Puxando as novidades do repositório oficial...[/dim]")
+
+    # 1. Lê a versão local
+    local_version = "desconhecida"
+    if os.path.exists(VERSION_FILE):
+        with open(VERSION_FILE, 'r', encoding='utf-8') as f:
+            local_version = f.read().strip()
+
+    console.print(f"[dim]Versão local instalada:[/dim] [bold cyan]{local_version}[/bold cyan]")
+    console.print(f"[dim]Consultando releases em github.com/{GITHUB_REPO}...[/dim]\n")
+
+    # 2. Fetch das releases via GitHub API
+    try:
+        req = urllib.request.Request(RELEASES_API)
+        req.add_header("Accept", "application/vnd.github.v3+json")
+        req.add_header("User-Agent", "MoltyClaw-Updater")
+        with urllib.request.urlopen(req, timeout=10) as response:
+            releases = json.loads(response.read().decode())
+    except Exception as e:
+        console.print(f"[bold yellow]⚠ Falha ao consultar GitHub Releases: {e}[/bold yellow]")
+        console.print("[dim]Realizando git pull como fallback...[/dim]")
+        os.system("git pull")
+        os.system("pip install -r requirements.txt")
+        console.print("[bold green]✅ Atualização via fallback concluída![/bold green]")
+        sys.exit(0)
+
+    if not releases:
+        console.print("[bold yellow]⚠ Nenhuma release encontrada no repositório.[/bold yellow]")
+        sys.exit(0)
+
+    latest = releases[0]
+    latest_tag = latest.get("tag_name", "?")
+    latest_name = latest.get("name", latest_tag)
+    published_at = latest.get("published_at", "?")[:10]
+    body = latest.get("body", "Sem notas de release.")
+    is_prerelease = latest.get("prerelease", False)
+
+    # 3. Compara versões
+    clean_local = local_version.lstrip("v").strip()
+    clean_remote = latest_tag.lstrip("v").strip()
+
+    if clean_local == clean_remote:
+        console.print(Panel.fit(
+            f"[bold green]✅ Você já está na versão mais recente![/bold green]\n"
+            f"[dim]Local: {local_version} │ Remota: {latest_tag}[/dim]",
+            border_style="green"
+        ))
+        sys.exit(0)
+
+    # 4. Exibe detalhes da nova release
+    tag_style = "[bold yellow]PRE-RELEASE[/bold yellow] " if is_prerelease else ""
+    console.print(Panel.fit(
+        f"[bold cyan]🆕 Nova versão disponível![/bold cyan]\n\n"
+        f"[dim]Sua versão:[/dim]    [bold red]{local_version}[/bold red]\n"
+        f"[dim]Disponível:[/dim]    [bold green]{latest_tag}[/bold green] {tag_style}\n"
+        f"[dim]Nome:[/dim]          {latest_name}\n"
+        f"[dim]Publicado em:[/dim]  {published_at}",
+        border_style="cyan"
+    ))
+
+    # 5. Changelog
+    console.print("\n[bold]📋 Changelog:[/bold]")
+    try:
+        console.print(Markdown(body))
+    except Exception:
+        console.print(f"[dim]{body[:500]}[/dim]")
+
+    # 6. Lista releases recentes
+    if len(releases) > 1:
+        table = Table(title="📦 Últimas Releases", border_style="dim")
+        table.add_column("Tag", style="cyan", no_wrap=True)
+        table.add_column("Nome", style="white")
+        table.add_column("Data", style="dim")
+        table.add_column("Tipo", style="yellow")
+        for r in releases[:5]:
+            r_type = "🧪 Pre-release" if r.get("prerelease") else "✅ Estável"
+            table.add_row(r.get("tag_name", "?"), r.get("name", "?"), r.get("published_at", "?")[:10], r_type)
+        console.print(table)
+
+    # 7. Confirmação
+    console.print("")
+    if HAS_QUESTIONARY:
+        confirm = questionary.confirm(f"Atualizar de {local_version} → {latest_tag}?", default=True).ask()
+        if not confirm:
+            console.print("[dim]Atualização cancelada.[/dim]")
+            sys.exit(0)
+    else:
+        confirm = Prompt.ask(f"Atualizar de {local_version} → {latest_tag}? [S/n]", default="S")
+        if confirm.lower() not in ["s", "sim", "y", "yes", ""]:
+            console.print("[dim]Atualização cancelada.[/dim]")
+            sys.exit(0)
+
+    # 8. Executa a atualização
+    console.print("\n[dim]Puxando as novidades do repositório oficial...[/dim]")
     os.system("git pull")
     console.print("[dim]Verificando e instalando novas dependências...[/dim]")
     os.system("pip install -r requirements.txt")
-    console.print("[bold green]✅ Atualização concluída com sucesso![/bold green]")
+
+    # 9. Atualiza o arquivo VERSION local
+    try:
+        with open(VERSION_FILE, 'w', encoding='utf-8') as f:
+            f.write(latest_tag)
+        console.print(f"[dim]Arquivo VERSION atualizado para {latest_tag}[/dim]")
+    except Exception:
+        pass
+
+    console.print(f"\n[bold green]✅ Atualização concluída! Agora você está na versão {latest_tag}.[/bold green]")
     sys.exit(0)
 
 def cli_start_bots(target):
@@ -794,8 +903,12 @@ def cli_research(query):
         
     sys.exit(0)
 
+def cli_onboard():
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    import onboarding
+    onboarding.run_onboarding()
 
-if __name__ == "__main__":
+def main():
     # Tratamento global do modo (-m / --mode)
     if "-m" in sys.argv or "--mode" in sys.argv:
         try:
@@ -817,6 +930,7 @@ if __name__ == "__main__":
     # Tratamento de Argumentos de Linha de Comando (CLI)
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
+
         if arg in ["--config", "-c"]:
             console.print("[bold cyan]📝 Abrindo arquivo .env para configuração...[/bold cyan]")
             # No Windows, abre o notepad direto no arquivo
@@ -867,6 +981,8 @@ if __name__ == "__main__":
         elif arg == "research" and len(sys.argv) >= 3:
             # Junta tudo porque o texto pode não ter vindo em aspas
             cli_research(" ".join(sys.argv[2:]))
+        elif arg == "onboard":
+            cli_onboard()
         elif arg in ["--help", "-h"]:
             console.print(Panel.fit(
                 "[bold cyan]🚀 COMANDOS GLOBAIS DO MOLTYCLAW 🚀[/bold cyan]\n\n"
@@ -882,6 +998,7 @@ if __name__ == "__main__":
                 "[green]moltyclaw organize <PASTA>[/green]            : Organiza arquivos de uma bagunça instantaneamente usando LLM\n"
                 "[green]moltyclaw organize --undo <PASTA>[/green]     : Desfaz a última organização usando o manifesto salvo\n"
                 "[green]moltyclaw research \"<TEMA>\"[/green]           : Puxa um resumo web consolidado e rápido pro seu prompt\n"
+                "[green]moltyclaw onboard[/green]                       : Inicia o assistente de configuração (Setup Wizard) guiado\n"
                 "[green]moltyclaw reset memory[/green]                : Engatilha o protocolo de amnésia do agente esvaziando a MEMORY\n"
                 "[green]moltyclaw mcp list[/green]                  : Lista todos os servidores MCP instalados em uma tabela\n"
                 "[green]moltyclaw mcp install <REPO>[/green]          : Puxa e configura um pacote MCP a partir de um link GitHub\n"
@@ -1087,3 +1204,6 @@ if __name__ == "__main__":
     _asyncio.run(_mod.interactive_shell())
     sys.exit(0)
 
+
+if __name__ == "__main__":
+    main()

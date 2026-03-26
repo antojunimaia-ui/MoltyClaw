@@ -22,6 +22,11 @@ share/python-wheels/
 .installed.cfg
 *.egg
 
+# PyPI / Build
+*.tar.gz
+*.whl
+moltyclaw.egg-info/
+
 # Virtual environments
 .env
 .venv
@@ -45,3 +50,4 @@ MEMORY.md
 temp/
 SOUL.md
 mcp_servers.json
+.pypirc
