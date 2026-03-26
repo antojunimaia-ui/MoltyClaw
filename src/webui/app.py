@@ -15,6 +15,7 @@ log.setLevel(logging.ERROR) # Silenciar spams do flask no console
 # Adiciona o diretório base para ler os imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from moltyclaw import MoltyClaw
+import skills
 from scheduler import SchedulerManager
 from rich.console import Console
 
@@ -608,6 +609,42 @@ def scheduler_toggle():
     data = request.json
     scheduler.toggle_job(data.get("id"), data.get("enabled"))
     return jsonify({"success": True})
+
+# ── Skills API ──────────────────────────────────────────────────────────────
+
+@app.route("/api/skills", methods=["GET"])
+def get_skills():
+    """Retorna a lista de skills instaladas com metadata completa."""
+    workspace_dir = request.args.get("workspace", "")
+    all_skills = skills.load_skill_entries(workspace_dir)
+    
+    report = []
+    for s in all_skills:
+        report.append({
+            "name": s.name,
+            "description": s.description,
+            "emoji": s.emoji,
+            "source": s.source,
+            "eligible": s.eligible,
+            "reason": s.eligibility_reason,
+            "requires": s.requires,
+            "skillKey": s.name.lower().replace(" ", "-") # Chave p/ UI
+        })
+    
+    return jsonify({"skills": report})
+
+@app.route("/api/skills/install", methods=["POST"])
+def install_skill_route():
+    """Instala uma nova skill via URL ou arquivo local."""
+    data = request.json
+    source = data.get("source")
+    if not source:
+        return jsonify({"error": "Caminho ou URL da skill não fornecido."}), 400
+        
+    success, message = skills.install_skill(source)
+    if success:
+        return jsonify({"success": True, "message": message})
+    return jsonify({"error": message}), 500
 
 if __name__ == "__main__":
     host = "0.0.0.0" if os.environ.get("MOLTY_WEBUI_SHARE") == "1" else "127.0.0.1"

@@ -83,6 +83,10 @@
                             <i class="fa-solid fa-plug"></i>
                             <span>Model Context Protocol</span>
                         </div>
+                        <div class="nav-item" id="nav-skills" onclick="switchTab('skills')">
+                            <i class="fa-solid fa-puzzle-piece"></i>
+                            <span>Skills (Habilidades)</span>
+                        </div>
                     </div>
 
                     <div class="nav-section">
@@ -731,6 +735,38 @@
                     <div class="mcp-grid" id="mcp-grid"
                         style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
                         <!-- Preenchido via JS -->
+                    </div>
+                </div>
+
+                <!-- Skills View -->
+                <div id="view-skills" class="view-content" style="display: none;">
+                    <header class="main-header">
+                        <div class="header-left">
+                            <h1 class="page-title">Skills (Habilidades)</h1>
+                            <p class="page-subtitle">Extensões modulares que dão superpoderes ao seu agente.</p>
+                        </div>
+                        <div class="header-right">
+                             <button class="btn-secondary" onclick="fetchSkills()">
+                                <i class="fa-solid fa-arrows-rotate"></i> Atualizar
+                             </button>
+                             <button class="btn-primary" onclick="showInstallSkillPrompt()">
+                                <i class="fa-solid fa-plus"></i> Instalar .skill
+                             </button>
+                        </div>
+                    </header>
+
+                    <div style="padding: 0 40px 20px 40px;">
+                        <div class="filters-bar" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                            <div class="search-wrapper" style="flex: 1; position: relative;">
+                                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 12px; color: #94a3b8;"></i>
+                                <input type="text" id="skill-search" placeholder="Filtrar habilidades..." 
+                                    oninput="filterSkills()" style="width: 100%; padding: 10px 10px 10px 35px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-surface); color: var(--text-main);">
+                            </div>
+                        </div>
+
+                        <div id="skills-container">
+                            <!-- Skills Groups will be rendered here -->
+                        </div>
                     </div>
                 </div>
 

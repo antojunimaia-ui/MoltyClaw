@@ -6,10 +6,9 @@ import os
 import signal
 import json
 
-MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
-os.makedirs(MOLTY_DIR, exist_ok=True)
+from src.initializer import initialize_moltyclaw, MOLTY_DIR
+initialize_moltyclaw()
 MOLTY_MCP_DIR = os.path.join(MOLTY_DIR, "mcp_modules")
-os.makedirs(MOLTY_MCP_DIR, exist_ok=True)
 
 # Usando as bibliotecas rich que já temos instaladas para um menu maravilhoso
 from rich.console import Console
@@ -908,6 +907,135 @@ def cli_onboard():
     import onboarding
     onboarding.run_onboarding()
 
+# ── Skills CLI ────────────────────────────────────────────────────────────────
+
+def cli_skill_list():
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from skills import load_skill_entries, filter_eligible_skills
+    from rich.table import Table
+
+    entries = load_skill_entries()
+    if not entries:
+        console.print("[bold yellow]⚠ Nenhuma skill encontrada.[/bold yellow]")
+        sys.exit(0)
+
+    table = Table(title="🧩 SKILLS DO MOLTYCLAW", border_style="cyan")
+    table.add_column("Emoji", justify="center")
+    table.add_column("Nome", style="cyan", no_wrap=True)
+    table.add_column("Descrição", style="white")
+    table.add_column("Fonte", style="dim")
+    table.add_column("Status", justify="center")
+
+    for e in sorted(entries, key=lambda x: x.name):
+        status = "[bold green]✅ Ativo[/bold green]" if e.eligible else f"[bold red]❌ Inativo[/bold red]"
+        source_color = "magenta" if e.source == "workspace" else ("blue" if e.source == "managed" else "dim")
+        table.add_row(
+            e.emoji,
+            e.name,
+            e.description[:60] + ("..." if len(e.description) > 60 else ""),
+            f"[{source_color}]{e.source}[/{source_color}]",
+            status
+        )
+
+    console.print(table)
+    console.print("\n[dim]Use 'moltyclaw skill info <nome>' para mais detalhes.[/dim]")
+    sys.exit(0)
+
+def cli_skill_info(name):
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from skills import load_skill_entries, find_skill_by_name
+    from rich.markdown import Markdown
+
+    entries = load_skill_entries()
+    skill = find_skill_by_name(entries, name)
+
+    if not skill:
+        console.print(f"[bold red]❌ Skill '{name}' não encontrada.[/bold red]")
+        sys.exit(1)
+
+    console.print(Panel.fit(
+        f"[bold cyan]{skill.emoji} {skill.name.upper()}[/bold cyan]\n"
+        f"[dim]{skill.description}[/dim]",
+        border_style="cyan"
+    ))
+
+    console.print(f"\n[bold]📍 Caminho:[/bold] [dim]{skill.skill_dir}[/dim]")
+    console.print(f"[bold]📦 Fonte:[/bold] [magenta]{skill.source}[/magenta]")
+    
+    status = "[bold green]✅ Elegível (Pronta para uso)[/bold green]" if skill.eligible else f"[bold red]❌ Inelegível: {skill.eligibility_reason}[/bold red]"
+    console.print(f"[bold]⚖️ Status:[/bold] {status}")
+
+    if skill.requires:
+        console.print("\n[bold]⚙️ Requisitos:[/bold]")
+        if skill.requires.get("bins"):
+            console.print(f"  • Binários: [yellow]{', '.join(skill.requires['bins'])}[/yellow]")
+        if skill.requires.get("env"):
+            console.print(f"  • ENV Vars: [yellow]{', '.join(skill.requires['env'])}[/yellow]")
+
+    try:
+        with open(skill.skill_md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            console.print("\n[bold]📖 Conteúdo do SKILL.md:[/bold]")
+            console.print(Markdown(content))
+    except Exception:
+        pass
+
+    sys.exit(0)
+
+def cli_skill_install(path):
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from skills import install_skill
+
+    console.print(f"[bold cyan]📥 Instalando skill:[/bold cyan] {path}")
+    success, msg = install_skill(path)
+    if success:
+        console.print(f"[bold green]✅ {msg}[/bold green]")
+    else:
+        console.print(f"[bold red]❌ Falha na instalação: {msg}[/bold red]")
+    sys.exit(0 if success else 1)
+
+def cli_skill_uninstall(name):
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from skills import uninstall_skill
+
+    success, msg = uninstall_skill(name)
+    if success:
+        console.print(f"[bold green]✅ {msg}[/bold green]")
+    else:
+        console.print(f"[bold red]❌ {msg}[/bold red]")
+    sys.exit(0 if success else 1)
+
+def cli_skill_create(name):
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from skills import create_skill_scaffold
+
+    console.print(f"[bold cyan]🛠️ Criando scaffold para nova skill:[/bold cyan] {name}")
+    success, result = create_skill_scaffold(name, resources=["scripts", "references"])
+    if success:
+        console.print(f"[bold green]✅ Skill '{name}' criada com sucesso em:[/bold green] {result}")
+        console.print(f"[dim]Edite o arquivo {os.path.join(result, 'SKILL.md')} para começar.[/dim]")
+    else:
+        console.print(f"[bold red]❌ {result}[/bold red]")
+    sys.exit(0 if success else 1)
+
+def cli_skill_package(path):
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    from skills import package_skill
+
+    console.print(f"[bold cyan]📦 Empacotando skill:[/bold cyan] {path}")
+    success, result = package_skill(path)
+    if success:
+        console.print(f"[bold green]✅ Skill empacotada com sucesso em:[/bold green] {result}")
+    else:
+        console.print(f"[bold red]❌ {result}[/bold red]")
+    sys.exit(0 if success else 1)
+
 def main():
     # Tratamento global do modo (-m / --mode)
     if "-m" in sys.argv or "--mode" in sys.argv:
@@ -983,6 +1111,23 @@ def main():
             cli_research(" ".join(sys.argv[2:]))
         elif arg == "onboard":
             cli_onboard()
+        elif arg == "skill" and len(sys.argv) >= 3:
+            sub = sys.argv[2].lower()
+            if sub == "list":
+                cli_skill_list()
+            elif sub == "info" and len(sys.argv) >= 4:
+                cli_skill_info(sys.argv[3])
+            elif sub == "install" and len(sys.argv) >= 4:
+                cli_skill_install(sys.argv[3])
+            elif sub == "uninstall" and len(sys.argv) >= 4:
+                cli_skill_uninstall(sys.argv[3])
+            elif sub == "create" and len(sys.argv) >= 4:
+                cli_skill_create(sys.argv[3])
+            elif sub == "package" and len(sys.argv) >= 4:
+                cli_skill_package(sys.argv[3])
+            else:
+                console.print("[bold red]Uso: moltyclaw skill list/info/install/uninstall/create/package <NOME|PATH>[/bold red]")
+                sys.exit(1)
         elif arg in ["--help", "-h"]:
             console.print(Panel.fit(
                 "[bold cyan]🚀 COMANDOS GLOBAIS DO MOLTYCLAW 🚀[/bold cyan]\n\n"
@@ -1000,10 +1145,10 @@ def main():
                 "[green]moltyclaw research \"<TEMA>\"[/green]           : Puxa um resumo web consolidado e rápido pro seu prompt\n"
                 "[green]moltyclaw onboard[/green]                       : Inicia o assistente de configuração (Setup Wizard) guiado\n"
                 "[green]moltyclaw reset memory[/green]                : Engatilha o protocolo de amnésia do agente esvaziando a MEMORY\n"
-                "[green]moltyclaw mcp list[/green]                  : Lista todos os servidores MCP instalados em uma tabela\n"
-                "[green]moltyclaw mcp install <REPO>[/green]          : Puxa e configura um pacote MCP a partir de um link GitHub\n"
-                "[green]moltyclaw mcp uninstall <NOME>[/green]        : Deleta um pacote MCP remotamente baixado e remove do JSON\n"
-                "[green]moltyclaw mcp on/off <NOME>[/green]           : Ativa ou Desativa um servidor temporariamente sem excluí-lo\n"
+                "[green]moltyclaw mcp list/install/on/off[/green]      : Gerenciamento de Servidores MCP externos\n"
+                "[green]moltyclaw skill list/info/create[/green]      : Gerenciamento do Sistema de Skills modulares\n"
+                "[green]moltyclaw skill install <PATH>[/green]        : Instala uma skill a partir de pasta ou arquivo .skill\n"
+                "[green]moltyclaw skill info <NOME>[/green]           : Detalhes, requisitos e manual de uma skill\n"
                 "[green]moltyclaw --help[/green] ou [green]-h[/green]                : Exibe este menu de ajuda",
                 border_style="cyan"
             ))

@@ -299,6 +299,123 @@ themeBtns.forEach(btn => {
 const savedTheme = localStorage.getItem('molty-theme') || 'light';
 applyTheme(savedTheme);
 
+// ─── Skills Management ──────────────────────────────────────────────────────
+let skillsCache = [];
+
+async function fetchSkills() {
+    const container = document.getElementById('skills-container');
+    if (!container) return;
+
+    container.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted);"><i class="fa-solid fa-circle-notch fa-spin"></i> Carregando habilidades...</div>';
+
+    try {
+        const res = await fetch('/api/skills');
+        const data = await res.json();
+        skillsCache = data.skills || [];
+        renderSkills(skillsCache);
+    } catch (e) {
+        container.innerHTML = `<div class="card" style="border-left: 4px solid var(--accent);"><p>Erro ao carregar skills: ${e.message}</p></div>`;
+    }
+}
+
+function renderSkills(skills) {
+    const container = document.getElementById('skills-container');
+    if (!container) return;
+
+    if (skills.length === 0) {
+        container.innerHTML = '<div class="card"><p class="muted">Nenhuma habilidade encontrada.</p></div>';
+        return;
+    }
+
+    // Agrupar por fonte
+    const groups = {
+        'workspace': { label: 'Suas Habilidades (Workspace)', items: [] },
+        'managed': { label: 'Habilidades Instaladas', items: [] },
+        'bundled': { label: 'Habilidades Nativas', items: [] }
+    };
+
+    skills.forEach(s => {
+        if (groups[s.source]) {
+            groups[s.source].items.push(s);
+        }
+    });
+
+    let html = '';
+    for (const [key, group] of Object.entries(groups)) {
+        if (group.items.length === 0) continue;
+
+        html += `
+            <div class="skills-category">
+                <div class="skills-category-header">
+                    <h2>${group.label}</h2>
+                    <span class="count">${group.items.length}</span>
+                </div>
+                <div class="skills-grid">
+                    ${group.items.map(s => `
+                        <div class="skill-card">
+                            <div class="skill-card-header">
+                                <div class="skill-emoji">${s.emoji || '🧩'}</div>
+                                <div class="skill-main-info">
+                                    <div class="skill-name">${escapeHTML(s.name)}</div>
+                                    <div class="skill-source">${s.source}</div>
+                                </div>
+                            </div>
+                            <p class="skill-description">${escapeHTML(s.description)}</p>
+                            <div class="skill-badges">
+                                <span class="skill-badge ${s.eligible ? 'eligible' : 'blocked'}">
+                                    ${s.eligible ? 'Elegível' : 'Bloqueada'}
+                                </span>
+                            </div>
+                            ${!s.eligible ? `<div class="skill-reasons"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(s.reason)}</div>` : ''}
+                            <div class="skill-actions">
+                                <button class="btn-secondary" style="font-size: 0.75rem; padding: 5px 10px;" onclick="alert('Funcionalidade de detalhamento em breve!')">
+                                    Ver Detalhes
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function filterSkills() {
+    const term = document.getElementById('skill-search').value.toLowerCase();
+    const filtered = skillsCache.filter(s => 
+        s.name.toLowerCase().includes(term) || 
+        s.description.toLowerCase().includes(term)
+    );
+    renderSkills(filtered);
+}
+
+function showInstallSkillPrompt() {
+    const source = prompt("Insira o caminho local da pasta da skill ou uma URL de repositório:");
+    if (source) {
+        installSkillWeb(source);
+    }
+}
+
+async function installSkillWeb(source) {
+    try {
+        const res = await fetch('/api/skills/install', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ source })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message);
+            fetchSkills();
+        } else {
+            alert("Erro: " + data.error);
+        }
+    } catch (e) {
+        alert("Erro de conexão ao tentar instalar skill.");
+    }
+}
 // Polling status on startup to update "Ready" dot
 async function checkStatus() {
     try {
@@ -354,6 +471,8 @@ function switchTab(tabId) {
         loadMCPList();
     } else if (tabId === 'heartbeat') {
         fetchSchedulerJobs();
+    } else if (tabId === 'skills') {
+        fetchSkills();
     }
 
     // Sync mobile bottom nav active state

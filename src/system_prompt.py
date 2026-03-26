@@ -12,7 +12,7 @@ from typing import Optional
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-VERSION = "26.24.3"
+VERSION = "26.25.3"
 SILENT_TOKEN = "NO_REPLY"
 TOOL_FORMAT_EXAMPLE = '<tool>\n{"action": "GOTO", "param": "https://site.com"}\n</tool>'
 
@@ -98,6 +98,12 @@ def _build_tools_section(active_features: str) -> list[str]:
         active_features.strip(),
         "",
     ]
+
+
+def _build_skills_section(skills_prompt: str) -> list[str]:
+    if not skills_prompt.strip():
+        return []
+    return [skills_prompt.strip(), ""]
 
 
 def _build_memory_section(memory_content: str, is_minimal: bool) -> list[str]:
@@ -209,6 +215,7 @@ def build_system_prompt(
     bootstrap_content: str = "",
     memory_content: str = "",
     active_features: str = "",
+    skills_prompt: str = "",
     mcp_placeholder: str = "",
     channel: Optional[str] = None,
     is_subagent: bool = False,
@@ -234,6 +241,7 @@ def build_system_prompt(
         _build_autonomy_section(is_minimal),
         _build_tool_format_section(is_minimal),
         _build_tools_section(active_features),
+        _build_skills_section(skills_prompt),
         _build_memory_section(memory_content, is_minimal),
         _build_safety_section(is_minimal),
         _build_subagent_context_section(extra_context if is_minimal else None),

@@ -5,8 +5,8 @@ import re
 import time
 import shutil
 
-MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
-os.makedirs(MOLTY_DIR, exist_ok=True)
+from initializer import initialize_moltyclaw, MOLTY_DIR
+initialize_moltyclaw()
 import sys
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
@@ -19,6 +19,12 @@ except ImportError:
 
 from system_prompt import build_system_prompt
 from config_loader import get_config
+from skills import (
+    load_skill_entries,
+    build_skills_metadata_prompt,
+    find_skill_by_name,
+    load_skill_body
+)
 
 try:
     from mistralai import Mistral
@@ -136,6 +142,10 @@ class MoltyClaw:
         bootstrap_content = self._load_bootstrap()
         memory_content = self._load_memory()
 
+        # Carregamento do Sistema de Skills
+        self.skills = load_skill_entries(self.workspace_dir)
+        skills_prompt = build_skills_metadata_prompt(self.skills)
+
         self.history = [
             {"role": "system", "content": build_system_prompt(
                 name=self.name,
@@ -149,6 +159,7 @@ class MoltyClaw:
                 bootstrap_content=bootstrap_content,
                 memory_content=memory_content,
                 active_features=active_features,
+                skills_prompt=skills_prompt,
                 mcp_placeholder=self._get_mcp_prompt_placeholder(),
                 channel=self.channel,
                 is_subagent=not self.is_master,
@@ -1327,6 +1338,22 @@ class MoltyClaw:
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         if tool_callback: await tool_callback(f"[{action}]")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+
+                    elif action == "SKILL_USE":
+                        console.print(f"\n[info]🧩 Ativando SKILL:[/info] {param}")
+                        skill = find_skill_by_name(self.skills, param)
+                        if not skill:
+                            result = f"ERRO: A skill '{param}' não foi encontrada ou não está instalada."
+                        elif not skill.eligible:
+                            result = f"ERRO: A skill '{param}' não pode ser carregada: {skill.eligibility_reason}"
+                        else:
+                            body = load_skill_body(skill)
+                            result = f"OK: Skill '{skill.name}' ativada com sucesso!\n\n--- INSTRUÇÕES DA SKILL ---\n{body}"
+                        
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Ativação de Skill] -> {result}"})
+                        if tool_callback: await tool_callback(f"[SKILL] {param}")
+                        # Chama ask recursivamente para o modelo processar as novas instruções
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action.startswith("SPOTIFY_"):
                         if not silent: console.print(f"\n[info]🎵 Módulo SPOTIFY ({action}):[/info] {param}")
@@ -1561,6 +1588,7 @@ class MoltyClaw:
             "IDENTITY_SAVE": '"IDENTITY_SAVE" (param: conteúdo completo para IDENTITY.md)',
             "USER_SAVE": '"USER_SAVE" (param: conteúdo completo para USER.md)',
             "SOUL_UPDATE": '"SOUL_UPDATE" (param: conteúdo completo para SOUL.md)',
+            "SKILL_USE": '"SKILL_USE" (param: "nome_da_skill") - Ativa uma skill modular e carrega suas instruções detalhadas para o contexto atual.',
         }
         
         active_features = []
