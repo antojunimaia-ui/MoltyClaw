@@ -841,6 +841,9 @@ MoltyClaw/
         └── .env               # Chaves de API próprias (opcional, override do global)
 ```
 
+## Licença
+O MoltyClaw é fornecido por antojunimaia-ui e contrbuidores sob a licença BSD 3-Clause, veja [LICENSE](LICENSE) para mais detalhes.
+
 ---
 
 > ⚠️ **Aviso de Segurança:** O MoltyClaw opera com as mesmas permissões do usuário Windows que iniciou o processo. O agente tem acesso ao CMD, ao sistema de arquivos e à internet. Configure as whitelists corretamente e não compartilhe o modo `--share` em redes públicas sem autenticação adicional. Revise o `SOUL.md` para impor restrições de comportamento conforme necessário.
