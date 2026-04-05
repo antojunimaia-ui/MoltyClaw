@@ -46,6 +46,7 @@ dependencies = [
     "atproto",
     "questionary",
     "google-generativeai",
+    "ollama",
 ]
 
 [project.urls]

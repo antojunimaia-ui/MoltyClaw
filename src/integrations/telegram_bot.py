@@ -14,15 +14,16 @@ sys.stderr.reconfigure(encoding='utf-8')
 from moltyclaw import MoltyClaw
 from rich.console import Console
 from config_loader import get_config
+from initializer import MOLTY_DIR
 
 console = Console()
-load_dotenv()
+load_dotenv(os.path.join(MOLTY_DIR, '.env'))
 
 # Carrega do moltyclaw.json
 molty_config = get_config()
 t_cfg = molty_config.get("channels", {}).get("telegram", {})
 
-TELEGRAM_TOKEN = t_cfg.get("bot_token") or os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = t_cfg.get("bot_token") or os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_ALLOWED_USERS = t_cfg.get("allowed_users") or os.getenv("TELEGRAM_ALLOWED_USERS", "")
 
 from routing import resolve_agent
@@ -72,7 +73,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         import time
         from pathlib import Path
-        temp_dir = Path(os.path.join(os.path.expanduser("~"), ".moltyclaw", "temp"))
+        temp_dir = Path(os.path.join(MOLTY_DIR, "temp"))
         temp_dir.mkdir(exist_ok=True)
         file_path = temp_dir / f"telegram_audio_{int(time.time())}.ogg"
         await file.download_to_drive(file_path)
@@ -163,13 +164,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         match_img = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
         if match_img:
-            media_path = match_img.group(1)
+            media_path = match_img.group(1).strip()
             reply = reply.replace(match_img.group(0), "").strip()
+            # Resolve path relativo para a pasta temp do agente
+            if not os.path.isabs(media_path) and not os.path.exists(media_path):
+                potential_path = os.path.join(target_agent.base_dir, "temp", media_path)
+                if os.path.exists(potential_path):
+                    media_path = potential_path
             
         match_aud = re.search(r'\[AUDIO_REPLY:\s*(.*?)\]', reply)
         if match_aud:
-            audio_reply_path = match_aud.group(1)
+            audio_reply_path = match_aud.group(1).strip()
             reply = reply.replace(match_aud.group(0), "").strip()
+            # Resolve path relativo para a pasta temp do agente
+            if not os.path.isabs(audio_reply_path) and not os.path.exists(audio_reply_path):
+                potential_path = os.path.join(target_agent.base_dir, "temp", audio_reply_path)
+                if os.path.exists(potential_path):
+                    audio_reply_path = potential_path
         
         # Telegram tem limite de 4096 caracteres. Quebrando em chunks se necessário.
         if len(reply) > 4000:
@@ -206,12 +217,12 @@ if __name__ == '__main__':
 
     # Se for um sub-agente, tenta carregar o .env dele PRIMEIRO para sobrepor o token se necessário
     if args.agent != "MoltyClaw":
-        agent_env = os.path.join(os.path.expanduser("~"), ".moltyclaw", "agents", args.agent, ".env")
+        agent_env = os.path.join(MOLTY_DIR, "agents", args.agent, ".env")
         if os.path.exists(agent_env):
             console.print(f"[dim]>> Carregando configurações específicas do agente '{args.agent}'...[/dim]")
             load_dotenv(agent_env, override=True)
             # Atualiza o token se ele existir no .env do agente
-            TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or TELEGRAM_TOKEN
+            TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_TOKEN
 
     if not TELEGRAM_TOKEN:
         console.print("[bold red]❌ ERRO: A variável TELEGRAM_TOKEN não foi encontrada no seu .env![/bold red]")

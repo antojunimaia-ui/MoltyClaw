@@ -21,6 +21,7 @@ class SubagentRun:
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
     ended_at: Optional[float] = None
+    agent_instance: Optional[object] = None # Guarda a instância viva (MoltyClaw) para permitir inspeção e envio de mensagens
 
 
 # ── Storage em memória (persiste durante o processo) ──────────────────────────

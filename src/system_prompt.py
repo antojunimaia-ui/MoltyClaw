@@ -12,7 +12,7 @@ from typing import Optional
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-VERSION = "26.25.3"
+VERSION = "2026.5.4"
 SILENT_TOKEN = "NO_REPLY"
 TOOL_FORMAT_EXAMPLE = '<tool>\n{"action": "GOTO", "param": "https://site.com"}\n</tool>'
 
@@ -64,13 +64,20 @@ def _build_tool_format_section(is_minimal: bool) -> list[str]:
     if is_minimal:
         return []
     return [
-        "## Formato de Ferramenta",
-        "Para executar uma ação, responda EXATAMENTE neste formato (bloco <tool>):",
+        "## Formato de Raciocínio e Ferramenta",
+        "TODO O SEU RACIOCÍNIO interno, planejamento e justificativas DEVE OBRIGATORIAMENTE estar contido dentro de blocos <think>...</think>. O usuário NÃO VÁ LER o que está dentro do <think>.",
+        "Você deve pensar longamente dentro do <think> antes de agir, especialmente em tarefas complexas.",
         "",
+        "Para executar uma ação, responda EXATAMENTE neste formato (um bloco de tool só pode aparecer APÓS o bloco de think terminar):",
+        "",
+        "<think>",
+        "1. Eu preciso buscar a receita.",
+        "2. Vou usar a ferramenta DDG_SEARCH.",
+        "</think>",
         TOOL_FORMAT_EXAMPLE,
         "",
         "Você só pode chamar UMA ferramenta por turno.",
-        "Não misture texto de resposta com chamadas de ferramenta no mesmo turno.",
+        "Não misture texto narrativo livre (visível ao usuário) fora do bloco <think> com chamadas de ferramenta no mesmo turno.",
         "",
     ]
 

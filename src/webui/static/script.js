@@ -23,6 +23,44 @@ function formatTime() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// ─── Security Helpers (OpenClaw Parity) ─────────────────────────────────────
+const AUTH_KEY = 'moltyclaw.gateway.token';
+
+function getAuthToken() {
+    return localStorage.getItem(AUTH_KEY);
+}
+
+function setAuthToken(token) {
+    if (token) {
+        localStorage.setItem(AUTH_KEY, token.trim());
+    }
+}
+
+async function fetchWithAuth(url, options = {}) {
+    const token = getAuthToken();
+    if (!options.headers) options.headers = {};
+    
+    if (token) {
+        if (options.headers instanceof Headers) {
+            options.headers.set('Authorization', `Bearer ${token}`);
+        } else {
+            options.headers['Authorization'] = `Bearer ${token}`;
+        }
+    }
+
+    const response = await fetch(url, options);
+    
+    if (response.status === 401) {
+        const newToken = prompt("⚠️ Gateway Protegido: Insira o GATEWAY_TOKEN (encontrado em moltyclaw.json):");
+        if (newToken) {
+            setAuthToken(newToken);
+            return fetchWithAuth(url, options); // Retry once
+        }
+    }
+    
+    return response;
+}
+
 function appendUserMessage(text, imgData = null) {
     const row = document.createElement('div');
     row.className = 'message-row user-row';
@@ -60,6 +98,12 @@ function appendAssistantMessage(htmlContent) {
 
 function scrollToBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function adjustTextareaHeight() {
+    messageInput.style.height = '40px'; // Reset to base height
+    const newHeight = Math.min(messageInput.scrollHeight, 200);
+    messageInput.style.height = newHeight + 'px';
 }
 
 function createAssistantMessage() {
@@ -139,7 +183,7 @@ async function sendMessage() {
     }
 
     try {
-        const response = await fetch('/api/chat', {
+        const response = await fetchWithAuth('/api/chat', {
             method: 'POST',
             body: formData
         });
@@ -220,9 +264,13 @@ messageInput.addEventListener('keydown', function (e) {
         e.preventDefault();
         if (!sendBtn.disabled) {
             sendMessage();
+            adjustTextareaHeight(); // Reset height after send
         }
     }
 });
+
+// Auto-height adjustment on typing
+messageInput.addEventListener('input', adjustTextareaHeight);
 
 function clearSession() {
     chatContainer.innerHTML = `<div class="system-welcome">Session Cleared. Starting fresh context.</div>`;
@@ -309,7 +357,7 @@ async function fetchSkills() {
     container.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted);"><i class="fa-solid fa-circle-notch fa-spin"></i> Carregando habilidades...</div>';
 
     try {
-        const res = await fetch('/api/skills');
+        const res = await fetchWithAuth('/api/skills');
         const data = await res.json();
         skillsCache = data.skills || [];
         renderSkills(skillsCache);
@@ -400,7 +448,7 @@ function showInstallSkillPrompt() {
 
 async function installSkillWeb(source) {
     try {
-        const res = await fetch('/api/skills/install', {
+        const res = await fetchWithAuth('/api/skills/install', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ source })
@@ -419,7 +467,7 @@ async function installSkillWeb(source) {
 // Polling status on startup to update "Ready" dot
 async function checkStatus() {
     try {
-        const res = await fetch('/api/status');
+        const res = await fetchWithAuth('/api/status');
         const data = await res.json();
         if (data.ready) {
             agentStatus.className = 'status-badge ready';
@@ -486,7 +534,7 @@ function switchTab(tabId) {
 
 async function fetchSchedulerJobs() {
     try {
-        const res = await fetch('/api/scheduler/jobs');
+        const res = await fetchWithAuth('/api/scheduler/jobs');
         const data = await res.json();
         renderSchedulerJobs(data.jobs || []);
     } catch(e) { console.error('Error fetching jobs', e); }
@@ -534,7 +582,7 @@ async function addSchedulerJob() {
     if (!name || !payload) return alert("Por favor, preencha o nome e o o comando de voz/texto da tarefa.");
 
     try {
-        const res = await fetch('/api/scheduler/add', {
+        const res = await fetchWithAuth('/api/scheduler/add', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ name, interval_min, payload })
@@ -550,7 +598,7 @@ async function addSchedulerJob() {
 
 async function toggleSchedulerJob(id, enabled) {
     try {
-        await fetch('/api/scheduler/toggle', {
+        await fetchWithAuth('/api/scheduler/toggle', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ id, enabled })
@@ -562,7 +610,7 @@ async function toggleSchedulerJob(id, enabled) {
 async function removeSchedulerJob(id) {
     if (!confirm("Tem certeza que deseja excluir esta tarefa de monitoramento?")) return;
     try {
-        await fetch(`/api/scheduler/remove/${id}`, { method: 'POST' });
+        await fetchWithAuth(`/api/scheduler/remove/${id}`, { method: 'POST' });
         fetchSchedulerJobs();
     } catch(e) { console.error('Error removing job', e); }
 }
@@ -573,7 +621,7 @@ let agentListCache = [];
 
 async function loadAgentList() {
     try {
-        const res = await fetch('/api/agents');
+        const res = await fetchWithAuth('/api/agents');
         const data = await res.json();
         agentListCache = data.agents || [];
         renderAgentList();
@@ -843,7 +891,7 @@ async function saveAgentConfig() {
     };
     
     try {
-        const res = await fetch('/api/agents', {
+        const res = await fetchWithAuth('/api/agents', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
@@ -873,7 +921,7 @@ async function deleteAgent() {
     }
     
     try {
-        const res = await fetch(`/api/agents/${activeAgentId}`, {
+        const res = await fetchWithAuth(`/api/agents/${activeAgentId}`, {
             method: 'DELETE'
         });
         
@@ -903,7 +951,7 @@ async function loadMcpToolsSelector() {
     container.innerHTML = '<div class="mcp-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Carregando servidores MCP...</div>';
     
     try {
-        const res = await fetch('/api/mcp/list');
+        const res = await fetchWithAuth('/api/mcp/list');
         const data = await res.json();
         const installedMcps = data.installed || [];
         
@@ -958,7 +1006,7 @@ async function loadAgentFiles() {
         
         for (const f of files) {
             try {
-                const res = await fetch(`/api/agent/${f}${query}`);
+                const res = await fetchWithAuth(`/api/agent/${f}${query}`);
                 const data = await res.json();
                 agentFilesContent[f] = data.content || '';
             } catch (err) {
@@ -1020,7 +1068,7 @@ async function saveCurrentAgentFile() {
     btn.innerText = "Salvando...";
 
     try {
-        const res = await fetch(`/api/agent/${currentAgentFile}?agent=${activeAgentId}`, {
+        const res = await fetchWithAuth(`/api/agent/${currentAgentFile}?agent=${activeAgentId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content })
@@ -1047,23 +1095,26 @@ async function saveCurrentAgentFile() {
 // Integrations Logic
 async function fetchIntegrations() {
     try {
-        const res = await fetch('/api/integrations');
-        const data = await res.json(); // format { "discord": ["MoltyClaw", "goku"], ... }
-
-        const platforms = ['whatsapp', 'discord', 'telegram', 'twitter', 'bluesky'];
-        platforms.forEach(p => {
-            const activeList = data[p] || [];
-            const toggle = document.getElementById(`toggle-${p}`);
-            const activeDiv = document.getElementById(`active-${p}`);
-            
-            if (toggle) toggle.checked = activeList.length > 0;
-            if (activeDiv) {
-                activeDiv.innerHTML = activeList.map(id => `<span class="int-agent-pill">${id}</span>`).join('');
-            }
-        });
+        const res = await fetchWithAuth('/api/integrations');
+        const data = await res.json();
+        renderIntegrations(data);
     } catch (e) {
         console.error('Failed to fetch integrations', e);
     }
+}
+
+function renderIntegrations(data) {
+    const platforms = ['whatsapp', 'discord', 'telegram', 'twitter', 'bluesky'];
+    platforms.forEach(p => {
+        const activeList = data[p] || [];
+        const toggle = document.getElementById(`toggle-${p}`);
+        const activeDiv = document.getElementById(`active-${p}`);
+        
+        if (toggle) toggle.checked = activeList.length > 0;
+        if (activeDiv) {
+            activeDiv.innerHTML = activeList.map(id => `<span class="int-agent-pill">${id}</span>`).join('');
+        }
+    });
 }
 
 async function toggleIntegration(name) {
@@ -1074,7 +1125,7 @@ async function toggleIntegration(name) {
 
     toggle.disabled = true; // Prevent spamming
     try {
-        const res = await fetch(`/api/integrations/${action}`, {
+        const res = await fetchWithAuth(`/api/integrations/${action}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, agent_id: agentId })
@@ -1098,6 +1149,32 @@ async function toggleIntegration(name) {
 // Initial fetch to sync states
 fetchIntegrations();
 
+// --- WebSocket for Real-time Status ---
+function setupStatusWS() {
+    const token = getAuthToken();
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws${token ? `?token=${token}` : ''}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'integrations_status') {
+            console.log("WebSocket Status Update:", msg.data);
+            renderIntegrations(msg.data);
+        }
+    };
+
+    ws.onclose = () => {
+        console.warn("WebSocket status connection closed. Retrying in 5s...");
+        setTimeout(setupStatusWS, 5000);
+    };
+
+    ws.onerror = (err) => {
+        console.error("WebSocket Status Error:", err);
+    };
+}
+setupStatusWS();
+
 // --- MCP Tab Logic ---
 let mcpList = [];
 let installedMcps = [];
@@ -1109,7 +1186,7 @@ async function loadMCPList() {
     }
 
     try {
-        const res = await fetch('/api/mcp/list');
+        const res = await fetchWithAuth('/api/mcp/list');
         const data = await res.json();
         mcpList = data.mcps || [];
         installedMcps = data.installed || [];
@@ -1170,7 +1247,7 @@ async function installMCP(event, mcpId) {
     event.currentTarget.disabled = true;
 
     try {
-        const res = await fetch('/api/mcp/install', {
+        const res = await fetchWithAuth('/api/mcp/install', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(target)
@@ -1285,7 +1362,7 @@ async function processContext() {
 
 async function fetchBindings() {
     try {
-        const response = await fetch('/api/bindings');
+        const response = await fetchWithAuth('/api/bindings');
         const bindings = await response.json();
         renderBindings(bindings);
     } catch (e) {
@@ -1336,11 +1413,11 @@ async function addBinding() {
     if (peer) newBinding.match.peer_id = peer;
     
     try {
-        const currentResp = await fetch('/api/bindings');
+        const currentResp = await fetchWithAuth('/api/bindings');
         const bindings = await currentResp.json();
         bindings.push(newBinding);
         
-        await fetch('/api/bindings', {
+        await fetchWithAuth('/api/bindings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(bindings)
@@ -1360,11 +1437,11 @@ async function deleteBinding(index) {
     if (!confirm("Remover esta regra de roteamento?")) return;
     
     try {
-        const currentResp = await fetch('/api/bindings');
+        const currentResp = await fetchWithAuth('/api/bindings');
         let bindings = await currentResp.json();
         bindings.splice(index, 1);
         
-        await fetch('/api/bindings', {
+        await fetchWithAuth('/api/bindings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(bindings)

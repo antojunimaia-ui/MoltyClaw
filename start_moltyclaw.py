@@ -8,6 +8,7 @@ import json
 
 from src.initializer import initialize_moltyclaw, MOLTY_DIR
 initialize_moltyclaw()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MOLTY_MCP_DIR = os.path.join(MOLTY_DIR, "mcp_modules")
 
 # Usando as bibliotecas rich que já temos instaladas para um menu maravilhoso
@@ -65,8 +66,8 @@ def get_color(name):
     return "cyan"
 
 def run_whatsapp():
-    CMD_SERVER = "python src/integrations/whatsapp_server.py"
-    CMD_BRIDGE = "node src/integrations/whatsapp_bridge.js"
+    CMD_SERVER = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_server.py")}"'
+    CMD_BRIDGE = f'node "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_bridge.js")}"'
     
     th_svr = threading.Thread(target=run_process, args=(CMD_SERVER, "WHATSAPP-SVR"), daemon=True)
     th_brg = threading.Thread(target=run_process, args=(CMD_BRIDGE, "WHATSAPP-NODE"), daemon=True)
@@ -77,25 +78,25 @@ def run_whatsapp():
     return [th_svr, th_brg]
 
 def run_discord():
-    CMD_DISCORD = "python src/integrations/discord_bot.py"
+    CMD_DISCORD = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "discord_bot.py")}"'
     th_dsc = threading.Thread(target=run_process, args=(CMD_DISCORD, "DISCORD-BOT"), daemon=True)
     th_dsc.start()
     return [th_dsc]
 
 def run_telegram():
-    CMD_TELEGRAM = "python src/integrations/telegram_bot.py"
+    CMD_TELEGRAM = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "telegram_bot.py")}"'
     th_tel = threading.Thread(target=run_process, args=(CMD_TELEGRAM, "TELEGRAM-BOT"), daemon=True)
     th_tel.start()
     return [th_tel]
 
 def run_twitter():
-    CMD_TWITTER = "python src/integrations/twitter_bot.py"
+    CMD_TWITTER = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "twitter_bot.py")}"'
     th_twt = threading.Thread(target=run_process, args=(CMD_TWITTER, "TWITTER-BOT"), daemon=True)
     th_twt.start()
     return [th_twt]
 
 def run_bluesky():
-    CMD_BLUESKY = "python src/integrations/bluesky_bot.py"
+    CMD_BLUESKY = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "bluesky_bot.py")}"'
     th_bsky = threading.Thread(target=run_process, args=(CMD_BLUESKY, "BLUESKY-BOT"), daemon=True)
     th_bsky.start()
     return [th_bsky]
@@ -105,7 +106,7 @@ def install_moltyclaw_path():
     bat_path = os.path.join(scripts_dir, "moltyclaw.bat")
     exe_path = os.path.join(scripts_dir, "moltyclaw.exe")
     cwd = os.getcwd()
-    bat_content = f'@echo off\ncd /d "{cwd}"\npython start_moltyclaw.py %*\n'
+    bat_content = f'@echo off\ncd /d "{cwd}"\n"{sys.executable}" start_moltyclaw.py %*\n'
     
     try:
         if not os.path.exists(scripts_dir):
@@ -137,7 +138,7 @@ def cli_doctor():
         console.print("[bold red]❌[/bold red] Node.js: Não encontrado (O WhatsApp não funcionará).")
         
     # Check .env
-    env_path = os.path.join(os.getcwd(), '.env')
+    env_path = os.path.join(MOLTY_DIR, '.env')
     if os.path.exists(env_path):
         console.print("[bold green]✔[/bold green] Arquivo .env encontrado.")
         with open(env_path, 'r', encoding='utf-8') as f:
@@ -166,7 +167,7 @@ def cli_doctor():
     sys.exit(0)
 
 def cli_config_set(key, value):
-    env_path = os.path.join(os.getcwd(), '.env')
+    env_path = os.path.join(MOLTY_DIR, '.env')
     lines = []
     if os.path.exists(env_path):
         with open(env_path, 'r', encoding='utf-8') as f:
@@ -187,7 +188,7 @@ def cli_config_set(key, value):
     sys.exit(0)
 
 def cli_config_get(key):
-    env_path = os.path.join(os.getcwd(), '.env')
+    env_path = os.path.join(MOLTY_DIR, '.env')
     if os.path.exists(env_path):
         with open(env_path, 'r', encoding='utf-8') as f:
             for line in f:
@@ -204,10 +205,10 @@ def cli_mcp_install(repo):
         repo = f"https://{repo}"
         
     repo_name = repo.split("/")[-1].replace(".git", "")
-    target_dir = os.path.join(os.getcwd(), "mcp_modules", repo_name)
+    target_dir = os.path.join(MOLTY_MCP_DIR, repo_name)
     
-    if not os.path.exists("mcp_modules"):
-        os.makedirs("mcp_modules")
+    if not os.path.exists(MOLTY_MCP_DIR):
+        os.makedirs(MOLTY_MCP_DIR)
         
     if os.path.exists(target_dir):
         console.print(f"[bold yellow]⚠ O repositório {repo_name} já existe localmente. Atualizando...[/bold yellow]")
@@ -231,31 +232,31 @@ def cli_mcp_install(repo):
              os.system(f"cd {target_dir} && npm run build")
              
         if os.path.exists(os.path.join(target_dir, "build", "index.js")):
-            args = [os.path.join("mcp_modules", repo_name, "build", "index.js")]
+            args = [os.path.join(MOLTY_MCP_DIR, repo_name, "build", "index.js")]
         elif os.path.exists(os.path.join(target_dir, "dist", "index.js")):
-            args = [os.path.join("mcp_modules", repo_name, "dist", "index.js")]
+            args = [os.path.join(MOLTY_MCP_DIR, repo_name, "dist", "index.js")]
         else:
-            args = [os.path.join("mcp_modules", repo_name, "index.js")]
+            args = [os.path.join(MOLTY_MCP_DIR, repo_name, "index.js")]
             
     elif os.path.exists(os.path.join(target_dir, "requirements.txt")) or os.path.exists(os.path.join(target_dir, "pyproject.toml")):
         console.print("[dim]Python detectado! Instalando dependências (pip install)...[/dim]")
         if os.path.exists(os.path.join(target_dir, "requirements.txt")):
             os.system(f"pip install -r {os.path.join(target_dir, 'requirements.txt')}")
-        command = "python"
+        command = sys.executable
         
         if os.path.exists(os.path.join(target_dir, "server.py")):
-             args = [os.path.join("mcp_modules", repo_name, "server.py")]
+             args = [os.path.join(MOLTY_MCP_DIR, repo_name, "server.py")]
         elif os.path.exists(os.path.join(target_dir, "main.py")):
-             args = [os.path.join("mcp_modules", repo_name, "main.py")]
+             args = [os.path.join(MOLTY_MCP_DIR, repo_name, "main.py")]
         elif os.path.exists(os.path.join(target_dir, "src", "server.py")):
-             args = [os.path.join("mcp_modules", repo_name, "src", "server.py")]
+             args = [os.path.join(MOLTY_MCP_DIR, repo_name, "src", "server.py")]
         else:
-             args = [os.path.join("mcp_modules", repo_name, "index.py")]
+             args = [os.path.join(MOLTY_MCP_DIR, repo_name, "index.py")]
              
     else:
         console.print("[bold yellow]⚠ Não foi possível detectar a linguagem (Node/Python) para build automático.[/bold yellow]")
         
-    mcp_json_path = os.path.join(os.getcwd(), "mcp_servers.json")
+    mcp_json_path = os.path.join(MOLTY_DIR, "mcp_servers.json")
     mcp_data = {"mcpServers": {}}
     
     if os.path.exists(mcp_json_path):
@@ -284,7 +285,7 @@ def cli_mcp_list():
     import json
     from rich.table import Table
     
-    mcp_json_path = os.path.join(os.getcwd(), 'mcp_servers.json')
+    mcp_json_path = os.path.join(MOLTY_DIR, 'mcp_servers.json')
     if not os.path.exists(mcp_json_path):
         console.print("[bold yellow]⚠ Arquivo mcp_servers.json não encontrado. Nenhum servidor MCP instalado.[/bold yellow]")
         sys.exit(0)
@@ -316,7 +317,7 @@ def cli_mcp_list():
         sys.exit(1)
 
 def cli_mcp_uninstall(name):
-    mcp_json_path = os.path.join(os.getcwd(), 'mcp_servers.json')
+    mcp_json_path = os.path.join(MOLTY_DIR, 'mcp_servers.json')
     if os.path.exists(mcp_json_path):
         with open(mcp_json_path, 'r', encoding='utf-8') as f:
             mcp_data = json.load(f)
@@ -335,7 +336,7 @@ def cli_mcp_uninstall(name):
             console.print(f"[bold yellow]⚠ Servidor '{name}' não encontrado no JSON.[/bold yellow]")
             
     # Remove pasta
-    target_dir = os.path.join(os.getcwd(), "mcp_modules", name)
+    target_dir = os.path.join(MOLTY_MCP_DIR, name)
     if os.path.exists(target_dir):
         import shutil
         try:
@@ -347,7 +348,7 @@ def cli_mcp_uninstall(name):
     sys.exit(0)
 
 def cli_mcp_toggle(name, turn_on=True):
-    mcp_json_path = os.path.join(os.getcwd(), 'mcp_servers.json')
+    mcp_json_path = os.path.join(MOLTY_DIR, 'mcp_servers.json')
     if not os.path.exists(mcp_json_path):
         console.print("[bold red]❌ Arquivo mcp_servers.json não encontrado.[/bold red]")
         sys.exit(1)
@@ -380,7 +381,7 @@ def cli_mcp_toggle(name, turn_on=True):
     sys.exit(0)
 
 def cli_reset_memory():
-    mem_path = os.path.join(os.getcwd(), 'MEMORY.md')
+    mem_path = os.path.join(MOLTY_DIR, "workspace", 'MEMORY.md')
     if os.path.exists(mem_path):
         with open(mem_path, 'w', encoding='utf-8') as f:
             f.write("# MEMORY\n\nA memória episódica do MoltyClaw foi redefinida. O Agente começará limpo.\n")
@@ -1036,6 +1037,40 @@ def cli_skill_package(path):
         console.print(f"[bold red]❌ {result}[/bold red]")
     sys.exit(0 if success else 1)
 
+def cli_browser_toggle(arg):
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+    arg_lower = arg.lower()
+    config_path = os.path.join(MOLTY_DIR, "moltyclaw.json")
+    from config_loader import get_config
+    molty_cfg = get_config()
+    
+    if "browser" not in molty_cfg: molty_cfg["browser"] = {}
+    
+    if "headless=" in arg_lower:
+        is_headless = "true" in arg_lower
+        molty_cfg["browser"]["headless"] = is_headless
+        status = "[bold green]ATIVADO[/bold green] (Invisível)" if is_headless else "[bold yellow]DESATIVADO[/bold yellow] (Visível)"
+        console.print(f"✅ Modo Headless {status} no arquivo de configuração!")
+    elif arg_lower in ["on", "off"]:
+        is_enabled = arg_lower == "on"
+        molty_cfg["browser"]["enabled"] = is_enabled
+        status = "[bold green]LIGADO[/bold green]" if is_enabled else "[bold red]DESLIGADO[/bold red]"
+        console.print(f"✅ Navegador {status} com sucesso! (A IA não verá ferramentas de web se estiver desligado)")
+    else:
+        # Fallback simples para 'true/false' puro
+        if arg_lower in ["true", "false"]:
+            is_headless = "true" in arg_lower
+            molty_cfg["browser"]["headless"] = is_headless
+            console.print(f"✅ Modo Headless atualizado para {is_headless}!")
+        else:
+            console.print("[bold red]Argumento inválido. Use headless=true|false ou on|off.[/bold red]")
+            sys.exit(1)
+        
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(molty_cfg, f, indent=4)
+    sys.exit(0)
+
 def main():
     # Tratamento global do modo (-m / --mode)
     if "-m" in sys.argv or "--mode" in sys.argv:
@@ -1065,10 +1100,20 @@ def main():
             os.system(f"notepad {os.path.join(os.getcwd(), '.env')}")
             sys.exit(0)
         elif arg == "web":
+            import webbrowser
+            host = "127.0.0.1"
+            port = 5000
+            url = f"http://{host}:{port}"
+            console.print(f"[bold magenta]🌐 Abrindo MoltyClaw WebUI em {url}...[/bold magenta]")
+            webbrowser.open(url)
+            # Se quiser que o comando fique "travado" ou inicie o gateway se não estiver on:
+            # console.print("[dim]Dica: Certifique-se que o 'moltyclaw gateway' está rodando![/dim]")
+            sys.exit(0)
+        elif arg == "gateway":
             if "--share" in sys.argv:
                 os.environ["MOLTY_WEBUI_SHARE"] = "1"
-            console.print("[bold magenta]🚀 Lançando WebUI em modo Bypass...[/bold magenta]")
-            os.system("python src/webui/app.py")
+            console.print("[bold magenta]🔌 Iniciando MoltyClaw Gateway (FastAPI Hub)...[/bold magenta]")
+            os.system("python src/webui/gateway.py")
             sys.exit(0)
         elif arg == "doctor":
             cli_doctor()
@@ -1095,6 +1140,8 @@ def main():
             else:
                 console.print("[bold red]Uso: moltyclaw mcp install/uninstall/on/off <NOME> ou moltyclaw mcp list[/bold red]")
                 sys.exit(1)
+        elif arg == "browser" and len(sys.argv) >= 3:
+            cli_browser_toggle(sys.argv[2])
         elif arg == "reset" and len(sys.argv) >= 3 and sys.argv[2].lower() == "memory":
             cli_reset_memory()
         elif arg == "update":
@@ -1149,6 +1196,8 @@ def main():
                 "[green]moltyclaw skill list/info/create[/green]      : Gerenciamento do Sistema de Skills modulares\n"
                 "[green]moltyclaw skill install <PATH>[/green]        : Instala uma skill a partir de pasta ou arquivo .skill\n"
                 "[green]moltyclaw skill info <NOME>[/green]           : Detalhes, requisitos e manual de uma skill\n"
+                "[green]moltyclaw browser headless=true/false[/green] : Ativa/Desativa o modo invisível do navegador\n"
+                "[green]moltyclaw browser on/off[/green]              : Liga ou Desliga completamente o módulo de navegação\n"
                 "[green]moltyclaw --help[/green] ou [green]-h[/green]                : Exibe este menu de ajuda",
                 border_style="cyan"
             ))
@@ -1222,6 +1271,7 @@ def main():
                 questionary.Choice("⚡  Mistral AI      (MISTRAL_API_KEY)",     value="1"),
                 questionary.Choice("🌐  OpenRouter      (OPENROUTER_API_KEY)",  value="2"),
                 questionary.Choice("♊  Google Gemini    (GEMINI_API_KEY)",      value="3"),
+                questionary.Choice("🏠  Ollama (Local)   (OLLAMA_MODEL)",       value="4"),
             ],
             style=molty_style,
         ).ask()
@@ -1231,12 +1281,15 @@ def main():
         console.print("1. [bold cyan]Mistral AI[/bold cyan]")
         console.print("2. [bold magenta]OpenRouter[/bold magenta]")
         console.print("3. [bold blue]Google Gemini[/bold blue]")
-        provider_choice = Prompt.ask("Selecione", choices=["1", "2", "3"], default="1")
+        console.print("4. [bold white]Ollama (Local)[/bold white]")
+        provider_choice = Prompt.ask("Selecione", choices=["1", "2", "3", "4"], default="1")
 
     if provider_choice == "2":
         os.environ["MOLTY_PROVIDER"] = "openrouter"
     elif provider_choice == "3":
         os.environ["MOLTY_PROVIDER"] = "gemini"
+    elif provider_choice == "4":
+        os.environ["MOLTY_PROVIDER"] = "ollama"
     else:
         os.environ["MOLTY_PROVIDER"] = "mistral"
 

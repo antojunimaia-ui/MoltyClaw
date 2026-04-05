@@ -8,6 +8,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from moltyclaw import MoltyClaw
+from initializer import MOLTY_DIR
 import aiohttp
 import socket
 
@@ -22,13 +23,13 @@ from rich.console import Console
 from config_loader import get_config
 
 console = Console()
-load_dotenv()
+load_dotenv(os.path.join(MOLTY_DIR, '.env'))
 
 # Carrega do moltyclaw.json
 molty_config = get_config()
 d_cfg = molty_config.get("channels", {}).get("discord", {})
 
-DISCORD_TOKEN = d_cfg.get("bot_token") or os.getenv("DISCORD_TOKEN")
+DISCORD_TOKEN = d_cfg.get("bot_token") or os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
 DISCORD_ALLOWED_USERS = d_cfg.get("allowed_users") or os.getenv("DISCORD_ALLOWED_USERS", "")
 
 from routing import resolve_agent
@@ -125,7 +126,7 @@ class MoltyClawDiscordBot(discord.Client):
                 if attachment.content_type and ('audio' in attachment.content_type or attachment.filename.endswith('.ogg')):
                     import time
                     from pathlib import Path
-                    temp_dir = Path(os.path.join(os.path.expanduser("~"), ".moltyclaw", "temp"))
+                    temp_dir = Path(os.path.join(MOLTY_DIR, "temp"))
                     temp_dir.mkdir(exist_ok=True)
                     file_path = temp_dir / f"discord_audio_{int(time.time())}.ogg"
                     await attachment.save(file_path)
@@ -158,19 +159,33 @@ class MoltyClawDiscordBot(discord.Client):
                     # Chama o motor inteligência artificial que consome ferramentas
                     reply = await target_agent.ask(user_text)
                     
+                    if not reply or not isinstance(reply, str):
+                        await message.channel.send("Mals aí, o cérebro da IA não me deu uma resposta válida! (Cheque as chaves de API).")
+                        return
+                    
                     import re
                     media_path = None
                     audio_reply_path = None
                     
                     match_img = re.search(r'\[SCREENSHOT_TAKEN:\s*(.*?)\]', reply)
                     if match_img:
-                        media_path = match_img.group(1)
+                        media_path = match_img.group(1).strip()
                         reply = reply.replace(match_img.group(0), "").strip()
+                        # Resolve path relativo para a pasta temp do agente
+                        if not os.path.isabs(media_path) and not os.path.exists(media_path):
+                            potential_path = os.path.join(target_agent.base_dir, "temp", media_path)
+                            if os.path.exists(potential_path):
+                                media_path = potential_path
                         
                     match_aud = re.search(r'\[AUDIO_REPLY:\s*(.*?)\]', reply)
                     if match_aud:
-                        audio_reply_path = match_aud.group(1)
+                        audio_reply_path = match_aud.group(1).strip()
                         reply = reply.replace(match_aud.group(0), "").strip()
+                        # Resolve path relativo para a pasta temp do agente
+                        if not os.path.isabs(audio_reply_path) and not os.path.exists(audio_reply_path):
+                            potential_path = os.path.join(target_agent.base_dir, "temp", audio_reply_path)
+                            if os.path.exists(potential_path):
+                                audio_reply_path = potential_path
                         
                     # O Discord tem um limite de 2000 caracteres pra mensagem
                     if len(reply) > 2000:
@@ -223,12 +238,12 @@ if __name__ == "__main__":
 
     # Se for um sub-agente, tenta carregar o .env dele PRIMEIRO para sobrepor o token se necessário
     if args.agent != "MoltyClaw":
-        agent_env = os.path.join(os.path.expanduser("~"), ".moltyclaw", "agents", args.agent, ".env")
+        agent_env = os.path.join(MOLTY_DIR, "agents", args.agent, ".env")
         if os.path.exists(agent_env):
             console.print(f"[dim]>> Carregando configurações específicas do agente '{args.agent}'...[/dim]")
             load_dotenv(agent_env, override=True)
-            # Atualiza o token se ele existir no .env do agente
-            DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or DISCORD_TOKEN
+        # Atualiza o token se ele existir no .env do agente
+        DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or DISCORD_TOKEN
 
     if not DISCORD_TOKEN:
         console.print("[bold red]❌ ERRO: A variável DISCORD_TOKEN não foi encontrada no seu .env![/bold red]")
@@ -252,4 +267,18 @@ if __name__ == "__main__":
                 warnings.simplefilter("ignore", DeprecationWarning)
                 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
             
-        client.run(DISCORD_TOKEN)
+        try:
+            client.run(DISCORD_TOKEN)
+        except discord.errors.PrivilegedIntentsRequired:
+            console.print("\n[bold red]❌ ERRO DE PERMISSÃO (INTENTS) NO DISCORD![/bold red]")
+            console.print("[yellow]O seu bot do Discord precisa de permissões especiais ativadas no Developer Portal:[/yellow]")
+            console.print("1. Acesse: https://discord.com/developers/applications/")
+            console.print("2. Selecione sua aplicação.")
+            console.print("3. Vá em 'Bot' no menu lateral.")
+            console.print("4. Ative: [bold]MESSAGE CONTENT INTENT[/bold]")
+            console.print("5. Ative: [bold]SERVER MEMBERS INTENT[/bold]")
+            console.print("6. Salve as mudanças e tente rodar novamente.\n")
+            sys.exit(1)
+        except Exception as e:
+            console.print(f"[bold red]❌ Erro fatal ao iniciar o bot do Discord: {e}[/bold red]")
+            sys.exit(1)

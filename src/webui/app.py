@@ -18,11 +18,12 @@ from moltyclaw import MoltyClaw
 import skills
 from scheduler import SchedulerManager
 from rich.console import Console
+from initializer import MOLTY_DIR
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 console = Console()
-MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
 app = Flask(__name__, template_folder="templates", static_folder="static")
-load_dotenv()
+load_dotenv(os.path.join(MOLTY_DIR, '.env'))
 
 agent = None
 scheduler = None
@@ -196,11 +197,11 @@ active_processes = {}
 
 def start_integration(name, agent_id="MoltyClaw"):
     cmd_map = {
-        "whatsapp": ["python src/integrations/whatsapp_server.py", "node src/integrations/whatsapp_bridge.js"],
-        "discord": ["python src/integrations/discord_bot.py"],
-        "telegram": ["python src/integrations/telegram_bot.py"],
-        "twitter": ["python src/integrations/twitter_bot.py"],
-        "bluesky": ["python src/integrations/bluesky_bot.py"]
+        "whatsapp": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_server.py")}"', f'node "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_bridge.js")}"'],
+        "discord": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "discord_bot.py")}"'],
+        "telegram": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "telegram_bot.py")}"'],
+        "twitter": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "twitter_bot.py")}"'],
+        "bluesky": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "bluesky_bot.py")}"']
     }
     
     if name not in cmd_map: return False
@@ -239,7 +240,7 @@ def start_integration(name, agent_id="MoltyClaw"):
     for base_cmd in cmd_map[name]:
         # Adiciona argumentos de agente se for script python
         cmd = base_cmd
-        if cmd.startswith("python"):
+        if cmd.startswith(sys.executable):
             cmd += f' --agent "{agent_id}" --name "{agent_name}"'
             
         p = subprocess.Popen(cmd, shell=True, env=env)
@@ -568,7 +569,7 @@ def install_mcp():
     try:
         # Chama a execução nativa do MoltyClaw para Clonar & Fazer Build do MCP!
         subprocess.run(
-            f"python start_moltyclaw.py mcp install {repo_url}",
+            f'"{sys.executable}" "{os.path.join(BASE_DIR, "start_moltyclaw.py")}" mcp install {repo_url}',
             shell=True,
             check=True
         )

@@ -51,3 +51,5 @@ temp/
 SOUL.md
 mcp_servers.json
 .pypirc
+commits messages/
+.cache

@@ -9,9 +9,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from moltyclaw import MoltyClaw
 from rich.console import Console
+from initializer import MOLTY_DIR
 
 console = Console()
-load_dotenv()
+load_dotenv(os.path.join(MOLTY_DIR, '.env'))
 
 BLUESKY_HANDLE   = os.getenv("BLUESKY_HANDLE", "").lstrip("@")    # ex: seunome.bsky.social
 BLUESKY_PASSWORD = os.getenv("BLUESKY_APP_PASSWORD")  # App Password (não a senha principal)

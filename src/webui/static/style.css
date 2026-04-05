@@ -590,20 +590,34 @@ body[data-theme="dark"] .agent-selector-chat {
    INPUT AREA
    ───────────────────────────────────────────── */
 .input-area {
-    padding: 0 40px 30px 40px;
+    padding: 15px 40px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: flex-end; /* Mantém botões na base se o textarea crescer */
+    gap: 12px;
+    background: transparent;
+    border: none;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
 }
 
 .input-wrapper {
-    background: white;
-    border: 2px solid #ef4444;
-    border-radius: 12px;
-    padding: 15px;
-    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.1);
+    flex: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-main);
+    border-radius: 8px;
+    padding: 2px; /* Reduzido para expor o textarea mais limpo */
     position: relative;
-    margin-bottom: 15px;
-    transition: 0.2s border;
+    transition: 0.15s all ease;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+}
+
+.input-wrapper:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
 }
 
 .input-wrapper.loading {
@@ -618,9 +632,14 @@ body[data-theme="dark"] .agent-selector-chat {
     resize: none;
     font-size: 0.95em;
     font-family: inherit;
-    color: #334155;
+    color: var(--text-main);
     background: transparent;
-    height: 45px;
+    height: 40px; /* Base 40px (OpenClaw) */
+    min-height: 40px;
+    max-height: 200px;
+    padding: 10px 12px;
+    line-height: 1.45;
+    overflow-y: auto;
 }
 
 .input-wrapper textarea::placeholder {
@@ -629,20 +648,25 @@ body[data-theme="dark"] .agent-selector-chat {
 
 .input-actions {
     display: flex;
-    justify-content: flex-end;
-    gap: 15px;
+    align-items: stretch; /* Garante que os botões tenham a mesma altura */
+    gap: 8px;
+    height: 40px; /* Altura fixa (OpenClaw style) */
 }
 
 .btn-secondary {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    color: #475569;
-    padding: 10px 20px;
-    font-size: 0.9em;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-main);
+    color: var(--text-main);
+    padding: 0 15px;
+    font-size: 13px;
     font-weight: 600;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    transition: 0.2s;
+    transition: all 0.2s;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .btn-secondary:hover {
@@ -650,17 +674,20 @@ body[data-theme="dark"] .agent-selector-chat {
 }
 
 .btn-primary {
-    background: #dc2626;
+    background: #ef4444; /* Vermelho MoltyClaw */
+    color: white;
     border: none;
-    color: #ffffff;
-    padding: 10px 25px;
-    font-size: 0.9em;
+    padding: 0 18px;
+    font-size: 13px;
     font-weight: 600;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    height: 40px;
     display: flex;
     align-items: center;
-    transition: 0.2s;
+    gap: 8px;
 }
 
 .btn-primary:hover {

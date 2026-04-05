@@ -1,5 +1,7 @@
 import os
 import shutil
+import secrets
+import json
 
 MOLTY_DIR = os.path.join(os.path.expanduser("~"), ".moltyclaw")
 
@@ -95,6 +97,42 @@ _Atualize este arquivo conforme descobre mais sobre seu humano._
 """
 }
 
+DOTENV_TEMPLATE = """MOLTY_PROVIDER=
+
+MISTRAL_API_KEY=
+MISTRAL_MODEL=
+
+GEMINI_API_KEY=
+GEMINI_MODEL=
+
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
+
+DISCORD_BOT_TOKEN=
+DISCORD_ALLOWED_USERS=
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ALLOWED_USERS=
+
+WHATSAPP_ALLOWED_NUMBERS=
+
+X_API_KEY=
+X_API_SECRET=
+X_ACCESS_TOKEN=
+X_ACCESS_SECRET=
+
+BLUESKY_HANDLE=
+BLUESKY_APP_PASSWORD=
+BLUESKY_ALLOWED_HANDLES=
+
+GMAIL_USER=
+GMAIL_APP_PASSWORD=
+
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
+"""
+
 def initialize_moltyclaw():
     """Garante que toda a árvore de diretórios e arquivos base do MoltyClaw existam."""
     dirs = [
@@ -104,11 +142,31 @@ def initialize_moltyclaw():
         os.path.join(MOLTY_DIR, "bundled", "skills"),
         os.path.join(MOLTY_DIR, "workspace"),
         os.path.join(MOLTY_DIR, "workspace", "skills"),
-        os.path.join(MOLTY_DIR, "workspace", "memory"),
+        os.path.join(MOLTY_DIR, "memory"),
+        os.path.join(MOLTY_DIR, "canvas"),
+        os.path.join(MOLTY_DIR, "logs"),
+        os.path.join(MOLTY_DIR, "cron"),
         os.path.join(MOLTY_DIR, "mcp_modules"),
     ]
     for d in dirs:
         os.makedirs(d, exist_ok=True)
+        
+    # Garante que o .env mestre exista com o template
+    env_master = os.path.join(MOLTY_DIR, ".env")
+    if not os.path.exists(env_master):
+        with open(env_master, "w", encoding="utf-8") as f:
+            f.write(DOTENV_TEMPLATE)
+            
+    # MIGRATION AUTOMÁTICA: Move arquivos velhos da raiz para o novo workspace (OpenClaw Parity)
+    workspace_master = os.path.join(MOLTY_DIR, "workspace")
+    legacy_files = ["SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "BOOTSTRAP.md", "TOOLS.md"]
+    for lf in legacy_files:
+        old_path = os.path.join(MOLTY_DIR, lf)
+        new_path = os.path.join(workspace_master, lf)
+        if os.path.exists(old_path) and not os.path.exists(new_path):
+            try:
+                shutil.move(old_path, new_path)
+            except: pass
 
     # Seed de skills nativas (se houver no pacote)
     bundled_target = os.path.join(MOLTY_DIR, "bundled", "skills")
@@ -126,10 +184,56 @@ def initialize_moltyclaw():
             except Exception:
                 pass
 
-    # Cria arquivos base se não existirem no workspace master
-    workspace_master = os.path.join(MOLTY_DIR, "workspace")
+    # Cria arquivos base se não existirem no workspace master (OpenClaw Parity)
+    # BOOTSTRAP.md só deve ser criado em workspaces "zerados". 
+    # Se SOUL.md ou IDENTITY.md já existem, assumimos que o ritual já foi feito.
+    has_identity_files = os.path.exists(os.path.join(workspace_master, "SOUL.md")) or \
+                         os.path.exists(os.path.join(workspace_master, "IDENTITY.md"))
+
     for filename, content in TEMPLATES.items():
+        if filename == "BOOTSTRAP.md" and has_identity_files:
+            continue # Não re-cria o bootstrap se já existe identidade
+            
         path = os.path.join(workspace_master, filename)
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
+
+    # 4. Garante que o moltyclaw.json central exista e tenha um token seguro
+    config_path = os.path.join(MOLTY_DIR, "moltyclaw.json")
+    if not os.path.exists(config_path):
+        # Gera um token aleatório seguro (como o OpenClaw faz no onboard)
+        new_token = secrets.token_hex(24)
+        
+        default_config = {
+            "//": "==========================================",
+            "//_1": "CONFIGURAÇÃO CENTRAL MOLTYCLAW",
+            "//_2": "==========================================",
+            "//_3": "Inspirado no OpenClaw, este arquivo centraliza segredos e configurações.",
+            
+            "providers": {
+                "mistral": {"api_key": "${MISTRAL_API_KEY}", "model": "mistral-medium"},
+                "gemini": {"api_key": "${GEMINI_API_KEY}", "model": "gemini-1.5-flash"},
+                "openrouter": {"api_key": "${OPENROUTER_API_KEY}", "model": "google/gemini-2.0-flash"}
+            },
+            "channels": {
+                "telegram": {"bot_token": "${TELEGRAM_BOT_TOKEN}"},
+                "discord": {"bot_token": "${DISCORD_BOT_TOKEN}"}
+            },
+            "memory": {
+                "strategy": "sqlite-vec",
+                "path": "memory.db",
+                "max_history_tokens": 4000
+            },
+            "gateway": {
+                "auth": {
+                    "token": new_token
+                }
+            }
+        }
+        
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(default_config, f, indent=2)
+        except Exception:
+            pass

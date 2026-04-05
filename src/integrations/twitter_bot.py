@@ -8,24 +8,26 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from moltyclaw import MoltyClaw
+from initializer import MOLTY_DIR
 from rich.console import Console
 
+load_dotenv(os.path.join(MOLTY_DIR, '.env'))
+
 console = Console()
-load_dotenv()
 
 BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
-API_KEY = os.getenv("TWITTER_API_KEY")
-API_SECRET = os.getenv("TWITTER_API_SECRET")
-ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+API_KEY = os.getenv("TWITTER_API_KEY") or os.getenv("X_API_KEY")
+API_SECRET = os.getenv("TWITTER_API_SECRET") or os.getenv("X_API_SECRET")
+ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN") or os.getenv("X_ACCESS_TOKEN")
+ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET") or os.getenv("X_ACCESS_SECRET")
 
 # Tempo em segundos entre as checagens (API Gratuita tem limites rigorosos)
 POLL_INTERVAL = 30
 
 async def main_loop():
-    if not all([BEARER_TOKEN, API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET]):
-        console.print("[bold red]❌ ERRO: Faltam tokens do Twitter no arquivo .env![/bold red]")
-        console.print("[yellow]Certifique-se de configurar: TWITTER_BEARER_TOKEN, TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN e TWITTER_ACCESS_TOKEN_SECRET[/yellow]")
+    if not all([API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET]):
+        console.print("[bold red]❌ ERRO: Faltam tokens do X (Twitter) no arquivo .env![/bold red]")
+        console.print("[yellow]Certifique-se de configurar: X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN e X_ACCESS_SECRET[/yellow]")
         return
         
     console.print("[bold green]Inicializando navegador do MoltyClaw para o Twitter...[/bold green]")

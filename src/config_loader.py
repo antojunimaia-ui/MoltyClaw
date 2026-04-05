@@ -42,25 +42,26 @@ def load_molty_config() -> Dict[str, Any]:
     molty_dir = os.path.join(os.path.expanduser("~"), ".moltyclaw")
     config_path = os.path.join(molty_dir, "moltyclaw.json")
     
-    if not os.path.exists(config_path):
-        return {}
-        
     try:
+        if not os.path.exists(config_path):
+            return {}
+            
         with open(config_path, "r", encoding="utf-8") as f:
             raw_content = f.read()
             
         # Strip comments to mimic JSON5 behavior
         clean_json = strip_comments(raw_content)
         
-        # Load JSON
-        data = json.loads(clean_json)
+        # Load JSON with strict=False to allow control characters (tabs, etc) commonly found in VPS edits
+        data = json.loads(clean_json, strict=False)
         
         # Substitute Env Vars
         config = env_substitution(data)
         
         return config
     except Exception as e:
-        print(f">> [ConfigLoader] Erro ao carregar moltyclaw.json em {config_path}: {e}")
+        import traceback
+        # print(f">> [ConfigLoader] Erro ao carregar moltyclaw.json em {config_path}: {e}")
         return {}
 
 # Singleton instance

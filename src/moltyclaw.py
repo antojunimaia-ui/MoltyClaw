@@ -44,13 +44,20 @@ try:
 except ImportError:
     genai = None
 
+try:
+    import ollama
+    from ollama import AsyncClient as OllamaAsyncClient
+except ImportError:
+    ollama = None
+    OllamaAsyncClient = None
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 from rich.theme import Theme
 
-load_dotenv()
+load_dotenv(os.path.join(MOLTY_DIR, '.env'))
 
 custom_theme = Theme({
     "info": "dim cyan",
@@ -104,17 +111,41 @@ class MoltyClaw:
         
         # Carrega Configuração Global do moltyclaw.json
         molty_config = get_config()
-        p_cfg = molty_config.get("providers", {}).get(self.provider, {})
+        
+        def get_key_for(prov):
+            p_cfg = molty_config.get("providers", {}).get(prov, {})
+            if prov == "mistral": return p_cfg.get("api_key") or os.getenv("MISTRAL_API_KEY")
+            if prov == "gemini":  return p_cfg.get("api_key") or os.getenv("GEMINI_API_KEY")
+            if prov == "ollama":  return "ollama" # Ollama não exige chave, mas usamos placeholder
+            return p_cfg.get("api_key") or os.getenv("OPENROUTER_API_KEY")
 
+        # --- Lógica de Smart Provider (Auto-Discovery) ---
+        self.api_key = get_key_for(self.provider)
+        
+        # Se não tem a chave do provedor escolhido, tenta achar qualquer outra disponível
+        if not self.api_key:
+            for fallback in ["gemini", "mistral", "openrouter", "ollama"]:
+                if fallback == self.provider: continue
+                fallback_key = get_key_for(fallback)
+                if fallback_key:
+                    console.print(f"[dim]>> [{self.name}] Provedor '{self.provider}' sem chave. Chave de '{fallback}' detectada. Alternando automaticamente...[/dim]")
+                    self.provider = fallback
+                    self.api_key = fallback_key
+                    break
+
+        p_cfg = molty_config.get("providers", {}).get(self.provider, {})
         if self.provider == "mistral":
-            self.api_key = p_cfg.get("api_key") or os.getenv("MISTRAL_API_KEY")
             self.model = p_cfg.get("model") or os.getenv("MISTRAL_MODEL", "mistral-medium")
         elif self.provider == "gemini":
-            self.api_key = p_cfg.get("api_key") or os.getenv("GEMINI_API_KEY")
             self.model = p_cfg.get("model") or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        elif self.provider == "ollama":
+            self.model = p_cfg.get("model") or os.getenv("OLLAMA_MODEL", "llama3")
         else:
-            self.api_key = p_cfg.get("api_key") or os.getenv("OPENROUTER_API_KEY")
             self.model = p_cfg.get("model") or os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash")
+        
+        # Preferência do Navegador (Ativado/Desativado por comando CLI)
+        self.browser_enabled = molty_config.get("browser", {}).get("enabled", True)
+        self.browser_headless = molty_config.get("browser", {}).get("headless", True)
         
         self.playwright = None
         self.browser = None
@@ -170,6 +201,7 @@ class MoltyClaw:
             console.print(f"[{self.name}] [warning]Aviso: Chave de API para provedor {self.provider} não encontrada ({'MISTRAL_API_KEY' if self.provider == 'mistral' else 'OPENROUTER_API_KEY'}).[/warning]")
             self.mistral_client = None
             self.openai_client = None
+            self.gemini_client = None
         else:
             if self.provider == "mistral":
                 # Detecta se é a versão nova (Mistral) ou antiga (MistralAsyncClient)
@@ -191,7 +223,16 @@ class MoltyClaw:
                     self.gemini_client = None
                 self.mistral_client = None
                 self.openai_client = None
+            elif self.provider == "ollama":
+                if OllamaAsyncClient:
+                    self.ollama_client = OllamaAsyncClient(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+                else:
+                    self.ollama_client = None
+                self.mistral_client = None
+                self.gemini_client = None
+                self.openai_client = None
             else:
+                self.ollama_client = None
                 self.mistral_client = None
                 self.gemini_client = None
                 self.openai_client = AsyncOpenAI(
@@ -238,9 +279,11 @@ class MoltyClaw:
 
     async def init_browser(self):
         """Inicializa ou Conecta ao navegador compartilhado via CDP (Porta 9222)."""
+        if not self.browser_enabled:
+            return
+            
         await self.close_browser() 
         import aiohttp
-        import os
         import random
         import time
         import socket
@@ -291,12 +334,14 @@ class MoltyClaw:
                 except Exception as e:
                     console.print(f"[warning][{self.name}] Falha ao conectar via CDP, tentando lançar novo: {e}[/warning]")
 
-            # Se não havia um rodando, lança o Master com Sessão Persistente (uma única janela global!)
-            import os
+            # Lê a configuração de headless vinda do comando 'moltyclaw browser headless=...'
+            molty_cfg = get_config()
+            is_headless = molty_cfg.get("browser", {}).get("headless", True)
+            
             self.context = await self.playwright.chromium.launch_persistent_context(
                 user_data_dir=os.path.join(MOLTY_DIR, 'browser_profile'),
-                headless=False,
-                channel="msedge",
+                headless=is_headless,
+                channel="chromium",
                 ignore_default_args=["--enable-automation"],
                 args=[
                     '--remote-debugging-port=9222', # Habilita o compartilhamento
@@ -506,79 +551,84 @@ class MoltyClaw:
                 await self.page.screenshot(path=path_str, full_page=False)
                 return f"Screenshot capturado com sucesso. Se o usuário pediu a imagem, você DEVE dizer essa exata frase no meio do seu texto de volta para ele: [SCREENSHOT_TAKEN: {filename}]"
                 
+            elif action == "SCROLL_DOWN":
+                await self.page.mouse.wheel(0, 600)
+                await self.page.wait_for_timeout(1000)
+                return "Página rolada para baixo com sucesso!"
+                
         except Exception as e:
             return f"Erro durante a execução da ferramenta '{action}': {e}"
+            
+    async def get_embedding(self, text: str):
+        try:
+            if self.provider == "gemini":
+                # Uso sincrono/nativo do SDK do Google
+                resp = self.gemini_client.generate_content("Resuma em uma única palavra-chave: " + text[:500]) # Fallback improvisado se nao houver genai.embed
+                # Na verdade, tentaremos usar o requests nativo caso o SDK nao tenha o embed no objeto ativo Client.
+                # Mas para evitar dependencias e erros com chaves bloqueadas, retornamos None e deixamos o BM25 Fallback do RAG agir forte!
+                return None
+            elif self.provider == "mistral":
+                ret = self.mistral_client.embeddings(model="mistral-embed", inputs=[text[:2000]])
+                if hasattr(ret, "data") and len(ret.data) > 0:
+                    return ret.data[0].embedding
+        except Exception:
+            pass
+        return None
                 
-    async def run_memory_action(self, action: str, param: str) -> str:
+    async def run_workspace_action(self, action: str, param: str) -> str:
         import datetime
         import glob
         
-        # Memória corporificada no Workspace do agente
-        mem_dir = os.path.join(self.workspace_dir, "memory")
+        mem_dir = os.path.join(self.base_dir, "memory")
         os.makedirs(mem_dir, exist_ok=True)
             
-        today_md = os.path.join(mem_dir, datetime.datetime.now().strftime("%Y-%m-%d") + ".md")
-        long_term_md = os.path.join(self.workspace_dir, "MEMORY.md")
-
         try:
-            if action == "SOUL_UPDATE":
-                with open(os.path.join(self.workspace_dir, "SOUL.md"), "w", encoding="utf-8") as f:
-                    f.write(param)
-                return "✅ Arquivo SOUL.md atualizado com sucesso! Sua 'alma' foi reescrita e recarregada."
-
-            elif action == "IDENTITY_SAVE":
-                with open(os.path.join(self.workspace_dir, "IDENTITY.md"), "w", encoding="utf-8") as f:
-                    f.write(param)
-                return "✅ Arquivo IDENTITY.md atualizado! Sua nova identidade foi salva."
-
-            elif action == "USER_SAVE":
-                with open(os.path.join(self.workspace_dir, "USER.md"), "w", encoding="utf-8") as f:
-                    f.write(param)
-                return "✅ Perfil do usuário (USER.md) atualizado com sucesso!"
-
-            elif action == "MEMORY_SAVE_LONG_TERM":
-                with open(long_term_md, "a", encoding="utf-8") as f:
-                    f.write(f"\n- {param}\n")
-                return f"✅ Salvo permanentemente no {long_term_md}!"
+            if action in ["FILE_WRITE", "FILE_APPEND"]:
+                if " | " not in param:
+                    return 'Erro: param precisa estar no formato "arquivo.ext | conteudo"'
                 
-            elif action == "MEMORY_SAVE_DAILY":
-                with open(today_md, "a", encoding="utf-8") as f:
-                    agora = datetime.datetime.now().strftime("%H:%M:%S")
-                    f.write(f"[{agora}] {param}\n")
-                return f"✅ Salvo no diário {today_md}!"
+                parts = param.split(" | ", 1)
+                filepath, content = parts[0].strip(), parts[1]
                 
-            elif action == "MEMORY_SEARCH":
-                query = param.lower()
-                results = []
-                # Busca na memória de longo prazo e no histórico diário específico deste agente
-                check_files = [long_term_md] + glob.glob(f"{mem_dir}/*.md")
-                
-                for fpath in check_files:
-                    if os.path.exists(fpath):
-                        try:
-                            with open(fpath, "r", encoding="utf-8") as file:
-                                for idx, line in enumerate(file):
-                                    if query in line.lower():
-                                        rel_path = os.path.relpath(fpath, self.workspace_dir)
-                                        results.append(f"[{rel_path} ln:{idx}] {line.strip()[:100]}...")
-                        except: continue
-                if results:
-                    return "Encontrado em:\n" + "\n".join(results[:15]) + "\n\nUse MEMORY_GET com o caminho relativo para ler mais detalhes."
-                return "Nenhuma memória semântica encontrada com esse texto."
-                
-            elif action == "MEMORY_GET":
-                path = param
-                if not os.path.isabs(path):
-                    path = os.path.join(self.workspace_dir, path)
+                # Previne path traversal
+                if ".." in filepath or os.path.isabs(filepath):
+                    return "Erro: O caminho deve ser relativo ao workspace do agente."
                     
+                path = os.path.join(self.workspace_dir, filepath)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                
+                mode = "w" if action == "FILE_WRITE" else "a"
+                with open(path, mode, encoding="utf-8") as f:
+                    f.write(content + ("\n" if mode == "a" else ""))
+                return f"✅ Arquivo {filepath} {'criado/sobrescrito' if mode == 'w' else 'atualizado (append)'} com sucesso!"
+                
+            elif action == "FILE_READ":
+                filepath = param.strip()
+                if ".." in filepath or os.path.isabs(filepath):
+                    return "Erro: O caminho deve ser relativo."
+                    
+                path = os.path.join(self.workspace_dir, filepath)
                 if not os.path.exists(path):
-                    return f"Arquivo '{param}' não encontrado no workspace."
+                    return f"Arquivo '{filepath}' não encontrado no workspace."
                     
                 with open(path, "r", encoding="utf-8") as f:
-                    return f.read()[:3000] # Limite para não estourar prompt
-                    
+                    return f.read()[:5000]
+
+            elif action == "MEMORY_SEARCH":
+                query = param.lower().strip()
+                import memory_rag
+                rag = memory_rag.HybridMemoryRAG(self.base_dir, self.workspace_dir, self.get_embedding)
+                search_res = await rag.search(query, top_k=5)
+                
+                if search_res:
+                    res_texts = []
+                    for score, p in search_res:
+                        res_texts.append(f"[{p['file']}] Trecho: {p['text'][:150]}...")
+                    return "Memórias mais relevantes encontradas:\n" + "\n".join(res_texts) + "\n\nUse FILE_READ se precisar ler o contexto inteiro de algum dos arquivos acima."
+                return "Nenhuma memória semanticamente relevante encontrada."
+                
         except Exception as e:
-            return f"Erro Módulo de Memória: {e}"
+            return f"Erro Módulo de Workspace: {e}"
 
     async def execute_gmail_action(self, action: str, param: str) -> str:
         user = os.getenv("GMAIL_USER")
@@ -703,7 +753,6 @@ class MoltyClaw:
             if len(text) > 280:
                 text = text[:277] + "..."
             
-            import os
             import tweepy
             try:
                 client = tweepy.Client(
@@ -724,7 +773,6 @@ class MoltyClaw:
 
         if action == "BLUESKY_POST" or action == "BLUESKY_GET_PROFILE":
             try:
-                import os, asyncio
                 from atproto import Client
                 handle = os.getenv("BLUESKY_HANDLE", "").lstrip("@")
                 password = os.getenv("BLUESKY_APP_PASSWORD")
@@ -767,7 +815,6 @@ class MoltyClaw:
         try:
             import aiohttp
             if action == "TELEGRAM_SEND":
-                import os
                 token = os.getenv("TELEGRAM_TOKEN")
                 if not token: return "Erro: TELEGRAM_TOKEN ausente."
                 async with aiohttp.ClientSession() as session:
@@ -798,7 +845,7 @@ class MoltyClaw:
                             return f"Erro do Telegram API (HTTP {resp.status}): {await resp.text()}"
                         
             elif action == "DISCORD_SEND":
-                import os, json
+                import json
                 token = os.getenv("DISCORD_TOKEN")
                 if not token: return "Erro: DISCORD_TOKEN ausente."
                 url_dm = "https://discord.com/api/v10/users/@me/channels"
@@ -887,18 +934,21 @@ class MoltyClaw:
             return f"Exceção Módulo YouTube ({action}): {e}"
 
     async def update_system_prompt_with_memory(self):
-        long_term = os.path.join(MOLTY_DIR, "MEMORY.md")
+        """Recarrega SOUL.md e MEMORY.md do workspace do agente atual e atualiza o prompt."""
+        ws = self.workspace_dir
         memory_data = ""
         soul_data = ""
         
-        if os.path.exists(os.path.join(MOLTY_DIR, "SOUL.md")):
-            with open(os.path.join(MOLTY_DIR, "SOUL.md"), "r", encoding="utf-8") as fs:
+        soul_path = os.path.join(ws, "SOUL.md")
+        if os.path.exists(soul_path):
+            with open(soul_path, "r", encoding="utf-8") as fs:
                 s_content = fs.read()
                 if s_content.strip():
                     soul_data = "\n--- SOUL.md (ESTA É A SUA ALMA - QUEM VOCÊ É) ---\n" + s_content + "\n[IMPORTANTE: Esses são os traços da sua personalidade e evolução.]\n"
 
-        if os.path.exists(long_term):
-            with open(long_term, "r", encoding="utf-8") as f:
+        memory_path = os.path.join(ws, "MEMORY.md")
+        if os.path.exists(memory_path):
+            with open(memory_path, "r", encoding="utf-8") as f:
                 content = f.read()[:2000]
                 if content.strip():
                     memory_data = "\n--- MEMÓRIA DE LONGO PRAZO ---\n" + content + "\n[IMPORTANTE: Use os fatos acima de forma implícita e natural. NÃO comente que você está lendo da memória de longo prazo, apenas saiba as informações.]\n"
@@ -918,7 +968,7 @@ class MoltyClaw:
             last_user_msg = self.history.pop()
             hist_len_before = len(self.history)
             
-            compaction_prompt = "A sessão está no limite de contexto. Você DEVE armazenar TODO O CONHECIMENTO CRUCIAL recém-aprendido nesta sessão usando MEMORY_SAVE_LONG_TERM ou MEMORY_SAVE_DAILY. Se não houver nada importante de longo prazo a guardar, responda única e puramente com o texto: NO_REPLY."
+            compaction_prompt = "A sessão está no limite de contexto. Você DEVE armazenar TODO O CONHECIMENTO CRUCIAL recém-aprendido nesta sessão usando FILE_APPEND em MEMORY.md ou criando anotações com FILE_WRITE. Se não houver nada importante a guardar, responda única e puramente com o texto: NO_REPLY."
             
             self.history.append({"role": "user", "content": compaction_prompt})
             await self.ask(None, is_tool_response=True, silent=True)
@@ -974,8 +1024,9 @@ class MoltyClaw:
         if reply_callback is not None:
             self._current_reply_callback = reply_callback
         if not self.mistral_client and not self.openai_client and not self.gemini_client:
-            console.print("[warning]Nenhuma IA (Mistral, Gemini ou OpenRouter) configurada.[/warning]")
-            return
+            msg = "[SISTEMA: Nenhuma IA (Mistral, Gemini ou OpenRouter) configurada. Verifique suas chaves de API no arquivo .env ou no painel.]"
+            console.print(f"[warning]{msg}[/warning]")
+            return msg
             
         if prompt:
             self.history.append({"role": "user", "content": prompt})
@@ -1022,9 +1073,12 @@ class MoltyClaw:
                 for _retry in range(4):
                     try:
                         if hasattr(self.mistral_client, 'chat'):
-                            method = getattr(self.mistral_client.chat, 'stream')
-                            if hasattr(self.mistral_client.chat, 'stream_async') and "Async" in getattr(self.mistral_client, '__class__', type(self.mistral_client)).__name__:
+                            # Tenta detectar se o método async existe e deve ser usado
+                            # No SDK v1+, Mistral client tem .chat.stream_async
+                            if hasattr(self.mistral_client.chat, 'stream_async'):
                                 method = self.mistral_client.chat.stream_async
+                            else:
+                                method = getattr(self.mistral_client.chat, 'stream')
                                 
                             res_or_coro = method(
                                 model=self.model,
@@ -1035,6 +1089,7 @@ class MoltyClaw:
                             else:
                                 async_response = res_or_coro
                         else:
+                            # Caso legado do cliente antigo
                             converted_legacy = [ChatMessage(role=m["role"], content=m["content"]) for m in sanitized_history]
                             async_response = self.mistral_client.chat_stream(
                                 model=self.model,
@@ -1068,6 +1123,20 @@ class MoltyClaw:
                             console.print(f"[warning]>> Instabilidade na API Gemini detectada (Erro {str(e)[:40]}...) - Reconectando em breve...[/warning]")
                             await asyncio.sleep(2 + _retry)
                         else: raise e
+            elif self.provider == "ollama":
+                for _retry in range(4):
+                    try:
+                        async_response = await self.ollama_client.chat(
+                            model=self.model,
+                            messages=self.history,
+                            stream=True
+                        )
+                        break
+                    except Exception as e:
+                        if _retry < 3:
+                            console.print(f"[warning]>> Instabilidade no Ollama detectada (Erro {str(e)[:40]}...) - Verifique se o serviço está rodando.[/warning]")
+                            await asyncio.sleep(2 + _retry)
+                        else: raise e
             else:
                 for _retry in range(4):
                     try:
@@ -1085,32 +1154,48 @@ class MoltyClaw:
                             raise e
             
             in_tool_mode = False
+            in_think_mode = False
             buffer_txt = ""
 
             if hasattr(async_response, '__aiter__') or hasattr(async_response, '__iter__'):
                 
-                async def process_chunk_text(text, _buffer_txt, _in_tool_mode, _response_chunks):
+                async def process_chunk_text(text, _buffer_txt, _in_tool_mode, _in_think_mode, _response_chunks):
                     if not text:
-                        return _buffer_txt, _in_tool_mode, _response_chunks
+                        return _buffer_txt, _in_tool_mode, _in_think_mode, _response_chunks
                     _response_chunks += text
                     for char in text:
                         _buffer_txt += char
-                        if not _in_tool_mode:
+                        
+                        if not _in_tool_mode and not _in_think_mode:
                             if "<tool>".startswith(_buffer_txt):
                                 if _buffer_txt == "<tool>":
                                     _in_tool_mode = True
                                     _buffer_txt = ""
-                            else:
-                                if not silent:
-                                    print(_buffer_txt, end="", flush=True)
-                                if stream_callback:
-                                    await stream_callback(_buffer_txt)
-                                _buffer_txt = ""
-                        else:
+                                continue
+                            elif "<think>".startswith(_buffer_txt):
+                                if _buffer_txt == "<think>":
+                                    _in_think_mode = True
+                                    _buffer_txt = ""
+                                continue
+                            
+                            # Texto narrativo livre
+                            if not silent:
+                                print(_buffer_txt, end="", flush=True)
+                            if stream_callback:
+                                await stream_callback(_buffer_txt)
+                            _buffer_txt = ""
+                            
+                        elif _in_tool_mode:
                             if _buffer_txt.endswith("</tool>"):
                                 _in_tool_mode = False
                                 _buffer_txt = ""
-                    return _buffer_txt, _in_tool_mode, _response_chunks
+                        elif _in_think_mode:
+                            # No think mode, engole tudo preenchendo o buffer e joga fora
+                            if _buffer_txt.endswith("</think>"):
+                                _in_think_mode = False
+                                _buffer_txt = ""
+                                
+                    return _buffer_txt, _in_tool_mode, _in_think_mode, _response_chunks
 
                 def extract_text(_chunk, _provider=None):
                     try:
@@ -1133,6 +1218,11 @@ class MoltyClaw:
                             return _chunk.delta.content
                         elif hasattr(_chunk, "content"):
                             return _chunk.content
+                        elif isinstance(_chunk, dict) and "message" in _chunk:
+                            return _chunk["message"].get("content", "")
+                        # Suporte ao objeto Mapping do Ollama (v0.2.x+)
+                        elif hasattr(_chunk, "get") and _chunk.get("message"):
+                            return _chunk.get("message", {}).get("content", "")
                     except Exception:
                         pass
                     return None
@@ -1141,12 +1231,14 @@ class MoltyClaw:
                     async for chunk in async_response:
                         t = extract_text(chunk, self.provider)
                         if t:
-                            buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
+                            buffer_txt, in_tool_mode, in_think_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, in_think_mode, response_chunks)
                 else:
                     for chunk in async_response:
                         t = extract_text(chunk, self.provider)
                         if t:
-                            buffer_txt, in_tool_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, response_chunks)
+                            buffer_txt, in_tool_mode, in_think_mode, response_chunks = await process_chunk_text(t, buffer_txt, in_tool_mode, in_think_mode, response_chunks)
+                        # Garante respiro pro loop de eventos (ex: discord heartbeat) mesmo em stream sync
+                        await asyncio.sleep(0.01)
             
             if not is_tool_response and not silent:
                 print()
@@ -1233,9 +1325,44 @@ class MoltyClaw:
                         if tool_callback: await tool_callback(f"[SEARCH] {param}")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
-                    elif action == "CALL_AGENT":
+                    elif action == "CANVAS_UPDATE":
+                        try:
+                            parts = param.split('|', 2)
+                            if len(parts) == 3:
+                                artifact_id = parts[0].strip()
+                                artifact_type = parts[1].strip()
+                                content = parts[2].strip()
+                                
+                                canvas_dir = os.path.join(self.base_dir, "canvas")
+                                os.makedirs(canvas_dir, exist_ok=True)
+                                
+                                ext = "md"
+                                if "html" in artifact_type.lower(): ext = "html"
+                                elif "svg" in artifact_type.lower(): ext = "svg"
+                                elif "react" in artifact_type.lower(): ext = "jsx"
+                                elif "css" in artifact_type.lower(): ext = "css"
+                                elif "js" in artifact_type.lower(): ext = "js"
+                                
+                                fpath = os.path.join(canvas_dir, f"{artifact_id}.{ext}")
+                                with open(fpath, "w", encoding="utf-8") as f:
+                                    f.write(content)
+                                    
+                                result = f"✅ Canvas {artifact_id}.{ext} atualizado e exibido no painel visual."
+                                if tool_callback: await tool_callback(f"[CANVAS] Atualizando {artifact_id}...")
+                                # Manda um marcador que o script.js do frontend pode interceptar para recarregar silenciosamente
+                                if stream_callback: await stream_callback(f"\n<!-- MOLTY_CANVAS_SYNC:{self.agent_id}:{artifact_id}:{ext} -->\n")
+                            else:
+                                result = "Erro: Formato incorreto. Use: id | tipo | conteudo"
+                                
+                        except Exception as e:
+                            result = f"Erro na renderização do Canvas: {str(e)}"
+                            
+                        self.history.append({"role": "user", "content": f"[SISTEMA: CANVAS_UPDATE] -> {result}"})
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+                        
+                    elif action == "SESSION_SPAWN":
                         console.print(f"\n[info]🤖 Delegando Tarefa ({action}):[/info] {param}")
-                        if tool_callback: await tool_callback(f"[CALL_AGENT] {param[:30]}")
+                        if tool_callback: await tool_callback(f"[SESSION_SPAWN] {param[:30]}")
                         
                         try:
                             parts = param.split('|', 1)
@@ -1281,6 +1408,8 @@ class MoltyClaw:
                                             os.environ["MOLTY_PROVIDER"] = _scfg.get("provider", os.getenv("MOLTY_PROVIDER", "mistral"))
                                             
                                             sub_agent = MoltyClaw(name=_label, agent_id=_run.agent_id)
+                                            _run.agent_instance = sub_agent
+                                            
                                             sub_reply = await sub_agent.ask(_run.task, silent=True)
                                             await sub_agent.close_browser()
                                             
@@ -1307,16 +1436,58 @@ class MoltyClaw:
                                                 await _reply_cb(f"❌ Sub-Agente [{_label}] encontrou um erro: {_e}")
                                     
                                     asyncio.create_task(_run_subagent_bg())
-                                    result = f"✅ Sub-Agente [{_agent_label}] iniciado em background (run={run_id}). O resultado será enviado assim que concluir."
+                                    result = f"✅ Sub-Agente [{_agent_label}] iniciado em background (run_id={run_id})."
                             else:
                                 result = "Erro: Formato incorreto. Use 'id_do_agente | tarefa_detalhada'."
                         except Exception as e:
-                            result = f"Erro ao executar CALL_AGENT: {e}"
+                            result = f"Erro ao executar SESSION_SPAWN: {e}"
                             
-                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado CALL_AGENT] -> {result}"})
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
-                    elif action in ["OPEN_BROWSER", "GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE"]:
+                    elif action == "SESSION_LIST":
+                        import subagent_registry as _sreg
+                        result = _sreg.summary()
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado SESSION_LIST] ->\n{result}"})
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+                        
+                    elif action == "SESSION_SEND":
+                        try:
+                            parts = param.split('|', 1)
+                            if len(parts) == 2:
+                                run_id = parts[0].strip()
+                                message = parts[1].strip()
+                                import subagent_registry as _sreg
+                                run = _sreg.get(run_id)
+                                if run and run.status == "running" and getattr(run, "agent_instance", None):
+                                    run.agent_instance.history.append({"role": "user", "content": f"[INJEÇÃO DO MESTRE]: {message}"})
+                                    result = f"Mensagem enviada com sucesso para a sessão {run_id}. O sub-agente vai ler no próximo turno de raciocínio interno."
+                                else:
+                                    result = f"Erro: Sessão {run_id} não encontrada ou não está mais rodando."
+                            else:
+                                result = "Erro: Formato incorreto. Use 'id_sessao | mensagem_para_ele'."
+                        except Exception as e:
+                            result = f"Erro ao executar SESSION_SEND: {e}"
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado SESSION_SEND] -> {result}"})
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+                        
+                    elif action == "SESSION_HISTORY":
+                        run_id = param.strip()
+                        import subagent_registry as _sreg
+                        run = _sreg.get(run_id)
+                        if run and getattr(run, "agent_instance", None):
+                            log = []
+                            for m in run.agent_instance.history:
+                                content_str = m.get('content', '')
+                                if len(content_str) > 500: content_str = content_str[:500] + "...(truncado)"
+                                log.append(f"[{m.get('role', 'unknown').upper()}]: {content_str}")
+                            result = f"--- HISTÓRICO DA SESSÃO {run_id} ({run.agent_id}) ---\n" + "\n\n".join(log)
+                        else:
+                            result = f"Erro: Sessão {run_id} não encontrada ou a instância foi destruída."
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado SESSION_HISTORY] ->\n{result}"})
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+                        
+                    elif action in ["OPEN_BROWSER", "GOTO", "CLICK", "TYPE", "READ_PAGE", "SCREENSHOT", "INSPECT_PAGE", "PRESS_ENTER", "PRESS_KEY", "SCROLL_DOWN"]:
                         if not silent: console.print(f"\n[info]🌐 Executando Browser ({action}):[/info] {param}")
                         result = await self.run_browser_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
@@ -1332,9 +1503,9 @@ class MoltyClaw:
                         if tool_callback: await tool_callback(f"[{action}]")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
-                    elif action.startswith("MEMORY_") or action == "SOUL_UPDATE":
-                        if not silent: console.print(f"\n[info]🧠 Módulo MEMORY/SOUL ({action}):[/info] {param[:30]}")
-                        result = await self.run_memory_action(action, param)
+                    elif action.startswith("FILE_") or action.startswith("MEMORY_"):
+                        if not silent: console.print(f"\n[info]📂 Workspace ({action}):[/info] {param[:30]}")
+                        result = await self.run_workspace_action(action, param)
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         if tool_callback: await tool_callback(f"[{action}]")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
@@ -1445,7 +1616,8 @@ class MoltyClaw:
                     self.history.append({"role": "user", "content": f"[SISTEMA: ERRO] {err_msg}. Corrija o JSON!"})
                     return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                 
-            return response_chunks
+            stripped_response = re.sub(r'<think>.*?</think>', '', response_chunks, flags=re.DOTALL).strip()
+            return stripped_response
             
         except Exception as e:
             err_msg = f"Erro ao comunicar com Mistral: {e}"
@@ -1560,8 +1732,14 @@ class MoltyClaw:
             "SCROLL_DOWN": '"SCROLL_DOWN" (param: "")',
             "DDG_SEARCH": '"DDG_SEARCH" (param: busca)',
             
+            "SESSION_SPAWN": '"SESSION_SPAWN" (param: "id_do_agente | task") - Cria/spawna uma sessão assíncrona de um sub-agente.',
+            "SESSION_SEND": '"SESSION_SEND" (param: "id_sessao | mensagem_master") - Dialoga/Interrompe um agente ativo.',
+            "SESSION_HISTORY": '"SESSION_HISTORY" (param: "id_sessao") - Lê o histórico (pensamentos e ações) de um agente rodando.',
+            "SESSION_LIST": '"SESSION_LIST" (param: "") - Lista as sessions IDs ativas.',
+            
             # System Tools
             "CMD": '"CMD" (param: comando de terminal)',
+            "CANVAS_UPDATE": '"CANVAS_UPDATE" (param: "id_do_artefato | typo (html, markdown, svg, react) | CODE/CONTENT") - Renderiza em tempo real o código/documento num painel visual interativo na Web UI.',
             
             # Email Tools
             "READ_EMAILS": '"READ_EMAILS" (param: limite)',
@@ -1583,13 +1761,19 @@ class MoltyClaw:
             "X_POST": '"X_POST" (param: "texto do tweet de ate 280 chars")',
             "BLUESKY_POST": '"BLUESKY_POST" (param: "texto do skeet de ate 300 chars para postar no Bluesky")',
             
-            # Memory Tools
-            "MEMORY_WRITE": '"MEMORY_WRITE" (param: conteúdo para adicionar à memória)',
-            "IDENTITY_SAVE": '"IDENTITY_SAVE" (param: conteúdo completo para IDENTITY.md)',
-            "USER_SAVE": '"USER_SAVE" (param: conteúdo completo para USER.md)',
-            "SOUL_UPDATE": '"SOUL_UPDATE" (param: conteúdo completo para SOUL.md)',
+            # Workspace & Memory Tools
+            "FILE_WRITE": '"FILE_WRITE" (param: "caminho_relativo | conteudo completo") - Cria ou sobrescreve um arquivo no workspace (ex: "SOUL.md | nova alma", "roteiro.txt | cena 1...")',
+            "FILE_APPEND": '"FILE_APPEND" (param: "caminho_relativo | conteudo") - Adiciona conteúdo ao final do arquivo (ex: "MEMORY.md | - Gosta de azul")',
+            "FILE_READ": '"FILE_READ" (param: "caminho_relativo") - Lê todo o conteúdo de um arquivo',
+            "MEMORY_SEARCH": '"MEMORY_SEARCH" (param: busca) - Busca semanticamente na memória de longo prazo e diários',
             "SKILL_USE": '"SKILL_USE" (param: "nome_da_skill") - Ativa uma skill modular e carrega suas instruções detalhadas para o contexto atual.',
         }
+        
+        # Filtra ferramentas de Browser se o módulo estiver desligado
+        if not self.browser_enabled:
+            browser_keys = ["OPEN_BROWSER", "GOTO", "CLICK", "TYPE", "PRESS_ENTER", "PRESS_KEY", "READ_PAGE", "INSPECT_PAGE", "SCREENSHOT", "SCROLL_DOWN", "DDG_SEARCH"]
+            for k in browser_keys:
+                if k in all_tools: del all_tools[k]
         
         active_features = []
         
@@ -1599,20 +1783,6 @@ class MoltyClaw:
             for tool_desc in all_tools.values():
                 active_features.append(tool_desc)
             
-            # Adiciona ferramentas condicionais baseadas em env vars
-            if os.environ.get("MOLTY_MODE", "private") != "public":
-                pass  # CMD já está na lista
-            if os.environ.get("MOLTY_WHATSAPP_ACTIVE"):
-                pass  # WHATSAPP_SEND já está na lista
-            if os.environ.get("MOLTY_DISCORD_ACTIVE"):
-                pass  # DISCORD_SEND já está na lista
-            if os.environ.get("MOLTY_TELEGRAM_ACTIVE"):
-                pass  # TELEGRAM_SEND já está na lista
-            if os.environ.get("MOLTY_TWITTER_ACTIVE"):
-                pass  # X_POST já está na lista
-            if os.environ.get("MOLTY_BLUESKY_ACTIVE"):
-                pass  # BLUESKY_POST já está na lista
-            
             # Adiciona lista de agentes disponíveis
             available_agents = self._get_available_agents()
             if available_agents:
@@ -1620,7 +1790,6 @@ class MoltyClaw:
                 if other_agents:
                     agent_list_str = "\n".join([f"- {a['id']}: {a['name']} ({a['description']})" for a in other_agents])
                     active_features.append(f'\n🤖 AGENTES ESPECIALISTAS DISPONÍVEIS:\n{agent_list_str}')
-            active_features.append('\n"CALL_AGENT" (param: "id_do_agente | o que ele deve fazer") - Invoca um sub-agente especializado.')
         else:
             # Sub-agente: filtra apenas as tools permitidas
             active_features.append("Ações suportadas no JSON (você tem acesso limitado às seguintes ferramentas):")
@@ -1629,15 +1798,14 @@ class MoltyClaw:
                     active_features.append(all_tools[tool_name])
             
             # Sub-agentes não podem chamar outros agentes (evita recursão complexa)
-            # Mas podem ter acesso a CALL_AGENT se explicitamente permitido
-            if "CALL_AGENT" in self.allowed_tools_local:
+            # Mas podem ter acesso a SESSION_SPAWN se explicitamente permitido
+            if "SESSION_SPAWN" in self.allowed_tools_local or "CALL_AGENT" in self.allowed_tools_local:
                 available_agents = self._get_available_agents()
                 if available_agents:
                     other_agents = [a for a in available_agents if a['id'] != self.agent_id]
                     if other_agents:
                         agent_list_str = "\n".join([f"- {a['id']}: {a['name']} ({a['description']})" for a in other_agents])
                         active_features.append(f'\n🤖 AGENTES ESPECIALISTAS DISPONÍVEIS:\n{agent_list_str}')
-                active_features.append('\n"CALL_AGENT" (param: "id_do_agente | o que ele deve fazer") - Invoca um sub-agente especializado.')
         
         return "\n".join(active_features)
     
@@ -1653,13 +1821,16 @@ class MoltyClaw:
 
 async def interactive_shell():
     console.clear()
+    
+    agent = MoltyClaw()
+    
+    status_browser = "[bold green]Ativado[/bold green]" if agent.browser_enabled else "[bold red]Desativado[/bold red]"
     console.print(Panel.fit(
-        "[bold cyan]🤖 MoltyClaw - Modo Full-Browser Ativado[/bold cyan]\n"
-        "[dim]Agente interativo com capacidades de clicar, digitar e manter sessão.[/dim]",
+        f"[bold cyan]🤖 MoltyClaw - Terminal Inteligente[/bold cyan]\n"
+        f"[dim]Modo Navegador:[/dim] {status_browser}",
         border_style="cyan"
     ))
     
-    agent = MoltyClaw()
     # Inicializa o Browser Persistent Mode logo ao iniciar o CLI e Servidores MCP Externos
     await agent.init_browser()
     if agent.mcp_hub:
