@@ -53,12 +53,12 @@ async def main_loop():
         console.print("[yellow]Rode: pip install atproto[/yellow]")
         return
 
-    console.print("[bold green]Inicializando navegador do MoltyClaw para o Bluesky...[/bold green]")
+    console.print("[bold green]Inicializando MoltyClaw para o Bluesky...[/bold green]")
     agent = MoltyClaw(name="MoltyClaw (Bluesky)")
     await agent.init_browser()
     if agent.mcp_hub:
         await agent.mcp_hub.connect_servers()
-    console.print("[bold green]Navegador e conectores MCP prontos![/bold green]")
+    console.print("[bold green]Conectores prontos![/bold green]")
 
     # Autenticar no Bluesky com App Password
     # O Client do atproto é síncrono. Chamamos em thread para não bloquear o loop.
@@ -140,7 +140,12 @@ async def main_loop():
                     console.print(f"\n[bold magenta]📩 Bluesky (@{author_handle}):[/bold magenta] {user_text[:200]}")
 
                     try:
-                        reply_text = await agent.ask(user_text)
+                        requester_data = {
+                            "name": f"@{notif.author.handle}",
+                            "id": notif.author.did,
+                            "platform": "bluesky"
+                        }
+                        reply_text = await agent.ask(user_text, requester=requester_data)
 
                         # Limpa marcadores internos de screenshot/audio
                         import re

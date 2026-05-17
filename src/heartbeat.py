@@ -4,11 +4,14 @@ import json
 import time
 from datetime import datetime
 import threading
-from moltyclaw import MoltyClaw
+from typing import TYPE_CHECKING
 from config_loader import get_config
 
+if TYPE_CHECKING:
+    from moltyclaw import MoltyClaw
+
 class HeartbeatManager:
-    def __init__(self, agent: MoltyClaw):
+    def __init__(self, agent: "MoltyClaw"):
         self.agent = agent
         self.config = get_config()
         self.enabled = self.config.get("heartbeat", {}).get("enabled", True)

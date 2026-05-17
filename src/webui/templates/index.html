@@ -848,7 +848,7 @@
         </div>
 
         <!-- Import Context Modal -->
-        <div class="modal-overlay" id="import-context-modal">
+        <div class="modal-overlay" id="import-context-modal" style="display: none;">
             <div class="modal-container">
                 <div class="modal-header">
                     <h2 id="modal-title">Import Context</h2>
@@ -920,8 +920,36 @@
             </div>
         </div>
 
+        <!-- Integration Configuration Modal -->
+        <div class="modal-overlay" id="integration-config-modal" style="display: none;">
+            <div class="modal-container" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2 id="config-modal-title">Configure Integration</h2>
+                    <button class="modal-close" onclick="closeConfigModal()">&times;</button>
+                </div>
+                
+                <div class="modal-body" style="padding: 24px;">
+                    <div id="config-form-container">
+                        <!-- Formulário será preenchido dinamicamente -->
+                    </div>
+                    
+                    <div class="modal-footer" style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button class="btn-secondary" onclick="closeConfigModal()" style="flex: 1;">
+                            Cancel
+                        </button>
+                        <button class="btn-secondary" id="test-connection-btn" onclick="testConnection()" style="flex: 1;">
+                            <i class="fa-solid fa-plug"></i> Test Connection
+                        </button>
+                        <button class="btn-primary" id="save-config-btn" onclick="saveConfiguration()" style="flex: 1;">
+                            <i class="fa-solid fa-check"></i> Save & Activate
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Script at the bottom -->
-        <script src="{{ url_for('static', path='script.js') }}?v=6"></script>
+        <script src="{{ url_for('static', path='script.js') }}?v=7"></script>
 </body>
 
 </html>

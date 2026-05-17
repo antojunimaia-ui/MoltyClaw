@@ -23,7 +23,7 @@ from rich.console import Console
 from config_loader import get_config
 
 console = Console()
-load_dotenv(os.path.join(MOLTY_DIR, '.env'))
+load_dotenv(os.path.join(MOLTY_DIR, '.env'), override=True)
 
 # Carrega do moltyclaw.json
 molty_config = get_config()
@@ -36,6 +36,7 @@ from routing import resolve_agent
 
 class MoltyClawDiscordBot(discord.Client):
     def __init__(self, *args, **kwargs):
+        self.name = kwargs.pop('name', 'DiscordGateway')
         super().__init__(*args, **kwargs)
         # Cache de instâncias de agentes para evitar re-inicializar o browser toda hora
         self.agent_instances = {}
@@ -46,118 +47,162 @@ class MoltyClawDiscordBot(discord.Client):
         if agent_id in self.agent_instances:
             return self.agent_instances[agent_id]
         
-        console.print(f"[dim]>> Criando instância dinâmica para o agente: {agent_id}[/dim]")
+        if agent_id == "MoltyClaw":
+             console.print(f"[dim]>> [{self.name}] Inicializando Core do MoltyClaw (Master)...[/dim]")
+        else:
+             console.print(f"[dim]>> [{self.name}] Criando instância dinâmica para o agente: {agent_id}[/dim]")
         # Instancia o agente. O MoltyClaw já carrega o .env correto baseado no agent_id no __init__
         new_agent = MoltyClaw(agent_id=agent_id)
         await new_agent.init_browser()
         if new_agent.mcp_hub:
             await new_agent.mcp_hub.connect_servers()
         
+        # Inicia scheduler e heartbeat se for o agente Master
+        await new_agent.start_background_services()
+        
         self.agent_instances[agent_id] = new_agent
         return new_agent
 
     async def setup_hook(self):
         console.print("[bold green]Inicializando Gateway do Discord (Aguardando mensagens para rotear)...[/bold green]")
+        # Pre-aquece o agente master para iniciar serviços de background (scheduler/heartbeat)
+        await self.get_agent(self.default_agent_id)
 
     async def on_ready(self):
         console.print(f"[bold blue]🤖 Gateway Discord Conectado como {self.user}![/bold blue]")
         await self.change_presence(activity=discord.Game(name="Routing messages to Specialist Agents 🖥️"))
 
     async def on_message(self, message):
-        # Ignora mensagens enviadas pelo próprio bot (previne loops infinitos)
-        if message.author == self.user:
-            return
-            
-        allowed_users = DISCORD_ALLOWED_USERS
-        if allowed_users.strip():
-            allowed_list = [u.strip() for u in allowed_users.split(",")]
-            if str(message.author.id) not in allowed_list:
-                console.print(f"[bold yellow][Segurança] Ignorando Discord de não autorizado: {message.author} ({message.author.id})[/bold yellow]")
+        try:
+            # Ignora mensagens enviadas pelo próprio bot (previne loops infinitos)
+            if message.author == self.user:
                 return
-            
-        # O MoltyClaw vai responder se for mencionado numa sala, via Comando CALL, ou se for numa Mensagem Direta (DM) com alguém.
-        # Assim ele não fica tentando responder o server de Discord inteiro o tempo todo.
-        
-        # CHECAGEM DO COMANDO DE ENTRAR E SAIR DA CALL
-        if message.content.lower().startswith('!call'):
-            if not hasattr(message.author, 'voice') or not message.author.voice:
-                await message.reply("Você precisa estar em um Canal de Voz para me chamar!")
-                return
-            
-            channel = message.author.voice.channel
-            try:
-                # O Discord em algumas redes demora pra bater o Handshake UDP do Voice, aumentando o timeout evita bug de entrar e cair
-                vc = await channel.connect(timeout=60.0)
-                console.print(f"[bold green]Entrei no canal de voz: {channel.name}[/bold green]")
                 
-                instrucoes = ("**Estou na Call! 🎧🎙️**\n"
-                              "> **Nota Técnica:** Eu não fico ouvindo sua voz viva 24h sem parar na call, pois isso derreteria o custo do projeto!\n\n"
-                              "**Como falar comigo:**\n"
-                              "1. Use o botão de `Mensagem de Voz` original aqui do Chat do Discord (Ícone de microfone ao lado do botão de Emoji).\n"
-                              "2. Grave o seu áudio falando pra mim e mande.\n"
-                              "3. Eu vou baixar o áudio em milissegundos, usar o **Voxtral** para ouvir o que você me pediu, e depois vou **REPRODUZIR a resposta FALANDO VIVO** bem alto aqui no canal de voz para todos escutarem!")
-                await message.reply(instrucoes)
-            except Exception as e:
-                console.print(f"[bold red]Erro ao entrar no canal de voz: {e}[/bold red]")
-                await message.reply("Opa, rolou um problema (TimeOut) ao entrar na call.")
-            return
-
-        if message.content.lower().startswith('!disconnect'):
-            for vc in self.voice_clients:
-                if vc.guild == message.guild:
-                    await vc.disconnect()
-                    await message.reply("Saí da call!")
+            allowed_users = DISCORD_ALLOWED_USERS
+            if allowed_users.strip():
+                allowed_list = [u.strip() for u in allowed_users.split(",")]
+                if str(message.author.id) not in allowed_list:
+                    console.print(f"[bold yellow][Segurança] Ignorando Discord de não autorizado: {message.author} ({message.author.id})[/bold yellow]")
                     return
-            return
+                
+            # O MoltyClaw vai responder se for mencionado numa sala, via Comando CALL, ou se for numa Mensagem Direta (DM) com alguém.
+            # Assim ele não fica tentando responder o server de Discord inteiro o tempo todo.
             
-        if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
-            # Rota automatica baseada no OpenClaw Strategy
-            guild_id = str(message.guild.id) if message.guild else None
-            peer_id = str(message.author.id)
-            
-            target_agent_id = resolve_agent(channel="discord", peer_id=peer_id, guild_id=guild_id)
-            target_agent = await self.get_agent(target_agent_id)
-
-            # Pega o texto da mensagem e remove a marcação de arroba (@MoltyClaw)
-            user_text = message.content.replace(f'<@{self.user.id}>', '').strip()
-            
-            # Checa attachments de audio
-            for attachment in message.attachments:
-                if attachment.content_type and ('audio' in attachment.content_type or attachment.filename.endswith('.ogg')):
-                    import time
-                    from pathlib import Path
-                    temp_dir = Path(os.path.join(MOLTY_DIR, "temp"))
-                    temp_dir.mkdir(exist_ok=True)
-                    file_path = temp_dir / f"discord_audio_{int(time.time())}.ogg"
-                    await attachment.save(file_path)
+            # CHECAGEM DO COMANDO DE ENTRAR E SAIR DA CALL
+            if message.content.lower().startswith('!call'):
+                if not hasattr(message.author, 'voice') or not message.author.voice:
+                    await message.reply("Você precisa estar em um Canal de Voz para me chamar!")
+                    return
+                
+                channel = message.author.voice.channel
+                try:
+                    # O Discord em algumas redes demora pra bater o Handshake UDP do Voice, aumentando o timeout evita bug de entrar e cair
+                    vc = await channel.connect(timeout=60.0)
+                    console.print(f"[bold green]Entrei no canal de voz: {channel.name}[/bold green]")
                     
-                    console.print(f"[info]🎧 Áudio do Discord detectado para {target_agent_id}, transcrevendo...[/info]")
-                    transcribed = await target_agent.transcribe_audio(str(file_path))
-                    if transcribed:
-                        user_text += f"\n(Áudio Anexado Transcrito do Usuário): '{transcribed}'"
-                        console.print(f"[bold yellow]Transcrição:[/] {transcribed}")
-            
-            if not user_text:
+                    instrucoes = ("**Estou na Call! 🎧🎙️**\n"
+                                  "> **Nota Técnica:** Eu não fico ouvindo sua voz viva 24h sem parar na call, pois isso derreteria o custo do projeto!\n\n"
+                                  "**Como falar comigo:**\n"
+                                  "1. Use o botão de `Mensagem de Voz` original aqui do Chat do Discord (Ícone de microfone ao lado do botão de Emoji).\n"
+                                  "2. Grave o seu áudio falando pra mim e mande.\n"
+                                  "3. Eu vou baixar o áudio em milissegundos, usar o **Voxtral** para ouvir o que você me pediu, e depois vou **REPRODUZIR a resposta FALANDO VIVO** bem alto aqui no canal de voz para todos escutarem!")
+                    await message.reply(instrucoes)
+                except Exception as e:
+                    console.print(f"[bold red]Erro ao entrar no canal de voz: {e}[/bold red]")
+                    await message.reply("Opa, rolou um problema (TimeOut) ao entrar na call.")
                 return
-            
-            # Verifica se user e bot estao na mesma call, se sim, OBRIGA a tool de voz
-            in_same_vc = False
-            if hasattr(message.author, 'voice') and message.author.voice and message.author.voice.channel:
-                for vc in self.voice_clients:
-                    if vc.guild == message.guild and vc.is_connected() and vc.channel == message.author.voice.channel:
-                        in_same_vc = True
-                        break
-            
-            if in_same_vc:
-                user_text += f"\n\n[INSTRUÇÃO DE SISTEMA: Você ({target_agent_id}) está na mesma sala de voz que o usuário no Discord! Seu áudio será roteado ativamente pra ele escutar! MUDANÇA DE ROTINA: USE A TOOL 'VOICE_REPLY' OBRIGATORIAMENTE PARA GERAR A SUA RESPOSTA EM ÁUDIO NESTE TURNO, DO CONTRÁRIO ELE SÓ VERÁ TEXTO CALADO E ACHARÁ QUE VOCÊ QUEBROU!]"
 
-            console.print(f"\n[bold magenta]📩 Mensagem Discord para {target_agent_id} ({message.author}):[/bold magenta] {user_text[:200]}...")
-            
-            # Coloca a interface do Discord mostrando o indicativo "MoltyClaw está digitando..."
-            async with message.channel.typing():
+            if message.content.lower().startswith('!disconnect'):
+                for vc in self.voice_clients:
+                    if vc.guild == message.guild:
+                        await vc.disconnect()
+                        await message.reply("Saí da call!")
+                        return
+                return
+                
+            if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
+                # Rota automatica baseada no OpenClaw Strategy
+                guild_id = str(message.guild.id) if message.guild else None
+                peer_id = str(message.author.id)
+                
+                target_agent_id = resolve_agent(channel="discord", peer_id=peer_id, guild_id=guild_id)
+                
+                # Pega o texto da mensagem e remove a marcação de arroba (@MoltyClaw)
+                user_text = message.content.replace(f'<@{self.user.id}>', '').strip()
+                
+                console.print(f"\n[bold magenta]📩 Mensagem Discord para {target_agent_id} ({message.author}):[/bold magenta] {user_text[:200]}...")
+                
+                target_agent = await self.get_agent(target_agent_id)
+                
+                # Checa attachments de audio
+                for attachment in message.attachments:
+                    if attachment.content_type and ('audio' in attachment.content_type or attachment.filename.endswith('.ogg')):
+                        import time
+                        from pathlib import Path
+                        temp_dir = Path(os.path.join(MOLTY_DIR, "temp"))
+                        temp_dir.mkdir(exist_ok=True)
+                        file_path = temp_dir / f"discord_audio_{int(time.time())}.ogg"
+                        await attachment.save(file_path)
+                        
+                        console.print(f"[info]🎧 Áudio do Discord detectado para {target_agent_id}, transcrevendo...[/info]")
+                        transcribed = await target_agent.transcribe_audio(str(file_path))
+                        if transcribed:
+                            user_text += f"\n(Áudio Anexado Transcrito do Usuário): '{transcribed}'"
+                            console.print(f"[bold yellow]Transcrição:[/] {transcribed}")
+                
+                if not user_text:
+                    return
+                
+                # Verifica se user e bot estao na mesma call, se sim, OBRIGA a tool de voz
+                in_same_vc = False
+                if hasattr(message.author, 'voice') and message.author.voice and message.author.voice.channel:
+                    for vc in self.voice_clients:
+                        if vc.guild == message.guild and vc.is_connected() and vc.channel == message.author.voice.channel:
+                            in_same_vc = True
+                            break
+                
+                if in_same_vc:
+                    user_text += f"\n\n[INSTRUÇÃO DE SISTEMA: Você ({target_agent_id}) está na mesma sala de voz que o usuário no Discord! Seu áudio será roteado ativamente pra ele escutar! MUDANÇA DE ROTINA: USE A TOOL 'VOICE_REPLY' OBRIGATORIAMENTE PARA GERAR A SUA RESPOSTA EM ÁUDIO NESTE TURNO, DO CONTRÁRIO ELE SÓ VERÁ TEXTO CALADO E ACHARÁ QUE VOCÊ QUEBROU!]"
+                
+                # Cria uma task separada para processar a mensagem sem bloquear o event loop do Discord
                 try:
                     # Chama o motor inteligência artificial que consome ferramentas
-                    reply = await target_agent.ask(user_text)
+                    requester_data = {
+                        "name": str(message.author), # Nome#0000 (ou o novo username global)
+                        "id": str(message.author.id),
+                        "platform": "discord"
+                    }
+                    
+                    # Envia um indicador de "digitando" periodicamente durante o processamento
+                    async def keep_typing():
+                        """Mantém o indicador de 'digitando' ativo durante operações longas"""
+                        while True:
+                            try:
+                                async with message.channel.typing():
+                                    await asyncio.sleep(8)  # Mantém por 8 segundos, depois renova
+                            except asyncio.CancelledError:
+                                break
+                            except Exception:
+                                break
+                    
+                    typing_task = asyncio.create_task(keep_typing())
+                    
+                    try:
+                        # Processa a mensagem com timeout generoso (5 minutos)
+                        reply = await asyncio.wait_for(
+                            target_agent.ask(user_text, requester=requester_data),
+                            timeout=300.0
+                        )
+                    except asyncio.TimeoutError:
+                        await message.channel.send("⏱️ Opa, essa tarefa está demorando muito! Vou continuar processando, mas pode levar alguns minutos...")
+                        # Tenta novamente sem timeout
+                        reply = await target_agent.ask(user_text, requester=requester_data)
+                    finally:
+                        typing_task.cancel()
+                        try:
+                            await typing_task
+                        except asyncio.CancelledError:
+                            pass
                     
                     if not reply or not isinstance(reply, str):
                         await message.channel.send("Mals aí, o cérebro da IA não me deu uma resposta válida! (Cheque as chaves de API).")
@@ -202,7 +247,7 @@ class MoltyClawDiscordBot(discord.Client):
                                 await message.channel.send(file=discord.File(media_path))
                         elif reply:
                             await message.channel.send(reply)
-                            
+                        
                         # Manda o áudio narrado se existir
                         if audio_reply_path and os.path.exists(audio_reply_path):
                             # Teta achar se o bot está numa de voz para tocar direto, se não estiver, joga como Anexo no chat
@@ -224,10 +269,30 @@ class MoltyClawDiscordBot(discord.Client):
                             if not bot_in_voice:
                                 await message.channel.send(file=discord.File(audio_reply_path))
                         
-                        
+                except asyncio.CancelledError:
+                    # Se a operação for cancelada, tenta enviar uma mensagem antes de sair
+                    console.print(f"[bold yellow]⚠️ Operação cancelada pelo Discord (timeout ou desconexão)[/bold yellow]")
+                    try:
+                        await message.channel.send("⚠️ A operação foi interrompida. Tente novamente!")
+                    except:
+                        pass
+                    # Não propaga o CancelledError para evitar crash do bot
+                    return
                 except Exception as e:
                     console.print(f"\n[bold red]Erro processando chat do Discord: {e}[/bold red]\n{traceback.format_exc()}")
-                    await message.channel.send("Mals aí, fundi um pino aqui tentando processar sua mensagem! 🤖💥")
+                    try:
+                        await message.channel.send("Mals aí, fundi um pino aqui tentando processar sua mensagem! 🤖💥")
+                    except:
+                        pass
+        
+        except asyncio.CancelledError:
+            # Captura CancelledError no nível mais alto da função on_message
+            console.print(f"[bold yellow]⚠️ on_message cancelado - ignorando para manter bot ativo[/bold yellow]")
+            return
+        except Exception as e:
+            # Captura qualquer outra exceção não tratada
+            console.print(f"[bold red]❌ Erro não tratado em on_message: {e}[/bold red]\n{traceback.format_exc()}")
+            return
 
 if __name__ == "__main__":
     import argparse
@@ -256,7 +321,7 @@ if __name__ == "__main__":
         intents.voice_states = True # Pra saber quem ta em call
         
         bot_name = args.name if args.name else f"{args.agent} (Discord)"
-        client = MoltyClawDiscordBot(intents=intents)
+        client = MoltyClawDiscordBot(intents=intents, name=bot_name)
         # Re-inicializa o agente com o ID e nome corretos
         client.agent = MoltyClaw(name=bot_name, agent_id=args.agent)
         

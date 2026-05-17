@@ -77,7 +77,12 @@ async def main_loop():
                         console.print(f"\n[bold magenta]📩 Menção X/Twitter (Tweet ID: {tweet.id}):[/bold magenta] {user_text}")
                         
                         try:
-                            reply = await agent.ask(user_text)
+                            requester_data = {
+                                "name": f"User_{tweet.author_id}", # Fallback se não der fetch no user
+                                "id": str(tweet.author_id),
+                                "platform": "twitter"
+                            }
+                            reply = await agent.ask(user_text, requester=requester_data)
                             
                             # X/Twitter tem limite de 280 chars no free / padrao
                             # Além disso, extrair screenshot não sendo possivel nativamente via upload de media na v2 free (precisa da v1)

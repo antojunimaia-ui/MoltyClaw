@@ -275,6 +275,133 @@ def get_integrations():
             
     return jsonify(status)
 
+@app.route("/api/integrations/<platform>/config", methods=["GET"])
+def get_integration_config(platform):
+    """Retorna a configuração atual de uma integração (com tokens mascarados)"""
+    from .env_manager import EnvManager
+    env_mgr = EnvManager()
+    config = env_mgr.get_integration_config(platform)
+    return jsonify(config)
+
+@app.route("/api/integrations/<platform>/config", methods=["POST"])
+def save_integration_config(platform):
+    """Salva a configuração de uma integração no .env"""
+    from .env_manager import EnvManager
+    data = request.json
+    fields = data.get("fields", {})
+    
+    if not fields:
+        return jsonify({"error": "Nenhum campo fornecido"}), 400
+    
+    env_mgr = EnvManager()
+    success = env_mgr.save_integration_config(platform, fields)
+    
+    if success:
+        # Recarrega as variáveis de ambiente
+        load_dotenv(os.path.join(MOLTY_DIR, '.env'), override=True)
+        return jsonify({"success": True, "message": f"Configuração de {platform} salva com sucesso!"})
+    
+    return jsonify({"error": "Falha ao salvar configuração"}), 500
+
+@app.route("/api/integrations/<platform>/test", methods=["POST"])
+def test_integration_connection(platform):
+    """Testa a conexão com uma integração antes de salvar"""
+    data = request.json
+    fields = data.get("fields", {})
+    
+    if not fields:
+        return jsonify({"error": "Nenhum campo fornecido"}), 400
+    
+    # Testa a conexão baseado na plataforma
+    try:
+        if platform == "discord":
+            token = fields.get("DISCORD_TOKEN")
+            if not token:
+                return jsonify({"error": "Token do Discord é obrigatório"}), 400
+            
+            # Testa o token fazendo uma requisição à API do Discord
+            import requests
+            headers = {"Authorization": f"Bot {token}"}
+            resp = requests.get("https://discord.com/api/v10/users/@me", headers=headers, timeout=10)
+            
+            if resp.status_code == 200:
+                bot_data = resp.json()
+                return jsonify({
+                    "success": True, 
+                    "message": f"✅ Conectado como {bot_data.get('username')}#{bot_data.get('discriminator')}"
+                })
+            elif resp.status_code == 401:
+                return jsonify({"error": "Token inválido ou expirado"}), 400
+            else:
+                return jsonify({"error": f"Erro na API do Discord: {resp.status_code}"}), 400
+                
+        elif platform == "telegram":
+            token = fields.get("TELEGRAM_TOKEN")
+            if not token:
+                return jsonify({"error": "Token do Telegram é obrigatório"}), 400
+            
+            # Testa o token
+            import requests
+            resp = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("ok"):
+                    bot_data = data.get("result", {})
+                    return jsonify({
+                        "success": True,
+                        "message": f"✅ Conectado como @{bot_data.get('username')}"
+                    })
+                else:
+                    return jsonify({"error": "Token inválido"}), 400
+            else:
+                return jsonify({"error": f"Erro na API do Telegram: {resp.status_code}"}), 400
+                
+        elif platform == "twitter":
+            # Twitter requer 4 tokens, teste básico de formato
+            required = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET"]
+            for field in required:
+                if not fields.get(field):
+                    return jsonify({"error": f"{field} é obrigatório"}), 400
+            
+            # Teste básico (não faz requisição real para economizar rate limit)
+            return jsonify({
+                "success": True,
+                "message": "✅ Credenciais do Twitter parecem válidas (formato OK)"
+            })
+            
+        elif platform == "bluesky":
+            handle = fields.get("BLUESKY_HANDLE", "").lstrip("@")
+            password = fields.get("BLUESKY_APP_PASSWORD")
+            
+            if not handle or not password:
+                return jsonify({"error": "Handle e App Password são obrigatórios"}), 400
+            
+            # Testa login
+            try:
+                from atproto import Client
+                client = Client()
+                client.login(handle, password)
+                return jsonify({
+                    "success": True,
+                    "message": f"✅ Conectado como @{handle}"
+                })
+            except Exception as e:
+                return jsonify({"error": f"Falha no login: {str(e)}"}), 400
+                
+        elif platform == "whatsapp":
+            # WhatsApp não tem teste de token (usa QR Code)
+            return jsonify({
+                "success": True,
+                "message": "✅ Configuração salva. Escaneie o QR Code ao iniciar."
+            })
+            
+        else:
+            return jsonify({"error": "Plataforma não suportada"}), 400
+            
+    except Exception as e:
+        return jsonify({"error": f"Erro ao testar conexão: {str(e)}"}), 500
+
 @app.route("/api/integrations/<action>", methods=["POST"])
 def toggle_integration(action):
     data = request.json

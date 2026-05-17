@@ -6,7 +6,7 @@ import os
 import signal
 import json
 
-from src.initializer import initialize_moltyclaw, MOLTY_DIR
+from src.initializer import initialize_moltyclaw, MOLTY_DIR  # type: ignore
 initialize_moltyclaw()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MOLTY_MCP_DIR = os.path.join(MOLTY_DIR, "mcp_modules")
@@ -196,6 +196,252 @@ def cli_config_get(key):
                     console.print(f"[bold cyan]{line.strip()}[/bold cyan]")
                     sys.exit(0)
     console.print(f"[bold yellow]⚠ Chave {key} não encontrada no .env[/bold yellow]")
+    sys.exit(0)
+
+def cli_provider():
+    """Gerencia o provider de IA (seleção e configuração)"""
+    from rich.table import Table
+    
+    env_path = os.path.join(MOLTY_DIR, '.env')
+    
+    # Providers disponíveis
+    providers = {
+        "mistral": {
+            "name": "Mistral AI",
+            "key": "MISTRAL_API_KEY",
+            "url": "https://console.mistral.ai/",
+            "models": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest", "pixtral-large-latest"]
+        },
+        "gemini": {
+            "name": "Google Gemini",
+            "key": "GEMINI_API_KEY",
+            "url": "https://aistudio.google.com/apikey",
+            "models": ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+        },
+        "openrouter": {
+            "name": "OpenRouter",
+            "key": "OPENROUTER_API_KEY",
+            "url": "https://openrouter.ai/keys",
+            "models": ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.3-70b-instruct", "anthropic/claude-3.5-sonnet"]
+        },
+        "kodacloud": {
+            "name": "Koda Cloud",
+            "key": None,
+            "url": "http://cn-01.hostzera.com.br:2137",
+            "models": ["gemini-2.5-flash", "gemini-3-flash-preview", "mistral-large-2411", "mistral-small-2503", "codestral-2501"]
+        },
+        "ollama": {
+            "name": "Ollama (Local)",
+            "key": None,
+            "url": "https://ollama.com/",
+            "models": ["llama3", "llama3.1", "mistral", "codellama", "phi3"]
+        }
+    }
+    
+    # Lê configuração atual
+    current_provider = None
+    api_keys = {}
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            import re
+            provider_match = re.search(r'MOLTY_PROVIDER=(.*)', content)
+            if provider_match:
+                current_provider = provider_match.group(1).strip()
+            
+            for p_id, p_info in providers.items():
+                if p_info["key"]:
+                    key_match = re.search(rf'{p_info["key"]}=(.*)', content)
+                    if key_match:
+                        key_value = key_match.group(1).strip()
+                        api_keys[p_id] = "✅ Configurada" if key_value else "❌ Ausente"
+                else:
+                    api_keys[p_id] = "✅ Local"
+    
+    # Mostra tabela de providers
+    console.print(Panel.fit("[bold cyan]🤖 GERENCIADOR DE PROVIDERS[/bold cyan]"))
+    
+    table = Table(title="Providers Disponíveis", border_style="cyan")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Nome", style="white")
+    table.add_column("API Key", style="yellow")
+    table.add_column("Status", style="green")
+    
+    for p_id, p_info in providers.items():
+        status = "🟢 ATIVO" if p_id == current_provider else ""
+        table.add_row(p_id, p_info["name"], api_keys.get(p_id, "❌ Ausente"), status)
+    
+    console.print(table)
+    
+    if current_provider:
+        console.print(f"\n[bold green]Provider atual:[/bold green] {providers[current_provider]['name']} ({current_provider})")
+    
+    # Menu de seleção
+    if HAS_QUESTIONARY:
+        choices = [f"{p_id} - {p_info['name']}" for p_id, p_info in providers.items()]
+        selection = questionary.select(
+            "Selecione um provider:",
+            choices=choices
+        ).ask()
+        
+        if not selection:
+            console.print("[dim]Operação cancelada.[/dim]")
+            sys.exit(0)
+        
+        selected_id = selection.split(" - ")[0]
+    else:
+        console.print("\n[bold]Providers disponíveis:[/bold]")
+        for i, (p_id, p_info) in enumerate(providers.items(), 1):
+            console.print(f"  {i}. {p_id} - {p_info['name']}")
+        
+        choice = Prompt.ask("Selecione o número do provider", default="1")
+        selected_id = list(providers.keys())[int(choice) - 1]
+    
+    selected_info = providers[selected_id]
+    
+    # Verifica se precisa de API key
+    if selected_info["key"]:
+        if api_keys.get(selected_id) == "❌ Ausente":
+            console.print(f"\n[bold yellow]⚠ API Key não configurada para {selected_info['name']}[/bold yellow]")
+            console.print(f"[dim]Obtenha sua chave em: {selected_info['url']}[/dim]")
+            
+            api_key = Prompt.ask(f"\nCole sua {selected_info['key']}")
+            
+            if api_key.strip():
+                cli_config_set(selected_info["key"], api_key.strip())
+    
+    # Salva o provider selecionado
+    cli_config_set("MOLTY_PROVIDER", selected_id)
+    console.print(f"\n[bold green]✅ Provider alterado para: {selected_info['name']}[/bold green]")
+    sys.exit(0)
+
+def cli_model():
+    """Gerencia o modelo de IA (seleção por provider)"""
+    from rich.table import Table
+    
+    env_path = os.path.join(MOLTY_DIR, '.env')
+    
+    # Lê provider atual
+    current_provider = "mistral"  # padrão
+    current_model = None
+    
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            import re
+            provider_match = re.search(r'MOLTY_PROVIDER=(.*)', content)
+            if provider_match:
+                current_provider = provider_match.group(1).strip()
+            
+            # Detecta modelo atual baseado no provider
+            model_key = f"{current_provider.upper()}_MODEL"
+            model_match = re.search(rf'{model_key}=(.*)', content)
+            if model_match:
+                current_model = model_match.group(1).strip()
+    
+    # Modelos por provider
+    models_by_provider = {
+        "mistral": {
+            "name": "Mistral AI",
+            "models": [
+                ("mistral-small-latest", "Rápido e eficiente"),
+                ("mistral-medium-latest", "Balanceado"),
+                ("mistral-large-latest", "Máxima capacidade"),
+                ("pixtral-large-latest", "Visão + Texto"),
+            ]
+        },
+        "gemini": {
+            "name": "Google Gemini",
+            "models": [
+                ("gemini-1.5-flash", "Rápido e gratuito"),
+                ("gemini-1.5-flash-8b", "Ultra rápido"),
+                ("gemini-1.5-pro", "Alta capacidade"),
+                ("gemini-2.0-flash-exp", "Experimental v2.0"),
+            ]
+        },
+        "openrouter": {
+            "name": "OpenRouter",
+            "models": [
+                ("google/gemini-2.0-flash-exp:free", "Gemini 2.0 (Grátis)"),
+                ("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B"),
+                ("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet"),
+                ("google/gemini-pro-1.5", "Gemini Pro 1.5"),
+                ("mistralai/mistral-large", "Mistral Large"),
+            ]
+        },
+        "kodacloud": {
+            "name": "Koda Cloud",
+            "models": [
+                ("gemini-2.5-flash", "Gemini 2.5 Flash"),
+                ("gemini-3-flash-preview", "Gemini 3 Flash (Preview)"),
+                ("mistral-large-2411", "Mistral Large 2411"),
+                ("mistral-small-2503", "Mistral Small 2503"),
+                ("codestral-2501", "Codestral 2501"),
+            ]
+        },
+        "ollama": {
+            "name": "Ollama (Local)",
+            "models": [
+                ("llama3", "Llama 3 8B"),
+                ("llama3.1", "Llama 3.1 8B"),
+                ("mistral", "Mistral 7B"),
+                ("codellama", "Code Llama"),
+                ("phi3", "Phi-3 Mini"),
+            ]
+        }
+    }
+    
+    provider_info = models_by_provider.get(current_provider)
+    if not provider_info:
+        console.print(f"[bold red]❌ Provider '{current_provider}' não reconhecido[/bold red]")
+        sys.exit(1)
+    
+    # Mostra tabela de modelos
+    console.print(Panel.fit(
+        f"[bold cyan]🧠 GERENCIADOR DE MODELOS[/bold cyan]\n"
+        f"[dim]Provider atual:[/dim] [yellow]{provider_info['name']}[/yellow]"
+    ))
+    
+    table = Table(title=f"Modelos disponíveis para {provider_info['name']}", border_style="cyan")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Modelo", style="white")
+    table.add_column("Descrição", style="dim")
+    table.add_column("Status", style="green")
+    
+    for model_id, description in provider_info["models"]:
+        status = "🟢 ATIVO" if model_id == current_model else ""
+        table.add_row(str(provider_info["models"].index((model_id, description)) + 1), model_id, description, status)
+    
+    console.print(table)
+    
+    if current_model:
+        console.print(f"\n[bold green]Modelo atual:[/bold green] {current_model}")
+    
+    # Menu de seleção
+    if HAS_QUESTIONARY:
+        choices = [f"{m[0]} - {m[1]}" for m in provider_info["models"]]
+        selection = questionary.select(
+            "Selecione um modelo:",
+            choices=choices
+        ).ask()
+        
+        if not selection:
+            console.print("[dim]Operação cancelada.[/dim]")
+            sys.exit(0)
+        
+        selected_model = selection.split(" - ")[0]
+    else:
+        console.print("\n[bold]Modelos disponíveis:[/bold]")
+        for i, (model_id, desc) in enumerate(provider_info["models"], 1):
+            console.print(f"  {i}. {model_id} - {desc}")
+        
+        choice = Prompt.ask("Selecione o número do modelo", default="1")
+        selected_model = provider_info["models"][int(choice) - 1][0]
+    
+    # Salva o modelo selecionado
+    model_key = f"{current_provider.upper()}_MODEL"
+    cli_config_set(model_key, selected_model)
+    console.print(f"\n[bold green]✅ Modelo alterado para: {selected_model}[/bold green]")
     sys.exit(0)
 
 def cli_mcp_install(repo):
@@ -510,7 +756,15 @@ def cli_update():
 
 def cli_start_bots(target):
     console.print(f"[bold magenta]Inicializando bots ({target}) em modo Bypass...[/bold magenta]")
-    os.environ["MOLTY_PROVIDER"] = "mistral" # Provider padrão
+    # Carrega o provider do .env se existir, senão usa mistral como padrão
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(MOLTY_DIR, '.env'), override=True)
+    if not os.getenv("MOLTY_PROVIDER"):
+        os.environ["MOLTY_PROVIDER"] = "mistral" # Provider padrão apenas se não estiver definido
+    
+    # Debug: mostra qual provider foi carregado
+    console.print(f"[dim]>> Provider carregado do .env: {os.getenv('MOLTY_PROVIDER')}[/dim]")
+    console.print(f"[dim]>> Modelo carregado: {os.getenv(f'{os.getenv('MOLTY_PROVIDER', 'mistral').upper()}_MODEL')}[/dim]")
     active_threads = []
     
     if target == "all":
@@ -889,8 +1143,8 @@ def cli_research(query):
     from moltyclaw import MoltyClaw
     
     async def run():
-        bot = MoltyClaw("MoltyResearcher")
-        prompt = f"Faça uma pesquisa extensa e minuciosa na internet sobre o tema: '{query}'. Use OPEN_BROWSER e DDG_SEARCH (ou GOTO/READ_PAGE). Leia artigos e quando terminar de consolidar a informação, me responda DE FORMA DIRETA (sem usar tags JSON) descrevendo todo o resumo super detalhado e as mudanças para que eu possa ler aqui no terminal. Não economize no resumo, seja didático."
+        bot = MoltyClaw("MoltyResearcher", agent_id="MoltyClaw")
+        prompt = f"Faça uma pesquisa minuciosa na internet sobre o tema: '{query}'. ATENÇÃO: Você DEVE usar a tag <tool> com JSON para chamar a ferramenta DDG_SEARCH (e GOTO se precisar ler algo) AGORA MESMO para buscar as informações. Somente DEPOIS de obter os resultados, você deve dar a resposta final detalhada."
         
         await bot.ask(prompt)
         await bot.close_browser()
@@ -1140,6 +1394,10 @@ def main():
             else:
                 console.print("[bold red]Uso: moltyclaw mcp install/uninstall/on/off <NOME> ou moltyclaw mcp list[/bold red]")
                 sys.exit(1)
+        elif arg == "provider":
+            cli_provider()
+        elif arg == "model":
+            cli_model()
         elif arg == "browser" and len(sys.argv) >= 3:
             cli_browser_toggle(sys.argv[2])
         elif arg == "reset" and len(sys.argv) >= 3 and sys.argv[2].lower() == "memory":
@@ -1193,6 +1451,8 @@ def main():
                 "[green]moltyclaw onboard[/green]                       : Inicia o assistente de configuração (Setup Wizard) guiado\n"
                 "[green]moltyclaw reset memory[/green]                : Engatilha o protocolo de amnésia do agente esvaziando a MEMORY\n"
                 "[green]moltyclaw mcp list/install/on/off[/green]      : Gerenciamento de Servidores MCP externos\n"
+                "[green]moltyclaw provider[/green]                     : Seleciona e configura o provider de IA (Mistral, Gemini, OpenRouter, Ollama)\n"
+                "[green]moltyclaw model[/green]                        : Seleciona o modelo de IA para o provider atual\n"
                 "[green]moltyclaw skill list/info/create[/green]      : Gerenciamento do Sistema de Skills modulares\n"
                 "[green]moltyclaw skill install <PATH>[/green]        : Instala uma skill a partir de pasta ou arquivo .skill\n"
                 "[green]moltyclaw skill info <NOME>[/green]           : Detalhes, requisitos e manual de uma skill\n"
@@ -1260,6 +1520,22 @@ def main():
         env_choice = Prompt.ask("Selecione", choices=["1", "2", "3"], default="2")
 
     if env_choice == "3":
+        console.print("\n[bold yellow]⚠ AVISO IMPORTANTE:[/bold yellow]")
+        console.print("Se você instalou o MoltyClaw através do comando [bold cyan]pip install moltyclaw[/bold cyan],")
+        console.print("o atalho global já foi configurado automaticamente pelo Python e você JÁ PODE usar o comando 'moltyclaw' em qualquer terminal.\n")
+        
+        if HAS_QUESTIONARY:
+            confirm = questionary.confirm(
+                "Deseja prosseguir com a configuração manual do PATH mesmo assim?",
+                default=False
+            ).ask()
+            if not confirm:
+                sys.exit(0)
+        else:
+            confirm = Prompt.ask("[bold cyan]Deseja prosseguir com a configuração manual? [y/N][/bold cyan]", default="N")
+            if confirm.lower() not in ["y", "s", "sim", "yes"]:
+                sys.exit(0)
+
         install_moltyclaw_path()
         sys.exit(0)
 
@@ -1271,6 +1547,7 @@ def main():
                 questionary.Choice("⚡  Mistral AI      (MISTRAL_API_KEY)",     value="1"),
                 questionary.Choice("🌐  OpenRouter      (OPENROUTER_API_KEY)",  value="2"),
                 questionary.Choice("♊  Google Gemini    (GEMINI_API_KEY)",      value="3"),
+                questionary.Choice("☁️  Koda Cloud      (Sem API Key)",         value="5"),
                 questionary.Choice("🏠  Ollama (Local)   (OLLAMA_MODEL)",       value="4"),
             ],
             style=molty_style,
@@ -1282,7 +1559,8 @@ def main():
         console.print("2. [bold magenta]OpenRouter[/bold magenta]")
         console.print("3. [bold blue]Google Gemini[/bold blue]")
         console.print("4. [bold white]Ollama (Local)[/bold white]")
-        provider_choice = Prompt.ask("Selecione", choices=["1", "2", "3", "4"], default="1")
+        console.print("5. [bold green]Koda Cloud[/bold green]")
+        provider_choice = Prompt.ask("Selecione", choices=["1", "2", "3", "4", "5"], default="1")
 
     if provider_choice == "2":
         os.environ["MOLTY_PROVIDER"] = "openrouter"
@@ -1290,6 +1568,8 @@ def main():
         os.environ["MOLTY_PROVIDER"] = "gemini"
     elif provider_choice == "4":
         os.environ["MOLTY_PROVIDER"] = "ollama"
+    elif provider_choice == "5":
+        os.environ["MOLTY_PROVIDER"] = "kodacloud"
     else:
         os.environ["MOLTY_PROVIDER"] = "mistral"
 

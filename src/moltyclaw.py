@@ -4,16 +4,23 @@ import traceback
 import re
 import time
 import shutil
+import json
+import websockets
+import subprocess
+import sys
+
+# Adiciona o diretório src ao path para imports relativos
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from initializer import initialize_moltyclaw, MOLTY_DIR
 initialize_moltyclaw()
-import sys
+
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "integrations"))
 try:
-    from mcp_hub import MCPHub
+    from integrations.mcp_hub import MCPHub
 except ImportError:
     MCPHub = None
 
@@ -25,6 +32,8 @@ from skills import (
     find_skill_by_name,
     load_skill_body
 )
+from scheduler import SchedulerManager
+from heartbeat import HeartbeatManager
 
 try:
     from mistralai import Mistral
@@ -32,8 +41,8 @@ try:
     ChatMessage = None 
 except ImportError:
     try:
-        from mistralai.async_client import MistralAsyncClient as Mistral
-        from mistralai.models.chat_completion import ChatMessage
+        from mistralai.async_client import MistralAsyncClient as Mistral  # type: ignore
+        from mistralai.models.chat_completion import ChatMessage  # type: ignore
     except ImportError:
         Mistral = None
         ChatMessage = None
@@ -109,6 +118,10 @@ class MoltyClaw:
         # Le a variavel de ambiente passada (ou do config do agente)
         self.provider = self.config.get("provider", os.getenv("MOLTY_PROVIDER", "mistral"))
         
+        # Debug: mostra qual provider foi carregado
+        if self.is_master:
+            console.print(f"[dim]>> [{self.name}] Provider inicializado: {self.provider}[/dim]")
+        
         # Carrega Configuração Global do moltyclaw.json
         molty_config = get_config()
         
@@ -117,6 +130,7 @@ class MoltyClaw:
             if prov == "mistral": return p_cfg.get("api_key") or os.getenv("MISTRAL_API_KEY")
             if prov == "gemini":  return p_cfg.get("api_key") or os.getenv("GEMINI_API_KEY")
             if prov == "ollama":  return "ollama" # Ollama não exige chave, mas usamos placeholder
+            if prov == "kodacloud": return "kodacloud" # Koda Cloud não exige chave
             return p_cfg.get("api_key") or os.getenv("OPENROUTER_API_KEY")
 
         # --- Lógica de Smart Provider (Auto-Discovery) ---
@@ -124,7 +138,7 @@ class MoltyClaw:
         
         # Se não tem a chave do provedor escolhido, tenta achar qualquer outra disponível
         if not self.api_key:
-            for fallback in ["gemini", "mistral", "openrouter", "ollama"]:
+            for fallback in ["kodacloud", "gemini", "mistral", "openrouter", "ollama"]:
                 if fallback == self.provider: continue
                 fallback_key = get_key_for(fallback)
                 if fallback_key:
@@ -140,8 +154,14 @@ class MoltyClaw:
             self.model = p_cfg.get("model") or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         elif self.provider == "ollama":
             self.model = p_cfg.get("model") or os.getenv("OLLAMA_MODEL", "llama3")
+        elif self.provider == "kodacloud":
+            self.model = p_cfg.get("model") or os.getenv("KODACLOUD_MODEL", "gemini-2.5-flash")
         else:
             self.model = p_cfg.get("model") or os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash")
+        
+        # Debug: mostra qual modelo foi carregado
+        if self.is_master:
+            console.print(f"[dim]>> [{self.name}] Modelo carregado: {self.model}[/dim]")
         
         # Preferência do Navegador (Ativado/Desativado por comando CLI)
         self.browser_enabled = molty_config.get("browser", {}).get("enabled", True)
@@ -209,6 +229,7 @@ class MoltyClaw:
                     from mistralai import Mistral
                     self.mistral_client = Mistral(api_key=self.api_key)
                 except (ImportError, TypeError):
+                    from mistralai.async_client import MistralAsyncClient  # type: ignore
                     self.mistral_client = MistralAsyncClient(api_key=self.api_key)
                 self.openai_client = None
                 self.gemini_client = None
@@ -231,6 +252,17 @@ class MoltyClaw:
                 self.mistral_client = None
                 self.gemini_client = None
                 self.openai_client = None
+            elif self.provider == "kodacloud":
+                # Koda Cloud usa API compatível com OpenAI mas com endpoint /v1/chat
+                self.ollama_client = None
+                self.mistral_client = None
+                self.gemini_client = None
+                self.openai_client = AsyncOpenAI(
+                    base_url="http://cn-01.hostzera.com.br:2137/v1",
+                    api_key="not-needed",  # Koda Cloud não requer API key
+                )
+                # Sobrescreve o endpoint para usar /chat em vez de /chat/completions
+                self.kodacloud_endpoint = "http://cn-01.hostzera.com.br:2137/v1/chat"
             else:
                 self.ollama_client = None
                 self.mistral_client = None
@@ -240,6 +272,12 @@ class MoltyClaw:
                     api_key=self.api_key,
                 )
         self.is_busy = False # Flag para o Heartbeat/Background tasks
+        self.pty_bridge_process = None
+        self.pty_output = ""
+        
+        # Inicializa o Motor de Agendamento Proativo
+        self.scheduler = SchedulerManager(self, base_dir=self.base_dir)
+        self.heartbeat = HeartbeatManager(self)
 
     def _get_mcp_prompt_placeholder(self) -> str:
         return "[MCP_TOOLS_INJECTED_HERE_AUTOMATICALLY]"
@@ -264,6 +302,41 @@ class MoltyClaw:
             new_content = re.sub(r'\nFERRAMENTAS MCP EXTRAS DETECTADAS.*?(\n\n|$)', lambda m: '\n' + mcp_section + '\n\n', prompt_content, flags=re.DOTALL)
             self.history[0]["content"] = new_content
 
+    async def start_background_services(self):
+        """Inicia Heartbeat e Scheduler em tarefas paralelas de background."""
+        if self.is_master:
+            # Apenas o Master (ou agente principal logado) roda esses motores globalmente
+            # Mas podemos permitir por agente se quiser proatividade individual.
+            asyncio.create_task(self.scheduler.run())
+            asyncio.create_task(self.heartbeat.run())
+            # Inicia o PTY Bridge (Node.js) se estiver na pasta correta
+            await self.start_pty_bridge()
+            console.print(f"[bold green]🚀 [{self.name}] Motores Proativos (Scheduler, Heartbeat & PTY Bridge) iniciados![/bold green]")
+
+    async def start_pty_bridge(self):
+        """Inicia a ponte persistente do terminal (node-pty)."""
+        bridge_path = os.path.join(os.path.dirname(__file__), "terminal", "pty_bridge.js")
+        if not os.path.exists(bridge_path):
+            return
+            
+        try:
+            # Tenta ver se já tem algo na porta 9001 (evitar conflito)
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if s.connect_ex(('127.0.0.1', 9001)) == 0:
+                    console.print("[dim]>> [PTY Master] Ponte PTY já detectada na porta 9001. Reusando...[/dim]")
+                    return
+            
+            console.print(f"[dim]>> [PTY Master] Inicializando Ponte PTY persistente (node-pty)...[/dim]")
+            self.pty_bridge_process = await asyncio.create_subprocess_shell(
+                f"node {bridge_path}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await asyncio.sleep(2.0) # Tempo pro Node subir
+        except Exception as e:
+            console.print(f"[warning]Falha ao iniciar PTY Bridge: {e}[/warning]")
+
     async def close_browser(self):
         try:
             if self.page: await self.page.close()
@@ -285,56 +358,74 @@ class MoltyClaw:
         await self.close_browser() 
         import aiohttp
         import random
-        import time
         import socket
         
-        # Desincronização suave e lock via SOCKET para evitar Race Condition e locks órfãos (que o Windows não limpa ao abortar)
+        cdp_url = "http://localhost:9222"
+
+        # ── Passo 1: Verifica se o browser já está rodando ANTES de tentar o lock ──
+        # Se já estiver, conecta direto via CDP sem precisar do lock.
+        async def _try_cdp_connect() -> bool:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{cdp_url}/json/version", timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                        if resp.status != 200:
+                            return False
+                if self.playwright is None:
+                    self.playwright = await async_playwright().start()
+                self.browser = await self.playwright.chromium.connect_over_cdp(cdp_url)
+                if self.browser.contexts:
+                    self.context = self.browser.contexts[0]
+                else:
+                    self.context = await self.browser.new_context()
+                self.page = await self.context.new_page()
+                console.print(f"[info][{self.name}] 🔗 Conectado ao Navegador Compartilhado (Master já estava ativo)![/info]")
+                return True
+            except Exception:
+                return False
+
+        # Tenta conectar via CDP imediatamente
+        if await _try_cdp_connect():
+            return
+
+        # ── Passo 2: Browser não está rodando — tenta ser o Master ──
+        # Desincronização suave para evitar que múltiplos processos tentem ao mesmo tempo
         await asyncio.sleep(random.uniform(0.1, 1.5))
-        
+
         lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         has_lock = False
-        
-        for _ in range(30):
+
+        for attempt in range(30):
             try:
-                # Tenta "trancar" a porta 9223. Como é no nível do SO, se o Python crachar, a porta solta!
                 lock_socket.bind(('127.0.0.1', 9223))
                 has_lock = True
                 break
             except OSError:
+                # Enquanto espera o lock, verifica se o master já subiu o browser
+                if attempt > 0 and attempt % 3 == 0:
+                    if await _try_cdp_connect():
+                        try:
+                            lock_socket.close()
+                        except Exception:
+                            pass
+                        return
                 await asyncio.sleep(1.0)
-                
+
+        # Se não conseguiu o lock mas o browser subiu enquanto esperava, conecta via CDP
+        if not has_lock:
+            if await _try_cdp_connect():
+                return
+            console.print(f"[warning][{self.name}] Não foi possível obter o lock do browser. Abortando init_browser.[/warning]")
+            return
+
         try:
-            self.playwright = await async_playwright().start()
-            cdp_url = "http://localhost:9222"
-            browser_running = False
-            
-            # Verifica se já há um Master ativo (tenta repetidas vezes caso ele esteja subindo)
-            for _ in range(5):
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(f"{cdp_url}/json/version", timeout=1.5) as resp:
-                            if resp.status == 200: 
-                                browser_running = True
-                                break
-                except:
-                    await asyncio.sleep(0.5)
+            if self.playwright is None:
+                self.playwright = await async_playwright().start()
 
-            if browser_running:
-                try:
-                    self.browser = await self.playwright.chromium.connect_over_cdp(cdp_url)
-                    # No CDP, tentamos reusar o contexto padrão ou o primeiro disponível
-                    if self.browser.contexts:
-                        self.context = self.browser.contexts[0]
-                    else:
-                        self.context = await self.browser.new_context()
-                    
-                    self.page = await self.context.new_page()
-                    console.print(f"[info][{self.name}] 🔗 Conectado ao Navegador Compartilhado (Master já estava ativo)![/info]")
-                    return
-                except Exception as e:
-                    console.print(f"[warning][{self.name}] Falha ao conectar via CDP, tentando lançar novo: {e}[/warning]")
+            # Verifica uma última vez antes de lançar (outro processo pode ter subido no intervalo)
+            if await _try_cdp_connect():
+                return
 
-            # Lê a configuração de headless vinda do comando 'moltyclaw browser headless=...'
+            # Lê a configuração de headless
             molty_cfg = get_config()
             is_headless = molty_cfg.get("browser", {}).get("headless", True)
             
@@ -344,7 +435,7 @@ class MoltyClaw:
                 channel="chromium",
                 ignore_default_args=["--enable-automation"],
                 args=[
-                    '--remote-debugging-port=9222', # Habilita o compartilhamento
+                    '--remote-debugging-port=9222',
                     '--disable-blink-features=AutomationControlled',
                     '--disable-infobars',
                     '--no-sandbox',
@@ -359,12 +450,10 @@ class MoltyClaw:
                 color_scheme='dark'
             )
             
-            # Persistent context não expõe 'browser' de forma robusta e nem precisamos.
             self.browser = self.context.browser
             
             await self.context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
             
-            # launch_persistent_context já inicializa com uma aba (tab) aberta default no navegador.
             if self.context.pages:
                 self.page = self.context.pages[0]
             else:
@@ -379,9 +468,8 @@ class MoltyClaw:
                 
             console.print(f"[info][{self.name}] Navegador Master Inicializado na Porta 9222![/info]")
             
-            # Aguarda o Chromium preparar todos os binds antes de soltar o lock para as demais integrações!
+            # Aguarda o Chromium estabilizar antes de soltar o lock
             await asyncio.sleep(2.0)
-            
         except Exception as e:
             console.print(f"[error]Erro ao iniciar navegador: {e}[/error]")
         finally:
@@ -395,22 +483,57 @@ class MoltyClaw:
             console.print(f"[warning][{self.name}] Tentativa de uso de CMD intercedida pelo Modo Publico.[/warning]")
             return "Erro: O comando CMD está DESABILITADO no modo PUBLIC (ações de terminal bloqueadas por segurança)."
             
-        console.print(f"[info][{self.name}] Executando comando:[/info] {command}")
+        console.print(f"[info][{self.name}] Terminal (PTY Session):[/info] {command}")
+        
+        # Tentativa de conexão via PTY Bridge (WebSocket) na porta 9001
         try:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=self.workspace_dir
-            )
-            stdout, stderr = await process.communicate()
-            output = stdout.decode("utf-8", errors="replace").strip()
-            error = stderr.decode("utf-8", errors="replace").strip()
-            if process.returncode != 0:
-                return f"Erro (código {process.returncode}):\n{error}"
-            return output if output else "Comando executado com sucesso."
+            uri = "ws://localhost:9001"
+            async with websockets.connect(uri) as websocket:
+                # Envia o comando com Enter no final
+                full_cmd = command + "\n"
+                await websocket.send(json.dumps({"type": "input", "data": full_cmd}))
+                
+                # Aguarda o output por um tempo fixo (3s p/ comandos rápidos, ou até 10s para processos maiores)
+                # Na verdade, como é persistente, coletamos os logs iniciais + o que vir depois do comando.
+                output_acc = ""
+                try:
+                    # Lê o buffer inicial (limpa o que tinha antes?)
+                    # Na verdade, a ponte envia o buffer completo no 'init'
+                    while True:
+                        msg = await asyncio.wait_for(websocket.recv(), timeout=3.0)
+                        data = json.loads(msg)
+                        if data['type'] == 'output' or data['type'] == 'init':
+                            output_acc += data['data']
+                            if len(output_acc) > 8000: # Limite de leitura por turno
+                                break
+                except asyncio.TimeoutError:
+                    pass # Fine, output ended or paused
+                
+                # Limpeza simples de caracteres ANSI para o modelo não se confundir
+                import re
+                clean_output = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', output_acc)
+                
+                # Tenta isolar o output do SEU comando (heuristicamente pegando o final)
+                return f"[Sessão Persistente Ativa]\n{clean_output[-4000:]}"
+                
         except Exception as e:
-            return f"Exceção: {e}"
+            # Fallback para Subset-Processo se o PTY falhar
+            console.print(f"[warning][{self.name}] PTY Bridge offline ({e}), usando fallback de subset-processo...[/warning]")
+            try:
+                process = await asyncio.create_subprocess_shell(
+                    command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=self.workspace_dir
+                )
+                stdout, stderr = await process.communicate()
+                output = stdout.decode("utf-8", errors="replace").strip()
+                error = stderr.decode("utf-8", errors="replace").strip()
+                if process.returncode != 0:
+                    return f"Erro (código {process.returncode}):\n{error}"
+                return output if output else "Comando executado com sucesso."
+            except Exception as inner_e:
+                return f"Exceção: {inner_e}"
 
     async def run_browser_action(self, action: str, param: str) -> str:
         if action == "OPEN_BROWSER":
@@ -624,9 +747,33 @@ class MoltyClaw:
                     res_texts = []
                     for score, p in search_res:
                         res_texts.append(f"[{p['file']}] Trecho: {p['text'][:150]}...")
-                    return "Memórias mais relevantes encontradas:\n" + "\n".join(res_texts) + "\n\nUse FILE_READ se precisar ler o contexto inteiro de algum dos arquivos acima."
+                    return f"Memórias mais relevantes encontradas:\n" + "\n".join(res_texts) + "\n\nUse FILE_READ se precisar ler o contexto inteiro de algum dos arquivos acima."
                 return "Nenhuma memória semanticamente relevante encontrada."
-                
+
+            elif action == "SCHEDULE_TASK":
+                if " | " not in param:
+                    return 'Erro: Use "Nome do Job | Intervalo_Minutos | Payload do Prompt"'
+                parts = param.split(" | ", 2)
+                if len(parts) < 3:
+                     return 'Erro: Use "Nome do Job | Intervalo_Minutos | Payload do Prompt"'
+                name, interval, payload = parts[0].strip(), parts[1].strip(), parts[2].strip()
+                job = self.scheduler.add_job(name, "Agendado via IA", interval, payload)
+                return f"✅ Tarefa '{name}' agendada com sucesso! ID: {job['id']}. Ela rodará a cada {interval} minutos de forma autônoma."
+
+            elif action == "LIST_TASKS":
+                jobs = self.scheduler.jobs
+                if not jobs: return "Nenhuma tarefa agendada no momento."
+                res = "### Tarefas Ativas:\n"
+                for j in jobs:
+                    status = "✅ Ativo" if j.get("enabled", True) else "❌ Desativado"
+                    res += f"- **ID: {j['id']}** | {j['name']} ({j['interval']//60}min) | Status: {status}\n"
+                return res
+
+            elif action == "DELETE_TASK":
+                job_id = param.strip()
+                self.scheduler.remove_job(job_id)
+                return f"Tarefa {job_id} removida com sucesso (se existia)."
+
         except Exception as e:
             return f"Erro Módulo de Workspace: {e}"
 
@@ -954,15 +1101,28 @@ class MoltyClaw:
                     memory_data = "\n--- MEMÓRIA DE LONGO PRAZO ---\n" + content + "\n[IMPORTANTE: Use os fatos acima de forma implícita e natural. NÃO comente que você está lendo da memória de longo prazo, apenas saiba as informações.]\n"
                 
         # Mantém a original e apenda a memória carregada no início do boot
-        base_prompt = self.history[0]["content"].split("\n--- SOUL.md")[0].split("\n--- MEMÓRIA")[0]
+        import datetime
+        import re
+        current_content = self.history[0]["content"]
+        
+        # Atualiza data dinâmica se o marcador existir
+        new_date = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        current_content = re.sub(
+            r'Data e hora atual do sistema: .*? \[DYNAMIC_DATE\]',
+            f"Data e hora atual do sistema: {new_date} [DYNAMIC_DATE]",
+            current_content
+        )
+        
+        base_prompt = current_content.split("\n--- SOUL.md")[0].split("\n--- MEMÓRIA")[0]
         self.history[0] = {"role": "system", "content": base_prompt + soul_data + memory_data}
 
     async def check_compaction(self):
         """Mecanismo de Flush Stealth (OpenClaw) - Compactação da janela de contexto"""
-        char_count = sum(len(msg.get("content", "")) for msg in self.history if msg.get("content"))
+        # Conta apenas as mensagens de conversação (ignora o system prompt que é self.history[0])
+        char_count = sum(len(msg.get("content", "")) for msg in self.history[1:] if msg.get("content"))
         
         if char_count > 15000:  # Limite de segurança arbitrário para flush
-            console.print("[dim yellow][SISTEMA] Iniciando flush de memória silencioso (Compaction)...[/dim yellow]")
+            console.print(f"[dim yellow][SISTEMA] Iniciando flush de memória silencioso (Compaction)... ({char_count:,} caracteres nas mensagens)[/dim yellow]")
             
             # Remove temporariamente o prompt atual do usuário para protegê-lo da compactação
             last_user_msg = self.history.pop()
@@ -987,7 +1147,8 @@ class MoltyClaw:
             self.history = new_history
             self.history.append(last_user_msg)
             
-            console.print("[dim green][SISTEMA] Contexto compactado e truncado de forma limpa![/dim green]")
+            new_char_count = sum(len(msg.get("content", "")) for msg in self.history[1:] if msg.get("content"))
+            console.print(f"[dim green][SISTEMA] Contexto compactado! {char_count:,} → {new_char_count:,} caracteres (mantidas últimas 4 mensagens)[/dim green]")
 
     async def transcribe_audio(self, audio_path: str) -> str:
         """Envia o arquivo para a Mistral API para transcrição via voxtral-mini-latest"""
@@ -1019,7 +1180,7 @@ class MoltyClaw:
             console.print(f"[error]Exceção ao transcrever áudio: {e}[/error]")
             return ""
 
-    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None, reply_callback=None):
+    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None, reply_callback=None, requester: dict = None):
         # Guarda reply_callback na instância (se for uma chamada nova, não recursiva de tool)
         if reply_callback is not None:
             self._current_reply_callback = reply_callback
@@ -1029,7 +1190,14 @@ class MoltyClaw:
             return msg
             
         if prompt:
-            self.history.append({"role": "user", "content": prompt})
+            final_prompt = prompt
+            if requester and not is_tool_response:
+                req_name = requester.get("name", "Desconhecido")
+                req_id = requester.get("id", "N/A")
+                platform = requester.get("platform", "Desconhecida")
+                req_info = f"[INFO DO REMETENTE: Nome: {req_name} | ID: {req_id} | Plataforma: {platform}]"
+                final_prompt = f"{req_info}\n\n{prompt}"
+            self.history.append({"role": "user", "content": final_prompt})
             
         # Avalia sempre que o usuario manda uma mensagem real se precisa flushear contexto
         if not is_tool_response and not silent:
@@ -1138,17 +1306,104 @@ class MoltyClaw:
                             await asyncio.sleep(2 + _retry)
                         else: raise e
             else:
+                # OpenRouter ou Koda Cloud
                 for _retry in range(4):
                     try:
-                        async_response = await self.openai_client.chat.completions.create(
-                            model=self.model,
-                            messages=self.history,
-                            stream=True
-                        )
+                        if self.provider == "kodacloud":
+                            # Koda Cloud usa endpoint customizado /v1/chat com SSE
+                            import aiohttp
+                            import json as json_module  # Import explícito para usar dentro da classe
+                            
+                            payload = {
+                                "model": self.model,
+                                "messages": self.history,
+                                "stream": True
+                            }
+                            
+                            # Cria um objeto compatível com o formato esperado
+                            class KodaCloudResponse:
+                                def __init__(self, session, url, payload):
+                                    self.session = session
+                                    self.url = url
+                                    self.payload = payload
+                                    self.response = None
+                                    
+                                async def __aiter__(self):
+                                    try:
+                                        async with self.session.post(
+                                            self.url,
+                                            json=self.payload,
+                                            headers={"Content-Type": "application/json"}
+                                        ) as response:
+                                        if response.status != 200:
+                                            error_text = await response.text()
+                                            console.print(f"[error]>> [Koda Cloud] Error response: {error_text[:500]}[/error]")
+                                            raise Exception(f"Koda Cloud Error ({response.status}): {error_text[:200]}")
+                                        
+                                        buffer = ""
+                                        chunk_count = 0
+                                        async for chunk in response.content.iter_any():
+                                            try:
+                                                decoded = chunk.decode('utf-8')
+                                                buffer += decoded
+                                                chunk_count += 1
+                                                
+                                                while '\n' in buffer:
+                                                    line_text, buffer = buffer.split('\n', 1)
+                                                    line_text = line_text.strip()
+                                                    
+                                                    if not line_text or not line_text.startswith('data: '):
+                                                        continue
+                                                        
+                                                    data_str = line_text[6:].strip()
+                                                    if data_str == '[DONE]':
+                                                        return
+                                                        
+                                                    try:
+                                                        data = json_module.loads(data_str)
+                                                        
+                                                        if data.get('type') == 'text' and data.get('content'):
+                                                            # Cria objeto compatível com OpenAI
+                                                            class Choice:
+                                                                def __init__(self, content):
+                                                                    self.delta = type('obj', (object,), {'content': content})()
+                                                            
+                                                            yield type('obj', (object,), {'choices': [Choice(data['content'])]})()
+                                                        elif data.get('type') == 'done':
+                                                            return
+                                                    except json_module.JSONDecodeError as e:
+                                                        console.print(f"[warning]>> [Koda Cloud] JSON decode error: {e} - data: {data_str[:100]}[/warning]")
+                                                        continue
+                                            except Exception as e:
+                                                continue
+                                    finally:
+                                        if not self.session.closed:
+                                            await self.session.close()
+                            
+                            # Cria sessão que será mantida durante o streaming
+                            session = aiohttp.ClientSession()
+                            async_response = KodaCloudResponse(
+                                session,
+                                "http://cn-01.hostzera.com.br:2137/v1/chat",
+                                payload
+                            )
+                        else:
+                            # OpenRouter usa API padrão OpenAI
+                            async_response = await self.openai_client.chat.completions.create(
+                                model=self.model,
+                                messages=self.history,
+                                stream=True
+                            )
                         break
                     except Exception as e:
                         if _retry < 3:
-                            console.print(f"[warning]>> Instabilidade na API OpenRouter detectada (Erro {str(e)[:40]}...) - Reconectando em breve...[/warning]")
+                            provider_name = "Koda Cloud" if self.provider == "kodacloud" else "OpenRouter"
+                            error_msg = str(e)
+                            # Mostra mais detalhes do erro para debug
+                            if "<!DOCTYPE html>" in error_msg or "<html" in error_msg:
+                                console.print(f"[warning]>> {provider_name} retornou HTML em vez de JSON. Servidor pode estar offline ou endpoint incorreto.[/warning]")
+                            else:
+                                console.print(f"[warning]>> Instabilidade na API {provider_name} detectada (Erro {error_msg[:80]}...) - Reconectando em breve...[/warning]")
                             await asyncio.sleep(2 + _retry)
                         else:
                             raise e
@@ -1244,14 +1499,44 @@ class MoltyClaw:
                 print()
             elif is_tool_response and not silent:
                 print()
+            
+            # Debug: mostra o conteúdo da resposta
+            if not response_chunks.strip():
+                console.print(f"[warning]>> [DEBUG] Resposta vazia recebida! response_chunks: '{response_chunks}'[/warning]")
+                console.print(f"[warning]>> [DEBUG] Provider: {self.provider}, Model: {self.model}[/warning]")
                 
             if "NO_REPLY" in response_chunks:
                 self.history.append({"role": "assistant", "content": response_chunks}) 
                 return "Resumo efetuado."
             
-            # Extrai e valida o JSON dentro de <tool>
+            # Extrai e valida o JSON dentro de <tool> OU de blocos ```json gerados por modelos que ignoram o formato
             import json
             tool_match = re.search(r'<tool>\s*(.*?)\s*</tool>', response_chunks, re.DOTALL)
+            
+            # Fallback: detecta chamadas de ferramenta em blocos markdown ```json {...} ```
+            if not tool_match:
+                md_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_chunks, re.DOTALL)
+                if md_match:
+                    try:
+                        candidate = json.loads(md_match.group(1).strip())
+                        # Valida se tem 'action' (formato local) ou 'tool'+'skill'/'input' (formato SKILL_USE errado)
+                        if "action" in candidate or ("tool" in candidate and "skill" in candidate):
+                            # Normaliza formato SKILL_USE (modelo confundiu skills com ferramentas)
+                            if "tool" in candidate and candidate.get("tool") == "SKILL_USE":
+                                skill_name = candidate.get("skill", "")
+                                skill_input = candidate.get("input", {})
+                                query = skill_input.get("query", str(skill_input))
+                                # Converte para DDG_SEARCH nativo
+                                candidate = {"action": "DDG_SEARCH", "param": query}
+                            if "action" in candidate:
+                                # Reconstrói como se viesse de <tool>
+                                class _FakeMatch:
+                                    def __init__(self, s): self._s = s
+                                    def group(self, n): return self._s
+                                tool_match = _FakeMatch(json.dumps(candidate))
+                                console.print(f"[dim]>> [Parser] Ferramenta detectada em bloco markdown. Normalizando para ação '{candidate['action']}'...[/dim]")
+                    except (json.JSONDecodeError, Exception):
+                        pass
             
             # Adiciona a resposta do assistente no histórico DENTRO de try ANTES das novas chamadas de tool ou do retorno final
             if response_chunks.strip():
@@ -1624,6 +1909,13 @@ class MoltyClaw:
             console.print(f"[error]{err_msg}[/error]")
             return err_msg
         finally:
+            # Fecha a sessão do Koda Cloud se existir
+            if hasattr(self, '_kodacloud_session') and self._kodacloud_session:
+                try:
+                    await self._kodacloud_session.close()
+                    self._kodacloud_session = None
+                except:
+                    pass
             self.is_busy = False
 
     def _get_available_agents(self):
@@ -1767,6 +2059,11 @@ class MoltyClaw:
             "FILE_READ": '"FILE_READ" (param: "caminho_relativo") - Lê todo o conteúdo de um arquivo',
             "MEMORY_SEARCH": '"MEMORY_SEARCH" (param: busca) - Busca semanticamente na memória de longo prazo e diários',
             "SKILL_USE": '"SKILL_USE" (param: "nome_da_skill") - Ativa uma skill modular e carrega suas instruções detalhadas para o contexto atual.',
+            
+            # Scheduler Tools
+            "SCHEDULE_TASK": '"SCHEDULE_TASK" (param: "Nome do Job | Intervalo (em minutos) | Payload do Prompt") - Agenda uma tarefa recorrente que o agente executa sozinho.',
+            "LIST_TASKS": '"LIST_TASKS" (param: "") - Lista todas as tarefas agendadas e seus estados.',
+            "DELETE_TASK": '"DELETE_TASK" (param: "ID_da_Tarefa") - Remove uma tarefa agendada.',
         }
         
         # Filtra ferramentas de Browser se o módulo estiver desligado

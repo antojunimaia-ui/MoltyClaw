@@ -1114,6 +1114,9 @@ function renderIntegrations(data) {
         if (activeDiv) {
             activeDiv.innerHTML = activeList.map(id => `<span class="int-agent-pill">${id}</span>`).join('');
         }
+
+        // Atualiza badge de status configurado
+        updateIntegrationCardStatus(p, activeList.length > 0);
     });
 }
 
@@ -1298,11 +1301,11 @@ async function importContext() {
     // Reset modal to first stage
     goToStage('prompt');
     document.getElementById('context-input-text').value = '';
-    document.getElementById('import-context-modal').classList.add('active');
+    document.getElementById('import-context-modal').style.display = 'flex';
 }
 
 function closeImportModal() {
-    document.getElementById('import-context-modal').classList.remove('active');
+    document.getElementById('import-context-modal').style.display = 'none';
 }
 
 function goToStage(stage) {
@@ -1452,3 +1455,439 @@ async function deleteBinding(index) {
         alert("Erro ao remover binding.");
     }
 }
+
+
+// ─── Integration Configuration Functions ────────────────────────────────────
+
+let currentConfigPlatform = null;
+
+function openIntegrationConfig(platform) {
+    currentConfigPlatform = platform;
+    const modal = document.getElementById('integration-config-modal');
+    const title = document.getElementById('config-modal-title');
+    const container = document.getElementById('config-form-container');
+    
+    // Define títulos e ícones por plataforma
+    const platformInfo = {
+        discord: { name: 'Discord', icon: 'fa-brands fa-discord', color: '#5865F2' },
+        telegram: { name: 'Telegram', icon: 'fa-brands fa-telegram', color: '#229ED9' },
+        whatsapp: { name: 'WhatsApp', icon: 'fa-brands fa-whatsapp', color: '#25D366' },
+        twitter: { name: 'X (Twitter)', icon: 'fa-brands fa-x-twitter', color: '#000000' },
+        bluesky: { name: 'Bluesky', icon: 'fa-brands fa-bluesky', color: '#0085ff' }
+    };
+    
+    const info = platformInfo[platform] || { name: platform, icon: 'fa-solid fa-plug', color: '#38bdf8' };
+    title.innerHTML = `<i class="${info.icon}" style="color: ${info.color}; margin-right: 8px;"></i> Configure ${info.name}`;
+    
+    // Carrega configuração atual
+    loadIntegrationConfig(platform, container);
+    
+    modal.style.display = 'flex';
+}
+
+async function loadIntegrationConfig(platform, container) {
+    try {
+        const res = await fetchWithAuth(`/api/integrations/${platform}/config`);
+        const config = await res.json();
+        
+        // Verifica se houve erro
+        if (!config || !config.fields) {
+            container.innerHTML = `<p style="color: var(--error);">Error loading configuration. Please try again.</p>`;
+            return;
+        }
+
+        // Helper: se o valor for mascarado, usa string vazia no input e placeholder indicativo
+        const fieldVal = (key) => {
+            const v = config.fields[key] || '';
+            // Valor mascarado: "MTIz...xyz" — não coloca no input, só no placeholder
+            if (v && /^.{3,6}\.\.\./.test(v) && v.length < 20) return '';
+            return v;
+        };
+        const fieldPlaceholder = (key, defaultPlaceholder) => {
+            const v = config.fields[key] || '';
+            if (v && /^.{3,6}\.\.\./.test(v) && v.length < 20) {
+                return `Already saved (${v}) — type to change`;
+            }
+            return defaultPlaceholder;
+        };
+        
+        if (platform === 'discord') {
+            formHTML = `
+                <div class="config-field">
+                    <label>Bot Token *</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-DISCORD_TOKEN" 
+                            value="${config.fields.DISCORD_TOKEN || ''}" 
+                            placeholder="MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GhJ..." />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-DISCORD_TOKEN')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Get your token at <a href="https://discord.com/developers/applications" target="_blank">discord.com/developers</a>
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>Allowed Users (comma-separated IDs)</label>
+                    <input type="text" id="field-DISCORD_ALLOWED_USERS" 
+                        value="${config.fields.DISCORD_ALLOWED_USERS || ''}" 
+                        placeholder="123456789012345678, 987654321098765432" />
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Leave empty to allow all users
+                    </div>
+                </div>
+            `;
+        } else if (platform === 'telegram') {
+            formHTML = `
+                <div class="config-field">
+                    <label>Bot Token *</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-TELEGRAM_TOKEN" 
+                            value="${config.fields.TELEGRAM_TOKEN || ''}" 
+                            placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-TELEGRAM_TOKEN')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Get your token from <a href="https://t.me/BotFather" target="_blank">@BotFather</a>
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>Allowed Users (comma-separated @usernames or IDs)</label>
+                    <input type="text" id="field-TELEGRAM_ALLOWED_USERS" 
+                        value="${config.fields.TELEGRAM_ALLOWED_USERS || ''}" 
+                        placeholder="@username1, @username2, 123456789" />
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Leave empty to allow all users
+                    </div>
+                </div>
+            `;
+        } else if (platform === 'whatsapp') {
+            formHTML = `
+                <div class="config-field">
+                    <label>Allowed Numbers (comma-separated with country code)</label>
+                    <input type="text" id="field-WHATSAPP_ALLOWED_NUMBERS" 
+                        value="${config.fields.WHATSAPP_ALLOWED_NUMBERS || ''}" 
+                        placeholder="+5511999999999, +5521888888888" />
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Leave empty to allow all numbers. You'll need to scan QR Code when starting.
+                    </div>
+                </div>
+            `;
+        } else if (platform === 'twitter') {
+            formHTML = `
+                <div class="config-field">
+                    <label>API Key *</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-TWITTER_API_KEY" 
+                            value="${config.fields.TWITTER_API_KEY || ''}" 
+                            placeholder="Your API Key" />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-TWITTER_API_KEY')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>API Secret *</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-TWITTER_API_SECRET" 
+                            value="${config.fields.TWITTER_API_SECRET || ''}" 
+                            placeholder="Your API Secret" />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-TWITTER_API_SECRET')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>Access Token *</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-TWITTER_ACCESS_TOKEN" 
+                            value="${config.fields.TWITTER_ACCESS_TOKEN || ''}" 
+                            placeholder="Your Access Token" />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-TWITTER_ACCESS_TOKEN')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>Access Token Secret *</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-TWITTER_ACCESS_TOKEN_SECRET" 
+                            value="${config.fields.TWITTER_ACCESS_TOKEN_SECRET || ''}" 
+                            placeholder="Your Access Token Secret" />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-TWITTER_ACCESS_TOKEN_SECRET')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>Bearer Token</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-TWITTER_BEARER_TOKEN" 
+                            value="${config.fields.TWITTER_BEARER_TOKEN || ''}" 
+                            placeholder="Optional Bearer Token" />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-TWITTER_BEARER_TOKEN')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Get your credentials at <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank">Twitter Developer Portal</a>
+                    </div>
+                </div>
+            `;
+        } else if (platform === 'bluesky') {
+            formHTML = `
+                <div class="config-field">
+                    <label>Handle *</label>
+                    <input type="text" id="field-BLUESKY_HANDLE" 
+                        value="${config.fields.BLUESKY_HANDLE || ''}" 
+                        placeholder="yourhandle.bsky.social" />
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Your Bluesky handle (without @)
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>App Password *</label>
+                    <div class="password-toggle">
+                        <input type="password" id="field-BLUESKY_APP_PASSWORD" 
+                            value="${config.fields.BLUESKY_APP_PASSWORD || ''}" 
+                            placeholder="xxxx-xxxx-xxxx-xxxx" />
+                        <button class="password-toggle-btn" onclick="togglePasswordVisibility('field-BLUESKY_APP_PASSWORD')">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Generate an App Password in Bluesky Settings → App Passwords
+                    </div>
+                </div>
+                <div class="config-field">
+                    <label>Allowed Handles (comma-separated)</label>
+                    <input type="text" id="field-BLUESKY_ALLOWED_HANDLES" 
+                        value="${config.fields.BLUESKY_ALLOWED_HANDLES || ''}" 
+                        placeholder="@user1.bsky.social, @user2.bsky.social" />
+                    <div class="field-hint">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Leave empty to allow all users
+                    </div>
+                </div>
+            `;
+        }
+        
+        container.innerHTML = formHTML;
+        
+    } catch (e) {
+        console.error('Error loading integration config:', e);
+        container.innerHTML = `<p style="color: var(--error);">Error loading configuration: ${e.message}</p>`;
+    }
+}
+
+function togglePasswordVisibility(fieldId) {
+    const field = document.getElementById(fieldId);
+    const btn = field.nextElementSibling;
+    const icon = btn.querySelector('i');
+    
+    if (field.type === 'password') {
+        field.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        field.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+}
+
+async function testConnection() {
+    const btn = document.getElementById('test-connection-btn');
+    const originalHTML = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Testing...';
+    
+    try {
+        const fields = collectFormFields();
+        
+        const res = await fetchWithAuth(`/api/integrations/${currentConfigPlatform}/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            showToast(data.message, 'success');
+        } else {
+            showToast(data.error || 'Connection test failed', 'error');
+        }
+    } catch (e) {
+        showToast(`Error: ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    }
+}
+
+async function saveConfiguration() {
+    const btn = document.getElementById('save-config-btn');
+    const originalHTML = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+    
+    try {
+        const fields = collectFormFields();
+        
+        const res = await fetchWithAuth(`/api/integrations/${currentConfigPlatform}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            const msg = data.auto_started
+                ? `${data.message} Integration is now active! 🚀`
+                : data.message;
+            showToast(msg, 'success');
+            closeConfigModal();
+            updateIntegrationCardStatus(currentConfigPlatform, true);
+
+            // Atualiza o toggle para refletir que está ativo
+            if (data.auto_started) {
+                const toggle = document.getElementById(`toggle-${currentConfigPlatform}`);
+                if (toggle) toggle.checked = true;
+            }
+
+            // Recarrega status das integrações
+            fetchIntegrations();
+        } else {
+            showToast(data.error || 'Failed to save configuration', 'error');
+        }
+    } catch (e) {
+        showToast(`Error: ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    }
+}
+
+function collectFormFields() {
+    const fields = {};
+    const inputs = document.querySelectorAll('#config-form-container input');
+    
+    inputs.forEach(input => {
+        const fieldName = input.id.replace('field-', '');
+        const value = input.value.trim();
+        
+        // Ignora campos vazios ou com valor mascarado (ex: "MTIz...xyz")
+        if (!value) return;
+        if (/^.{3,6}\.\.\./.test(value) && value.length < 20) return;
+        
+        fields[fieldName] = value;
+    });
+    
+    return fields;
+}
+
+function closeConfigModal() {
+    const modal = document.getElementById('integration-config-modal');
+    modal.style.display = 'none';
+    currentConfigPlatform = null;
+}
+
+function updateIntegrationCardStatus(platform, configured) {
+    const card = document.getElementById(`card-${platform}`);
+    if (!card) return;
+    
+    // Adiciona ou atualiza badge de status
+    let statusBadge = card.querySelector('.integration-status');
+    if (!statusBadge) {
+        statusBadge = document.createElement('span');
+        statusBadge.className = 'integration-status';
+        const infoDiv = card.querySelector('.int-info');
+        if (infoDiv) {
+            infoDiv.appendChild(statusBadge);
+        }
+    }
+    
+    if (configured) {
+        statusBadge.className = 'integration-status configured';
+        statusBadge.innerHTML = '<i class="fa-solid fa-check-circle"></i> Configured';
+    } else {
+        statusBadge.className = 'integration-status not-configured';
+        statusBadge.innerHTML = '<i class="fa-solid fa-circle"></i> Not Configured';
+    }
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icon = type === 'success' ? 'fa-check-circle' : 
+                 type === 'error' ? 'fa-exclamation-circle' : 
+                 'fa-info-circle';
+    
+    toast.innerHTML = `
+        <i class="fa-solid ${icon}"></i>
+        <span>${message}</span>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'toastSlideIn 0.3s ease-out reverse';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+// Adiciona botão de configuração nos cards de integração
+function addConfigButtonsToIntegrationCards() {
+    const platforms = ['whatsapp', 'discord', 'telegram', 'twitter', 'bluesky'];
+    
+    platforms.forEach(platform => {
+        const card = document.getElementById(`card-${platform}`);
+        if (!card) return;
+        
+        const controls = card.querySelector('.int-controls');
+        if (!controls) return;
+        
+        // Verifica se já tem o botão
+        if (controls.querySelector('.config-btn')) return;
+        
+        const configBtn = document.createElement('button');
+        configBtn.className = 'config-btn';
+        configBtn.innerHTML = '<i class="fa-solid fa-gear"></i> Configure';
+        configBtn.onclick = () => openIntegrationConfig(platform);
+        
+        // Insere antes do toggle
+        const toggle = controls.querySelector('.toggle-switch');
+        if (toggle) {
+            controls.insertBefore(configBtn, toggle);
+        } else {
+            controls.appendChild(configBtn);
+        }
+    });
+}
+
+// Inicializa os botões quando a aba de integrações for aberta
+const originalSwitchTab = switchTab;
+switchTab = function(tabId) {
+    originalSwitchTab(tabId);
+    
+    if (tabId === 'integrations') {
+        setTimeout(() => {
+            addConfigButtonsToIntegrationCards();
+        }, 100);
+    }
+};

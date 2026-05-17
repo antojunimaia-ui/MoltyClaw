@@ -109,6 +109,9 @@ async def lifespan(app: FastAPI):
     ready = True
     console.print("[bold green]✅ Gateway Online e Pronto para Conexões![/bold green]")
     
+    # Auto-start de integrações já configuradas no .env
+    auto_start_configured_integrations()
+    
     # Inicia Monitor de Processos
     asyncio.create_task(integration_monitor())
     
@@ -331,57 +334,287 @@ async def get_integrations():
             status[int_name].append(agent_id)
     return status
 
+@app.get("/api/integrations/{platform}/config")
+async def get_integration_config(platform: str):
+    """Retorna a configuração atual de uma integração (com tokens mascarados)"""
+    import sys
+    sys.path.append(os.path.join(BASE_DIR, "webui"))
+    from .env_manager import EnvManager
+    
+    env_mgr = EnvManager()
+    config = env_mgr.get_integration_config(platform)
+    return config
+
+@app.post("/api/integrations/{platform}/config")
+async def save_integration_config(platform: str, data: Dict[str, Any]):
+    """Salva a configuração de uma integração no .env e já ativa automaticamente"""
+    import sys
+    sys.path.append(os.path.join(BASE_DIR, "webui"))
+    from .env_manager import EnvManager
+    from dotenv import load_dotenv
+    
+    fields = data.get("fields", {})
+    
+    if not fields:
+        raise HTTPException(400, "Nenhum campo fornecido")
+    
+    env_mgr = EnvManager()
+    success = env_mgr.save_integration_config(platform, fields)
+    
+    if not success:
+        raise HTTPException(500, "Falha ao salvar configuração")
+
+    # Recarrega as variáveis de ambiente para que _is_configured() enxergue os novos valores
+    load_dotenv(os.path.join(MOLTY_DIR, '.env'), override=True)
+
+    # Auto-start: se agora está configurado, sobe a integração imediatamente
+    auto_started = False
+    if _is_configured(platform):
+        # Para a instância antiga se existir (pode ter credenciais velhas)
+        _stop_integration(platform)
+        auto_started = _start_integration(platform)
+        asyncio.create_task(broadcast_status())
+        console.print(f"[bold green]🚀 Auto-start após config:[/bold green] {platform} iniciado.")
+
+    return {
+        "success": True,
+        "message": f"Configuração de {platform} salva com sucesso!",
+        "auto_started": auto_started
+    }
+
+@app.post("/api/integrations/{platform}/test")
+async def test_integration_connection(platform: str, data: Dict[str, Any]):
+    """Testa a conexão com uma integração antes de salvar"""
+    fields = data.get("fields", {})
+    
+    if not fields:
+        raise HTTPException(400, "Nenhum campo fornecido")
+    
+    # Testa a conexão baseado na plataforma
+    try:
+        if platform == "discord":
+            token = fields.get("DISCORD_TOKEN")
+            if not token:
+                raise HTTPException(400, "Token do Discord é obrigatório")
+            
+            # Testa o token fazendo uma requisição à API do Discord
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                headers = {"Authorization": f"Bot {token}"}
+                async with session.get("https://discord.com/api/v10/users/@me", headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        bot_data = await resp.json()
+                        return {
+                            "success": True, 
+                            "message": f"✅ Conectado como {bot_data.get('username')}#{bot_data.get('discriminator')}"
+                        }
+                    elif resp.status == 401:
+                        raise HTTPException(400, "Token inválido ou expirado")
+                    else:
+                        raise HTTPException(400, f"Erro na API do Discord: {resp.status}")
+                
+        elif platform == "telegram":
+            token = fields.get("TELEGRAM_TOKEN")
+            if not token:
+                raise HTTPException(400, "Token do Telegram é obrigatório")
+            
+            # Testa o token
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"https://api.telegram.org/bot{token}/getMe", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("ok"):
+                            bot_data = data.get("result", {})
+                            return {
+                                "success": True,
+                                "message": f"✅ Conectado como @{bot_data.get('username')}"
+                            }
+                        else:
+                            raise HTTPException(400, "Token inválido")
+                    else:
+                        raise HTTPException(400, f"Erro na API do Telegram: {resp.status}")
+                
+        elif platform == "twitter":
+            # Twitter requer 4 tokens, teste básico de formato
+            required = ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET"]
+            for field in required:
+                if not fields.get(field):
+                    raise HTTPException(400, f"{field} é obrigatório")
+            
+            # Teste básico (não faz requisição real para economizar rate limit)
+            return {
+                "success": True,
+                "message": "✅ Credenciais do Twitter parecem válidas (formato OK)"
+            }
+            
+        elif platform == "bluesky":
+            handle = fields.get("BLUESKY_HANDLE", "").lstrip("@")
+            password = fields.get("BLUESKY_APP_PASSWORD")
+            
+            if not handle or not password:
+                raise HTTPException(400, "Handle e App Password são obrigatórios")
+            
+            # Testa login
+            try:
+                from atproto import Client
+                client = Client()
+                await asyncio.to_thread(client.login, handle, password)
+                return {
+                    "success": True,
+                    "message": f"✅ Conectado como @{handle}"
+                }
+            except Exception as e:
+                raise HTTPException(400, f"Falha no login: {str(e)}")
+                
+        elif platform == "whatsapp":
+            # WhatsApp não tem teste de token (usa QR Code)
+            return {
+                "success": True,
+                "message": "✅ Configuração salva. Escaneie o QR Code ao iniciar."
+            }
+            
+        else:
+            raise HTTPException(400, "Plataforma não suportada")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao testar conexão: {str(e)}")
+
 class IntegrationToggleRequest(BaseModel):
     name: str
     agent_id: str = "MoltyClaw"
 
+
+# ── Mapa de comandos por integração ──────────────────────────────────────────
+
+def _get_cmd_map():
+    return {
+        "whatsapp": [
+            f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "whatsapp_server.py")}"',
+            f'node "{os.path.join(BASE_DIR, "integrations", "whatsapp_bridge.js")}"'
+        ],
+        "discord":  [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "discord_bot.py")}"'],
+        "telegram": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "telegram_bot.py")}"'],
+        "twitter":  [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "twitter_bot.py")}"'],
+        "bluesky":  [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "bluesky_bot.py")}"'],
+    }
+
+
+def _is_configured(platform: str) -> bool:
+    """Verifica se uma integração tem as credenciais mínimas no .env"""
+    required = {
+        "discord":  ["DISCORD_TOKEN"],
+        "telegram": ["TELEGRAM_TOKEN"],
+        "whatsapp": [],                  # WhatsApp não precisa de token, usa QR Code
+        "twitter":  ["TWITTER_API_KEY", "TWITTER_API_SECRET",
+                     "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN_SECRET"],
+        "bluesky":  ["BLUESKY_HANDLE", "BLUESKY_APP_PASSWORD"],
+    }
+    for key in required.get(platform, []):
+        if not os.getenv(key):
+            return False
+    return True
+
+
+def _start_integration(name: str, agent_id: str = "MoltyClaw") -> bool:
+    """Inicia os processos de uma integração. Retorna True se iniciou."""
+    import subprocess
+
+    cmd_map = _get_cmd_map()
+    if name not in cmd_map:
+        return False
+
+    # Evita duplicata
+    key = f"{name}_{agent_id}"
+    if key in active_processes and any(p.poll() is None for p in active_processes[key]):
+        return True  # já está rodando
+
+    env = os.environ.copy()
+    env[f"MOLTY_{name.upper()}_ACTIVE"] = "1"
+
+    if agent_id != "MoltyClaw":
+        agent_env = os.path.join(MOLTY_DIR, "agents", agent_id, ".env")
+        if os.path.exists(agent_env):
+            from dotenv import dotenv_values
+            env.update(dotenv_values(agent_env))
+
+    procs = []
+    for base_cmd in cmd_map[name]:
+        cmd = base_cmd
+        if sys.executable in cmd:
+            cmd += f' --agent "{agent_id}"'
+        p = subprocess.Popen(cmd, shell=True, env=env)
+        procs.append(p)
+
+    active_processes[key] = procs
+    return True
+
+
+def _stop_integration(name: str, agent_id: str = "MoltyClaw") -> bool:
+    """Para os processos de uma integração."""
+    key = f"{name}_{agent_id}"
+    if key in active_processes:
+        for p in active_processes[key]:
+            try:
+                p.terminate()
+            except Exception:
+                pass
+        active_processes.pop(key, None)
+        return True
+    return False
+
+
+def auto_start_configured_integrations():
+    """
+    Chamado na inicialização do gateway.
+    Sobe automaticamente todas as integrações que já têm credenciais no .env.
+    Usa um pequeno delay para garantir que o browser do Gateway já está estável.
+    """
+    import threading
+
+    def _delayed_start():
+        import time
+        # Aguarda 5s para o browser do Gateway estabilizar na porta 9222
+        time.sleep(5)
+
+        platforms = ["discord", "telegram", "whatsapp", "twitter", "bluesky"]
+        started = []
+        for platform in platforms:
+            if _is_configured(platform):
+                # Stagger de 1.5s entre cada bot para evitar race condition no lock 9223
+                if started:
+                    time.sleep(1.5)
+                if _start_integration(platform):
+                    started.append(platform)
+                    console.print(f"[bold green]🚀 Auto-start:[/bold green] {platform} iniciado automaticamente.")
+
+        if not started:
+            console.print("[dim]ℹ️  Nenhuma integração configurada para auto-start.[/dim]")
+
+    # Roda em thread separada para não bloquear o lifespan do FastAPI
+    threading.Thread(target=_delayed_start, daemon=True).start()
+
+
 @app.post("/api/integrations/{action}")
 async def toggle_integration(action: str, data: IntegrationToggleRequest, authorized: bool = Depends(verify_token)):
-    import subprocess
     name = data.name
     agent_id = data.agent_id
-    
-    if action == "start":
-        cmd_map = {
-            "whatsapp": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "whatsapp_server.py")}"', f'node "{os.path.join(BASE_DIR, "integrations", "whatsapp_bridge.js")}"'],
-            "discord": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "discord_bot.py")}"'],
-            "telegram": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "telegram_bot.py")}"'],
-            "twitter": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "twitter_bot.py")}"'],
-            "bluesky": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "integrations", "bluesky_bot.py")}"']
-        }
-        if name not in cmd_map: return {"error": "Integração desconhecida"}
-        
-        env = os.environ.copy()
-        env[f"MOLTY_{name.upper()}_ACTIVE"] = "1"
-        
-        # Se sub-agente, carregar .env dele
-        if agent_id != "MoltyClaw":
-            agent_env = os.path.join(MOLTY_DIR, "agents", agent_id, ".env")
-            if os.path.exists(agent_env):
-                from dotenv import dotenv_values
-                env.update(dotenv_values(agent_env))
 
-        procs = []
-        for base_cmd in cmd_map[name]:
-            cmd = base_cmd
-            if sys.executable in cmd:
-                cmd += f' --agent "{agent_id}"'
-            p = subprocess.Popen(cmd, shell=True, env=env)
-            procs.append(p)
-        
-        active_processes[f"{name}_{agent_id}"] = procs
-        asyncio.create_task(broadcast_status())
-        return {"success": True}
-        
-    elif action == "stop":
-        key = f"{name}_{agent_id}"
-        if key in active_processes:
-            for p in active_processes[key]:
-                p.terminate()
-            active_processes.pop(key)
+    if action == "start":
+        if name not in _get_cmd_map():
+            return {"error": "Integração desconhecida"}
+        ok = _start_integration(name, agent_id)
+        if ok:
             asyncio.create_task(broadcast_status())
             return {"success": True}
-        return {"error": "Não encontrada ou já parada"}
+        return {"error": "Falha ao iniciar integração"}
+
+    elif action == "stop":
+        ok = _stop_integration(name, agent_id)
+        asyncio.create_task(broadcast_status())
+        return {"success": True} if ok else {"error": "Não encontrada ou já parada"}
 
     return {"error": "Ação inválida"}
 

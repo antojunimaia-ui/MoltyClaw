@@ -34,11 +34,17 @@ async def get_agent(agent_id):
     if agent_id in agent_instances:
         return agent_instances[agent_id]
     
-    console.print(f"[dim]>> Criando instância dinâmica para o agente: {agent_id}[/dim]")
+    if agent_id == "MoltyClaw":
+         console.print(f"[dim]>> [Telegram] Inicializando Core do MoltyClaw (Master)...[/dim]")
+    else:
+         console.print(f"[dim]>> [Telegram] Criando instância dinâmica para o agente: {agent_id}[/dim]")
     new_agent = MoltyClaw(agent_id=agent_id)
     await new_agent.init_browser()
     if new_agent.mcp_hub:
         await new_agent.mcp_hub.connect_servers()
+    
+    # Inicia scheduler e heartbeat se for o agente Master
+    await new_agent.start_background_services()
     
     agent_instances[agent_id] = new_agent
     return new_agent
@@ -48,6 +54,8 @@ async def post_init(application) -> None:
     bot_info = await application.bot.get_me()
     console.print(f"[bold blue]🤖 Gateway Telegram conectado como @{bot_info.username}![/bold blue]")
     console.print("[dim]Aguardando mensagens para roteamento dinâmico...[/dim]")
+    # Pre-aquece o agente master ("MoltyClaw") para iniciar serviços de background
+    await get_agent("MoltyClaw")
 
 async def stop_agent() -> None:
     for agent_id, agent in agent_instances.items():
@@ -155,7 +163,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             console.print(f"[error]Erro no announce callback do sub-agente: {_cb_err}[/error]")
 
     try:
-        reply = await target_agent.ask(user_text, reply_callback=reply_callback)
+        requester_data = {
+            "name": update.message.from_user.full_name or update.message.from_user.username or "Desconhecido",
+            "id": str(update.message.from_user.id),
+            "platform": "telegram"
+        }
+        reply = await target_agent.ask(user_text, reply_callback=reply_callback, requester=requester_data)
 
         
         import re
@@ -254,6 +267,7 @@ if __name__ == '__main__':
         # Monitora qualquer mensagem que não seja um comando slash (/)
         app.add_handler(MessageHandler(~filters.COMMAND, handle_message))
         
+        agent = None  # Garante que agent existe no escopo antes do try/finally
         try:
             # Faz pooling ativo no Telegram
             app.run_polling()

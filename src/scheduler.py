@@ -5,10 +5,13 @@ import time
 from datetime import datetime
 from uuid import uuid4
 
+from initializer import MOLTY_DIR
+
 class SchedulerManager:
-    def __init__(self, agent):
+    def __init__(self, agent, base_dir=None):
         self.agent = agent
-        self.jobs_file = os.path.join(os.path.expanduser("~"), ".moltyclaw", "jobs.json")
+        self.base_dir = base_dir or MOLTY_DIR
+        self.jobs_file = os.path.join(self.base_dir, "jobs.json")
         self.jobs = self.load_jobs()
         self.is_running = False
         self._loop_task = None

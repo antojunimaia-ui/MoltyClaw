@@ -63,6 +63,7 @@ client.on('message', async msg => {
         // Envia requisição para a nossa API do MoltyClaw (moltyclaw_server.py)
         const response = await axios.post('http://localhost:8080/whatsapp', {
             sender: contact.pushname || msg.from,
+            sender_id: msg.from,
             message: msg.body
         });
 

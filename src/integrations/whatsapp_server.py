@@ -14,12 +14,13 @@ agent = None
 
 async def init_moltyclaw(app):
     global agent
-    console.print("[bold green]Inicializando MoltyClaw e instanciando o navegador interno...[/bold green]")
-    agent = MoltyClaw()
+    console.print(f"[dim]>> Pré-inicializando o cérebro Master (MoltyClaw) para o Gateway do WhatsApp...[/dim]")
+    agent = MoltyClaw(agent_id="MoltyClaw")
     await agent.init_browser()
     if agent.mcp_hub:
         await agent.mcp_hub.connect_servers()
-    console.print("[bold green]Agente MoltyClaw (com MCP) pronto na API HTTP![/bold green]")
+    await agent.start_background_services()
+    console.print("[bold blue]✅ Agente Master pré-inicializado (Scheduler & Heartbeat Ativos!)[/bold blue]")
 
 async def cleanup_moltyclaw(app):
     global agent
@@ -31,10 +32,11 @@ async def handle_whatsapp_message(request):
     global agent
     try:
         data = await request.json()
-        sender = data.get("sender", "Unknown")
+        sender_name = data.get("sender", "Unknown")
+        sender_id = data.get("sender_id", sender_name)
         message = data.get("message", "")
         
-        console.print(f"\n[bold blue]📩 Nova mensagem do WhatsApp ({sender}):[/bold blue] {message}")
+        console.print(f"\n[bold blue]📩 Nova mensagem do WhatsApp ({sender_name}):[/bold blue] {message}")
         
         if message and message.startswith("[AUDIO_FILE: ") and message.endswith("]"):
             media_path = message.replace("[AUDIO_FILE: ", "").replace("]", "").strip()
@@ -47,8 +49,8 @@ async def handle_whatsapp_message(request):
                 else:
                     message = "(Áudio enviado pelo usuário, mas ininteligível ou falha na transcrição)"
                     
-        # Pede pro MoltyClaw responder (reaproveitamos tudo que ele ja tem de navegador/terminal)
-        reply = await agent.ask(message)
+        requester_data = {"id": sender_id, "name": sender_name}
+        reply = await agent.ask(message, requester=requester_data)
         
         import re
         media_path = None

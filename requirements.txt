@@ -24,3 +24,4 @@ atproto
 questionary
 google-generativeai
 ollama
+requests

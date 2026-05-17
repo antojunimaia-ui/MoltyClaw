@@ -8,11 +8,23 @@ para que o modelo saiba exatamente onde está rodando e com quais capacidades.
 import os
 import platform
 import sys
+import datetime
 from typing import Optional
+
+def _build_date_section() -> list[str]:
+    # Obtém data e hora atual no formato legível
+    now = datetime.datetime.now()
+    # Formato: 05/04/2026 23:15:00
+    date_str = now.strftime("%d/%m/%Y %H:%M:%S")
+    return [
+        "## Data e Hora",
+        f"Data e hora atual do sistema: {date_str} [DYNAMIC_DATE]",
+        ""
+    ]
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-VERSION = "2026.5.4"
+VERSION = "2026.5.4-1"
 SILENT_TOKEN = "NO_REPLY"
 TOOL_FORMAT_EXAMPLE = '<tool>\n{"action": "GOTO", "param": "https://site.com"}\n</tool>'
 
@@ -92,6 +104,9 @@ def _build_autonomy_section(is_minimal: bool) -> list[str]:
         "3. Se encontrar pop-ups de cookies ou anúncios no caminho, feche-os imediatamente.",
         "4. Se uma abordagem falhar, tente outra (outro seletor, outra busca, outra aba).",
         "5. REGRA DE OURO: Se o usuário fizer pergunta simples ou disser 'olá', responda em texto direto, SEM ferramenta.",
+        "6. AGENDAMENTO PROATIVO: Você tem o poder de agendar suas próprias tarefas recorrentes usando SCHEDULE_TASK. "
+        "Use isso para monitorar sites, verificar preços, gerar relatórios diários ou qualquer coisa que exija proatividade. "
+        "Quando uma tarefa agendada roda, ela chega até você como um prompt silencioso em background.",
         "",
     ]
 
@@ -240,6 +255,7 @@ def build_system_prompt(
 
     sections: list[list[str]] = [
         _build_identity(name, identity_content),
+        _build_date_section(),
         _build_workspace_section(workspace_dir, is_minimal),
         _build_project_context_header(has_files),
         _build_soul_section(soul_content),
