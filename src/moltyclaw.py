@@ -432,7 +432,6 @@ class MoltyClaw:
             self.context = await self.playwright.chromium.launch_persistent_context(
                 user_data_dir=os.path.join(MOLTY_DIR, 'browser_profile'),
                 headless=is_headless,
-                channel="chromium",
                 ignore_default_args=["--enable-automation"],
                 args=[
                     '--remote-debugging-port=9222',
@@ -1335,47 +1334,47 @@ class MoltyClaw:
                                             json=self.payload,
                                             headers={"Content-Type": "application/json"}
                                         ) as response:
-                                        if response.status != 200:
-                                            error_text = await response.text()
-                                            console.print(f"[error]>> [Koda Cloud] Error response: {error_text[:500]}[/error]")
-                                            raise Exception(f"Koda Cloud Error ({response.status}): {error_text[:200]}")
-                                        
-                                        buffer = ""
-                                        chunk_count = 0
-                                        async for chunk in response.content.iter_any():
-                                            try:
-                                                decoded = chunk.decode('utf-8')
-                                                buffer += decoded
-                                                chunk_count += 1
-                                                
-                                                while '\n' in buffer:
-                                                    line_text, buffer = buffer.split('\n', 1)
-                                                    line_text = line_text.strip()
+                                            if response.status != 200:
+                                                error_text = await response.text()
+                                                console.print(f"[error]>> [Koda Cloud] Error response: {error_text[:500]}[/error]")
+                                                raise Exception(f"Koda Cloud Error ({response.status}): {error_text[:200]}")
+                                            
+                                            buffer = ""
+                                            chunk_count = 0
+                                            async for chunk in response.content.iter_any():
+                                                try:
+                                                    decoded = chunk.decode('utf-8')
+                                                    buffer += decoded
+                                                    chunk_count += 1
                                                     
-                                                    if not line_text or not line_text.startswith('data: '):
-                                                        continue
+                                                    while '\n' in buffer:
+                                                        line_text, buffer = buffer.split('\n', 1)
+                                                        line_text = line_text.strip()
                                                         
-                                                    data_str = line_text[6:].strip()
-                                                    if data_str == '[DONE]':
-                                                        return
-                                                        
-                                                    try:
-                                                        data = json_module.loads(data_str)
-                                                        
-                                                        if data.get('type') == 'text' and data.get('content'):
-                                                            # Cria objeto compatível com OpenAI
-                                                            class Choice:
-                                                                def __init__(self, content):
-                                                                    self.delta = type('obj', (object,), {'content': content})()
+                                                        if not line_text or not line_text.startswith('data: '):
+                                                            continue
                                                             
-                                                            yield type('obj', (object,), {'choices': [Choice(data['content'])]})()
-                                                        elif data.get('type') == 'done':
+                                                        data_str = line_text[6:].strip()
+                                                        if data_str == '[DONE]':
                                                             return
-                                                    except json_module.JSONDecodeError as e:
-                                                        console.print(f"[warning]>> [Koda Cloud] JSON decode error: {e} - data: {data_str[:100]}[/warning]")
-                                                        continue
-                                            except Exception as e:
-                                                continue
+                                                            
+                                                        try:
+                                                            data = json_module.loads(data_str)
+                                                            
+                                                            if data.get('type') == 'text' and data.get('content'):
+                                                                # Cria objeto compatível com OpenAI
+                                                                class Choice:
+                                                                    def __init__(self, content):
+                                                                        self.delta = type('obj', (object,), {'content': content})()
+                                                                
+                                                                yield type('obj', (object,), {'choices': [Choice(data['content'])]})()
+                                                            elif data.get('type') == 'done':
+                                                                return
+                                                        except json_module.JSONDecodeError as e:
+                                                            console.print(f"[warning]>> [Koda Cloud] JSON decode error: {e} - data: {data_str[:100]}[/warning]")
+                                                            continue
+                                                except Exception as e:
+                                                    continue
                                     finally:
                                         if not self.session.closed:
                                             await self.session.close()

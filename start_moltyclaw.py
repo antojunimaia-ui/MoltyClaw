@@ -6,6 +6,13 @@ import os
 import signal
 import json
 
+# Garante suporte a UTF-8 no console do Windows para evitar UnicodeEncodeError
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+
 from src.initializer import initialize_moltyclaw, MOLTY_DIR  # type: ignore
 initialize_moltyclaw()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
