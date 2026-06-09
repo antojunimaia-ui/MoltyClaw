@@ -140,6 +140,95 @@ const bridgeServer = http.createServer((req, res) => {
                 res.end(JSON.stringify({ status: 'error', reason: error.message }));
             }
         });
+
+    } else if (req.method === 'GET' && req.url === '/get_contacts') {
+        // Retorna todos os contatos salvos
+        (async () => {
+            try {
+                const contacts = await client.getContacts();
+                const result = contacts
+                    .filter(c => c.isMyContact && !c.isGroup)
+                    .map(c => ({
+                        id: c.id._serialized,
+                        name: c.name || c.pushname || c.number,
+                        number: c.number,
+                        pushname: c.pushname || '',
+                        isBlocked: c.isBlocked || false
+                    }));
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ contacts: result }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        })();
+
+    } else if (req.method === 'GET' && req.url === '/get_chats') {
+        // Retorna todos os chats com a última mensagem de cada um
+        (async () => {
+            try {
+                const chats = await client.getChats();
+                const result = await Promise.all(
+                    chats
+                        .filter(c => !c.isGroup)
+                        .slice(0, 50) // Limita a 50 chats mais recentes
+                        .map(async c => {
+                            const lastMsg = c.lastMessage;
+                            return {
+                                id: c.id._serialized,
+                                name: c.name || c.id.user,
+                                unreadCount: c.unreadCount,
+                                lastMessage: lastMsg ? {
+                                    body: lastMsg.body ? lastMsg.body.substring(0, 200) : '',
+                                    fromMe: lastMsg.fromMe,
+                                    timestamp: lastMsg.timestamp,
+                                    type: lastMsg.type
+                                } : null
+                            };
+                        })
+                );
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ chats: result }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        })();
+
+    } else if (req.method === 'POST' && req.url === '/get_chat_messages') {
+        // Retorna as últimas N mensagens de um chat específico
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const { chat_id, limit = 20 } = JSON.parse(body);
+                if (!chat_id) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'chat_id é obrigatório' }));
+                    return;
+                }
+
+                const chat = await client.getChatById(chat_id);
+                const messages = await chat.fetchMessages({ limit: Math.min(limit, 50) });
+
+                const result = messages.map(m => ({
+                    id: m.id._serialized,
+                    body: m.body ? m.body.substring(0, 500) : '',
+                    fromMe: m.fromMe,
+                    author: m.author || (m.fromMe ? 'Você' : chat.name),
+                    timestamp: m.timestamp,
+                    type: m.type,
+                    hasMedia: m.hasMedia || false
+                }));
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ messages: result, chat_name: chat.name }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+
     } else {
         res.writeHead(404);
         res.end();

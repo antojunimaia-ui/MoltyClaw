@@ -14,9 +14,8 @@ log.setLevel(logging.ERROR) # Silenciar spams do flask no console
 
 # Adiciona o diretório base para ler os imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from moltyclaw import MoltyClaw
+from agent_hub import get_hub
 import skills
-from scheduler import SchedulerManager
 from rich.console import Console
 from initializer import MOLTY_DIR
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -25,46 +24,33 @@ console = Console()
 app = Flask(__name__, template_folder="templates", static_folder="static")
 load_dotenv(os.path.join(MOLTY_DIR, '.env'))
 
-agent = None
-scheduler = None
-loop = None
-ready = False
-loop = None
-ready = False
+# ── AgentHub: instância única compartilhada entre WebUI, Discord, Telegram... ──
+hub = get_hub()
 
-def run_agent_loop():
-    global agent, loop, ready
-    
-    # Prepara o Event Loop do Asyncio para a Thread 
-    if os.name == 'nt':
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    agent = MoltyClaw(name="MoltyClaw (WebUI Gateway)")
-    
-    # Inicia o Scheduler Manager
-    global scheduler
-    scheduler = SchedulerManager(agent)
-    loop.create_task(scheduler.run())
-    
-    # Inicia o Browser do Playwright escondido
-    loop.run_until_complete(agent.init_browser())
-    
-    # Se existirem servidores MCP, inicia e conecta via IO Pipe
-    if agent.mcp_hub:
-        loop.run_until_complete(agent.mcp_hub.connect_servers())
-    
-    ready = True
-    console.print("\n[bold green]✅ WebUI Health OK -> Porta 5000 Aberta![/bold green]")
-    loop.run_forever()
+# Atalhos de compatibilidade para o restante do código que usa `agent`, `loop`, `ready`
+def _get_agent():
+    return hub.agent
 
-# Inicia o Loop do MoltyClaw silenciosamente debaixo dos panos numa thread dedicada
-threading.Thread(target=run_agent_loop, daemon=True).start()
+def _get_loop():
+    return hub.loop
+
+def _is_ready():
+    return hub.ready
+
+# Propriedades dinâmicas para manter compatibilidade com código legado
+class _Compat:
+    @property
+    def agent(self): return hub.agent
+    @property
+    def loop(self): return hub.loop
+    @property
+    def ready(self): return hub.ready
+    @property
+    def scheduler(self): return hub.scheduler
+
+_compat = _Compat()
+
+console.print("\n[bold green]✅ WebUI conectada ao AgentHub compartilhado -> Porta 5000 Aberta![/bold green]")
 
 
 @app.route("/")
@@ -73,7 +59,7 @@ def index():
 
 @app.route("/api/status", methods=["GET"])
 def status():
-    return jsonify({"ready": ready})
+    return jsonify({"ready": hub.ready})
 
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
@@ -88,12 +74,13 @@ def serve_temp(filename):
 agent_instances = {}
 
 def get_or_create_agent(agent_id="MoltyClaw"):
-    global agent, ready
+    # Agente Master → sempre usa o hub compartilhado
     if agent_id == "MoltyClaw":
-        return agent
+        return hub.agent
     
     if agent_id not in agent_instances:
         console.print(f"[info]🆕 Criando instância para sub-agente: {agent_id}[/info]")
+        from moltyclaw import MoltyClaw
         # Busca config para pegar o nome real se existir
         agents_dir = os.path.join(MOLTY_DIR, "agents", agent_id)
         name = agent_id
@@ -110,8 +97,8 @@ def get_or_create_agent(agent_id="MoltyClaw"):
             load_dotenv(env_path, override=True)
 
         new_agent = MoltyClaw(name=name, agent_id=agent_id)
-        # O sub-agente no WebUI compartilha o browser do gateway (via CDP)
-        fut = asyncio.run_coroutine_threadsafe(new_agent.init_browser(), loop)
+        # O sub-agente no WebUI compartilha o browser do hub (via CDP)
+        fut = asyncio.run_coroutine_threadsafe(new_agent.init_browser(), hub.loop)
         fut.result(timeout=30)
         
         agent_instances[agent_id] = new_agent
@@ -120,7 +107,7 @@ def get_or_create_agent(agent_id="MoltyClaw"):
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    if not ready:
+    if not hub.ready:
          return jsonify({"error": "Gateway MoltyClaw está ligando o Browser... Aguarde 5 segundos."}), 503
          
     if request.is_json:
@@ -135,6 +122,7 @@ def chat():
     uploaded_file = request.files.get("file")
     if uploaded_file and uploaded_file.filename:
         os.makedirs(os.path.join(MOLTY_DIR, "temp"), exist_ok=True)
+        from werkzeug.utils import secure_filename
         filename = secure_filename(uploaded_file.filename)
         filepath = os.path.join(MOLTY_DIR, "temp", f"webui_{filename}")
         uploaded_file.save(filepath)
@@ -143,8 +131,7 @@ def chat():
         ext = filename.split(".")[-1].lower()
         if ext in ['mp3', 'ogg', 'wav', 'm4a']:
             try:
-                # Roda a transcrição na thread do asyncio usando o agente alvo
-                fut = asyncio.run_coroutine_threadsafe(target_agent.transcribe_audio(filepath), loop)
+                fut = asyncio.run_coroutine_threadsafe(target_agent.transcribe_audio(filepath), hub.loop)
                 text = fut.result(timeout=60)
                 if text:
                     user_msg += f"\n(Áudio Anexado Transcrito usando Voxtral Mini): '{text}'"
@@ -154,28 +141,34 @@ def chat():
     if not user_msg:
         return jsonify({"error": "Mensagem vazia."}), 400
 
-    q = queue.Queue()
+    import queue as _queue
+    import re
+    q = _queue.Queue()
 
-    async def stream_cb(token: str):
-        q.put(("token", token))
+    # Se for o agente Master, usa o hub com streaming nativo
+    if req_agent_id == "MoltyClaw":
+        hub.ask_sync_streaming(user_msg, q, channel="webui")
+    else:
+        # Sub-agentes usam o caminho legado
+        async def stream_cb(token: str):
+            q.put(("token", token))
 
-    async def tool_cb(msg: str):
-        q.put(("tool", msg))
+        async def tool_cb(msg: str):
+            q.put(("tool", msg))
 
-    async def run_ask():
-        try:
-            res = await target_agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
-            if res and isinstance(res, str) and "[AUDIO_REPLY:" in res:
-                match = re.search(r'\[AUDIO_REPLY:\s*([^\]]+)\]', res)
-                if match:
-                    filename = os.path.basename(match.group(1).strip())
-                    q.put(("token", f"\n\n[AUDIO_REPLY: {filename}]\n\n"))
-                    
-            q.put(("done", None))
-        except Exception as e:
-            q.put(("error", str(e)))
+        async def run_ask():
+            try:
+                res = await target_agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
+                if res and isinstance(res, str) and "[AUDIO_REPLY:" in res:
+                    match = re.search(r'\[AUDIO_REPLY:\s*([^\]]+)\]', res)
+                    if match:
+                        filename = os.path.basename(match.group(1).strip())
+                        q.put(("token", f"\n\n[AUDIO_REPLY: {filename}]\n\n"))
+                q.put(("done", None))
+            except Exception as e:
+                q.put(("error", str(e)))
 
-    asyncio.run_coroutine_threadsafe(run_ask(), loop)
+        asyncio.run_coroutine_threadsafe(run_ask(), hub.loop)
 
     def generate():
         while True:
@@ -193,87 +186,52 @@ def chat():
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 import subprocess
-active_processes = {}
+
+# ── Gerenciamento de Integrações via AgentHub ─────────────────────────────────
+# Discord, Telegram e WhatsApp rodam dentro do mesmo processo (loop do AgentHub).
+# Twitter e Bluesky ainda usam subprocesso (sem runner nativo implementado).
+
+# Subprocessos para WhatsApp Bridge (Node.js) e integrações legadas
+_subprocess_procs: dict = {}
+
 
 def start_integration(name, agent_id="MoltyClaw"):
-    cmd_map = {
-        "whatsapp": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_server.py")}"', f'node "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_bridge.js")}"'],
-        "discord": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "discord_bot.py")}"'],
-        "telegram": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "telegram_bot.py")}"'],
-        "twitter": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "twitter_bot.py")}"'],
-        "bluesky": [f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "bluesky_bot.py")}"']
-    }
-    
-    if name not in cmd_map: return False
-    
-    # Busca o nome real do agente
-    agent_name = agent_id
-    if agent_id != "MoltyClaw":
-        config_path = os.path.join(MOLTY_DIR, "agents", agent_id, "config.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                    agent_name = cfg.get("name", agent_id)
-            except: pass
+    """Inicia uma integração. Discord/Telegram/WhatsApp usam o AgentHub (processo único)."""
 
-    env = os.environ.copy()
-    env["PYTHONIOENCODING"] = "utf-8"
-    
-    # Carrega .env do agente se for um sub-agente
-    if agent_id != "MoltyClaw":
-        agent_env = os.path.join(MOLTY_DIR, "agents", agent_id, ".env")
-        if os.path.exists(agent_env):
-            load_dotenv(agent_env, override=True)
-            # Como a Popen herda o env atual de quem chama se não passarmos, 
-            # e load_dotenv mexe no os.environ do processo ATUAL (app.py),
-            # precisamos garantir que o env do Popen reflita isso.
-            env = os.environ.copy()
+    # WhatsApp precisa do bridge Node.js rodando em paralelo
+    if name == "whatsapp":
+        node_cmd = f'node "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_bridge.js")}"'
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["MOLTY_WHATSAPP_ACTIVE"] = "1"
+        p = subprocess.Popen(node_cmd, shell=True, env=env)
+        _subprocess_procs[f"whatsapp_bridge"] = [p]
 
-    if name == "whatsapp": env["MOLTY_WHATSAPP_ACTIVE"] = "1"
-    if name == "discord": env["MOLTY_DISCORD_ACTIVE"] = "1"
-    if name == "telegram": env["MOLTY_TELEGRAM_ACTIVE"] = "1"
-    if name == "twitter": env["MOLTY_TWITTER_ACTIVE"] = "1"
-    if name == "bluesky": env["MOLTY_BLUESKY_ACTIVE"] = "1"
-    
-    procs = []
-    for base_cmd in cmd_map[name]:
-        # Adiciona argumentos de agente se for script python
-        cmd = base_cmd
-        if cmd.startswith(sys.executable):
-            cmd += f' --agent "{agent_id}" --name "{agent_name}"'
-            
-        p = subprocess.Popen(cmd, shell=True, env=env)
-        procs.append(p)
-    
-    # Chave única por integração e agente para permitir múltiplos agentes simultâneos
-    key = f"{name}_{agent_id}"
-    active_processes[key] = procs
-    return True
+    return hub.start_integration(name)
+
 
 def stop_integration(name, agent_id="MoltyClaw"):
-    key = f"{name}_{agent_id}"
-    if key in active_processes:
-        for p in active_processes[key]:
-            p.terminate()
-        active_processes.pop(key, None)
-        return True
-    return False
+    """Para uma integração ativa."""
+    # Para o bridge Node.js do WhatsApp se existir
+    if name == "whatsapp" and "whatsapp_bridge" in _subprocess_procs:
+        for p in _subprocess_procs.pop("whatsapp_bridge"):
+            try:
+                p.terminate()
+            except Exception:
+                pass
+
+    return hub.stop_integration(name)
+
 
 @app.route("/api/integrations", methods=["GET"])
 def get_integrations():
-    # Retorna o status de quais integrações estão ativas e para qual agente
+    """Retorna o status de quais integrações estão ativas."""
+    active = hub.get_active_integrations()
     status = {}
-    for key, procs in active_processes.items():
-        if any(p.poll() is None for p in procs):
-            # Decompõe a chave ex: discord_MoltyClaw
-            parts = key.split("_")
-            int_name = parts[0]
-            agent_id = "_".join(parts[1:])
-            if int_name not in status: status[int_name] = []
-            status[int_name].append(agent_id)
-            
+    for name in active:
+        status[name] = ["MoltyClaw"]
     return jsonify(status)
+
 
 @app.route("/api/integrations/<platform>/config", methods=["GET"])
 def get_integration_config(platform):
@@ -406,15 +364,14 @@ def test_integration_connection(platform):
 def toggle_integration(action):
     data = request.json
     name = data.get("name")
-    agent_id = data.get("agent_id", "MoltyClaw")
-    
+
     if action == "start":
-        succ = start_integration(name, agent_id)
+        succ = start_integration(name)
     elif action == "stop":
-        succ = stop_integration(name, agent_id)
+        succ = stop_integration(name)
     else:
         return jsonify({"error": "Ação inválida"}), 400
-        
+
     if succ:
         return jsonify({"success": True})
     return jsonify({"error": "Falha na operação"}), 500
@@ -574,7 +531,7 @@ def delete_agent(agent_id):
 
 @app.route("/api/agent/import_context", methods=["POST"])
 def import_context():
-    if not ready:
+    if not hub.ready:
         return jsonify({"error": "Agente não está pronto."}), 503
         
     data = request.json
@@ -616,12 +573,9 @@ Retorne o conteúdo revisado do MEMORY.md:
 """
 
     try:
-        # Chama o agente para processar a fusão
-        assert agent is not None, "Agent is not initialized"
-        assert loop is not None, "Loop is not initialized"
         fut = asyncio.run_coroutine_threadsafe(
-            agent.ask(prompt=assimilation_prompt, silent=True), 
-            loop
+            hub.agent.ask(prompt=assimilation_prompt, silent=True),
+            hub.loop
         )
         new_memory_content = fut.result(timeout=120)
         
@@ -706,16 +660,16 @@ def install_mcp():
 
 @app.route("/api/scheduler/jobs", methods=["GET"])
 def scheduler_jobs():
-    if not scheduler:
+    if not hub.scheduler:
         return jsonify({"error": "Scheduler não iniciado"}), 503
-    return jsonify({"jobs": scheduler.jobs})
+    return jsonify({"jobs": hub.scheduler.jobs})
 
 @app.route("/api/scheduler/add", methods=["POST"])
 def scheduler_add():
-    if not scheduler:
+    if not hub.scheduler:
         return jsonify({"error": "Scheduler não iniciado"}), 503
     data = request.json
-    job = scheduler.add_job(
+    job = hub.scheduler.add_job(
         name=data.get("name"),
         description=data.get("description"),
         interval_min=data.get("interval_min", 15),
@@ -725,17 +679,17 @@ def scheduler_add():
 
 @app.route("/api/scheduler/remove/<job_id>", methods=["POST"])
 def scheduler_remove(job_id):
-    if not scheduler:
+    if not hub.scheduler:
         return jsonify({"error": "Scheduler não iniciado"}), 503
-    scheduler.remove_job(job_id)
+    hub.scheduler.remove_job(job_id)
     return jsonify({"success": True})
 
 @app.route("/api/scheduler/toggle", methods=["POST"])
 def scheduler_toggle():
-    if not scheduler:
+    if not hub.scheduler:
         return jsonify({"error": "Scheduler não iniciado"}), 503
     data = request.json
-    scheduler.toggle_job(data.get("id"), data.get("enabled"))
+    hub.scheduler.toggle_job(data.get("id"), data.get("enabled"))
     return jsonify({"success": True})
 
 # ── Skills API ──────────────────────────────────────────────────────────────

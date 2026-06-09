@@ -893,6 +893,109 @@ class MoltyClaw:
         except Exception as e:
             return f"Erro Módulo Spotify ({action}): {e}"
 
+    async def execute_whatsapp_read(self, action: str, param: str) -> str:
+        """
+        Consulta o bridge Node.js para ler contatos, chats e mensagens do WhatsApp.
+        O bridge precisa estar rodando na porta 8081.
+        """
+        import aiohttp
+
+        bridge_base = "http://localhost:8081"
+
+        try:
+            async with aiohttp.ClientSession() as session:
+
+                if action == "WHATSAPP_GET_CONTACTS":
+                    async with session.get(f"{bridge_base}/get_contacts", timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                        if resp.status != 200:
+                            return f"Erro ao buscar contatos (HTTP {resp.status}): {await resp.text()}"
+                        data = await resp.json()
+                        contacts = data.get("contacts", [])
+                        if not contacts:
+                            return "Nenhum contato encontrado na agenda do WhatsApp."
+                        lines = [f"📋 **{len(contacts)} contatos encontrados:**"]
+                        for c in contacts:
+                            name = c.get("name") or c.get("pushname") or c.get("number", "?")
+                            number = c.get("number", "")
+                            cid = c.get("id", "")
+                            lines.append(f"- {name} | número: {number} | id: {cid}")
+                        return "\n".join(lines)
+
+                elif action == "WHATSAPP_GET_CHATS":
+                    async with session.get(f"{bridge_base}/get_chats", timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                        if resp.status != 200:
+                            return f"Erro ao buscar chats (HTTP {resp.status}): {await resp.text()}"
+                        data = await resp.json()
+                        chats = data.get("chats", [])
+                        if not chats:
+                            return "Nenhuma conversa encontrada no WhatsApp."
+                        lines = [f"💬 **{len(chats)} conversas recentes:**"]
+                        for c in chats:
+                            name = c.get("name", "?")
+                            cid = c.get("id", "")
+                            unread = c.get("unreadCount", 0)
+                            last = c.get("lastMessage")
+                            unread_tag = f" 🔴 {unread} não lida(s)" if unread > 0 else ""
+                            if last:
+                                import datetime
+                                ts = last.get("timestamp", 0)
+                                dt = datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M") if ts else ""
+                                direction = "→" if last.get("fromMe") else "←"
+                                body = last.get("body", "")[:80]
+                                msg_type = last.get("type", "chat")
+                                if msg_type != "chat":
+                                    body = f"[{msg_type}]" + (f" {body}" if body else "")
+                                lines.append(f"- **{name}**{unread_tag} | id: {cid}\n  {direction} [{dt}] {body}")
+                            else:
+                                lines.append(f"- **{name}**{unread_tag} | id: {cid}")
+                        return "\n".join(lines)
+
+                elif action == "WHATSAPP_GET_MESSAGES":
+                    # param: "chat_id | limite_opcional"
+                    parts = param.split("|")
+                    chat_id = parts[0].strip()
+                    limit = int(parts[1].strip()) if len(parts) > 1 and parts[1].strip().isdigit() else 20
+
+                    # Normaliza o chat_id para o formato @c.us se for só número
+                    if chat_id and not chat_id.endswith("@c.us") and not chat_id.endswith("@g.us"):
+                        chat_id = chat_id.replace("+", "").replace("-", "").replace(" ", "") + "@c.us"
+
+                    payload = {"chat_id": chat_id, "limit": min(limit, 50)}
+                    async with session.post(
+                        f"{bridge_base}/get_chat_messages",
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=20)
+                    ) as resp:
+                        if resp.status != 200:
+                            return f"Erro ao buscar mensagens (HTTP {resp.status}): {await resp.text()}"
+                        data = await resp.json()
+                        messages = data.get("messages", [])
+                        chat_name = data.get("chat_name", chat_id)
+                        if not messages:
+                            return f"Nenhuma mensagem encontrada na conversa com {chat_name}."
+                        lines = [f"📨 **Últimas {len(messages)} mensagens com {chat_name}:**"]
+                        for m in messages:
+                            import datetime
+                            ts = m.get("timestamp", 0)
+                            dt = datetime.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M") if ts else ""
+                            direction = "Você" if m.get("fromMe") else (m.get("author") or chat_name)
+                            body = m.get("body", "")
+                            msg_type = m.get("type", "chat")
+                            if msg_type != "chat" and not body:
+                                body = f"[{msg_type}]"
+                            elif msg_type != "chat":
+                                body = f"[{msg_type}] {body}"
+                            lines.append(f"[{dt}] **{direction}**: {body}")
+                        return "\n".join(lines)
+
+                else:
+                    return f"Ação desconhecida: {action}"
+
+        except aiohttp.ClientConnectorError:
+            return "Erro: O bridge do WhatsApp (porta 8081) não está acessível. Certifique-se de que o WhatsApp está conectado."
+        except Exception as e:
+            return f"Exceção ao consultar bridge do WhatsApp: {e}"
+
     async def execute_social_send(self, action: str, param: str) -> str:
         if action == "X_POST":
             text = param.strip()
@@ -1833,8 +1936,17 @@ class MoltyClaw:
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         if tool_callback: await tool_callback(f"[{action}]")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+
+                    elif action in ["WHATSAPP_GET_CONTACTS", "WHATSAPP_GET_CHATS", "WHATSAPP_GET_MESSAGES"]:
+                        if not silent:
+                            console.print(f"\n[info]📱 WhatsApp Leitura ({action}):[/info] {param or ''}")
+                        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                            progress.add_task(description="Consultando bridge do WhatsApp...", total=None)
+                            result = await self.execute_whatsapp_read(action, param)
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] ->\n{result}"})
+                        if tool_callback: await tool_callback(f"[{action}]")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
-                    elif action.startswith("YOUTUBE_"):
                         if not silent: console.print(f"\n[info]▶️ Módulo YOUTUBE ({action}):[/info] {param}")
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                             progress.add_task(description=f"Baixando modelo temporal de Legendas do YouTube (CC)...", total=None)
@@ -2047,6 +2159,9 @@ class MoltyClaw:
             
             # Social Tools
             "WHATSAPP_SEND": '"WHATSAPP_SEND" (param: "numero | opcional texto | opcional caminho arquivo absoluto")',
+            "WHATSAPP_GET_CONTACTS": '"WHATSAPP_GET_CONTACTS" (param: "") - Lista todos os contatos salvos na agenda do WhatsApp com nome, número e ID.',
+            "WHATSAPP_GET_CHATS": '"WHATSAPP_GET_CHATS" (param: "") - Lista as conversas recentes do WhatsApp com nome, ID, mensagens não lidas e prévia da última mensagem.',
+            "WHATSAPP_GET_MESSAGES": '"WHATSAPP_GET_MESSAGES" (param: "chat_id | limite_opcional") - Lê as últimas N mensagens de uma conversa específica. Use o ID retornado por WHATSAPP_GET_CHATS ou WHATSAPP_GET_CONTACTS. Limite padrão: 20.',
             "DISCORD_SEND": '"DISCORD_SEND" (param: "id_usuario_ou_chat | opcional texto | opcional caminho arquivo absoluto")',
             "TELEGRAM_SEND": '"TELEGRAM_SEND" (param: "id_ou_username | opcional texto | opcional caminho arquivo absoluto")',
             "X_POST": '"X_POST" (param: "texto do tweet de ate 280 chars")',
@@ -2116,25 +2231,81 @@ class MoltyClaw:
         return action in self.allowed_tools_local
 
 async def interactive_shell():
-    console.clear()
-    
+    class MoltyPrompt(Prompt):
+        prompt_suffix = ""
+        
+    # Inicializa o agente (warnings de API e carregamentos vão imprimir aqui)
     agent = MoltyClaw()
     
-    status_browser = "[bold green]Ativado[/bold green]" if agent.browser_enabled else "[bold red]Desativado[/bold red]"
-    console.print(Panel.fit(
-        f"[bold cyan]🤖 MoltyClaw - Terminal Inteligente[/bold cyan]\n"
-        f"[dim]Modo Navegador:[/dim] {status_browser}",
-        border_style="cyan"
-    ))
-    
-    # Inicializa o Browser Persistent Mode logo ao iniciar o CLI e Servidores MCP Externos
+    # Inicializa o Browser e conexões MCP (deprecation warnings e logs de conexão do node vão imprimir aqui)
     await agent.init_browser()
     if agent.mcp_hub:
         await agent.mcp_hub.connect_servers()
+        
+    # Agora limpamos completamente a tela, varrendo todo o lixo de logs e avisos do terminal!
+    console.clear()
+    
+    # Renderiza o logo degradê maravilhoso do onboarding
+    logo = [
+        "███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗",
+        "████╗ ████║██╔═══██╗██║  ╚══██╔══╝╚██╗ ██╔╝██╔════╝██║     ██╔══██╗██║    ██║",
+        "██╔████╔██║██║   ██║██║     ██║    ╚████╔╝ ██║     ██║     ███████║██║ █╗ ██║",
+        "██║╚██╔╝██║██║   ██║██║     ██║     ╚██╔╝  ██║     ██║     ██╔══██║██║███╗██║",
+        "██║ ╚═╝ ██║╚██████╔╝███████╗██║      ██║   ╚██████╗███████╗██║  ██║╚███╔███╔╝",
+        "╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝      ╚═╝    ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ "
+    ]
+    
+    console.print()
+    for line in logo:
+        formatted_line = ""
+        n = len(line)
+        for i, char in enumerate(line):
+            if char == " ":
+                formatted_line += " "
+            else:
+                # Interpolação de cor de Laranja (#ff3c00) para Amarelo (#ffe300)
+                g = int(60 + (i / n) * 170)
+                color = f"#ff{g:02x}00"
+                formatted_line += f"[{color}]{char}[/]"
+        console.print(formatted_line)
+        
+    # Exibe o status detalhado e extremamente premium
+    status_browser = "[bold green]Ativado[/bold green]" if agent.browser_enabled else "[bold red]Desativado[/bold red]"
+    console.print(Panel.fit(
+        f"[bold cyan]🤖 MoltyClaw - Terminal Inteligente[/bold cyan]\n"
+        f"[dim]Provedor:[/dim] [bold #ff9c59]{agent.provider.upper()}[/bold #ff9c59]  |  [dim]Modelo:[/dim] [bold white]{agent.model}[/bold white]\n"
+        f"[dim]Modo Navegador:[/dim] {status_browser}",
+        border_style="cyan"
+    ))
+    console.print()
     
     while True:
         try:
-            user_input = Prompt.ask("\n[bold blue]Você[/bold blue]").strip()
+            # Desenha o cabeçalho, prompt e rodapé da caixa de entrada
+            console.print("─" * console.width, style="dim")
+            sys.stdout.write(" ❯ \n")
+            console.print("─" * console.width, style="dim")
+            
+            # Move o cursor 2 linhas para cima e 3 caracteres para a direita (logo após o " ❯ ")
+            sys.stdout.write("\033[2A\033[3C")
+            sys.stdout.flush()
+            
+            user_input = sys.stdin.readline().strip()
+            
+            if not user_input:
+                # Move o cursor para baixo para pular a linha inferior antes de repetir
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                continue
+                
+            # Apaga a caixa de entrada inteira (linhas 4, 3 e 2) sem invadir a resposta anterior do agente
+            sys.stdout.write("\033[2K")        # limpa a linha inferior atual (linha 4)
+            sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha de input (linha 3)
+            sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha superior (linha 2)
+            sys.stdout.flush()
+            
+            # Printa o input formatado no histórico de forma limpa
+            console.print(f"[bold blue]Você:[/bold blue] {user_input}")
             
             if user_input.lower() in ['sair', 'exit', 'quit']:
                 console.print("[moltyclaw]MoltyClaw:[/moltyclaw] Fechando o navegador e desligando! 👋")

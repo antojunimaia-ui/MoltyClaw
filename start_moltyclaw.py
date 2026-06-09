@@ -73,28 +73,33 @@ def get_color(name):
     return "cyan"
 
 def run_whatsapp():
-    CMD_SERVER = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_server.py")}"'
+    """Inicia o WhatsApp via AgentHub (processo único) + bridge Node.js."""
+    sys.path.insert(0, os.path.join(BASE_DIR, "src"))
+    from agent_hub import get_hub
+    hub = get_hub()
+    hub.start_integration("whatsapp")
+    # Bridge Node.js ainda precisa rodar como subprocesso separado
     CMD_BRIDGE = f'node "{os.path.join(BASE_DIR, "src", "integrations", "whatsapp_bridge.js")}"'
-    
-    th_svr = threading.Thread(target=run_process, args=(CMD_SERVER, "WHATSAPP-SVR"), daemon=True)
     th_brg = threading.Thread(target=run_process, args=(CMD_BRIDGE, "WHATSAPP-NODE"), daemon=True)
-    
-    th_svr.start()
-    time.sleep(3) 
+    time.sleep(2)
     th_brg.start()
-    return [th_svr, th_brg]
+    return [th_brg]
 
 def run_discord():
-    CMD_DISCORD = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "discord_bot.py")}"'
-    th_dsc = threading.Thread(target=run_process, args=(CMD_DISCORD, "DISCORD-BOT"), daemon=True)
-    th_dsc.start()
-    return [th_dsc]
+    """Inicia o Discord via AgentHub (processo único)."""
+    sys.path.insert(0, os.path.join(BASE_DIR, "src"))
+    from agent_hub import get_hub
+    hub = get_hub()
+    hub.start_integration("discord")
+    return []
 
 def run_telegram():
-    CMD_TELEGRAM = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "telegram_bot.py")}"'
-    th_tel = threading.Thread(target=run_process, args=(CMD_TELEGRAM, "TELEGRAM-BOT"), daemon=True)
-    th_tel.start()
-    return [th_tel]
+    """Inicia o Telegram via AgentHub (processo único)."""
+    sys.path.insert(0, os.path.join(BASE_DIR, "src"))
+    from agent_hub import get_hub
+    hub = get_hub()
+    hub.start_integration("telegram")
+    return []
 
 def run_twitter():
     CMD_TWITTER = f'"{sys.executable}" "{os.path.join(BASE_DIR, "src", "integrations", "twitter_bot.py")}"'
@@ -1333,6 +1338,11 @@ def cli_browser_toggle(arg):
     sys.exit(0)
 
 def main():
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(MOLTY_DIR, '.env'), override=True)
+    if not os.getenv("MOLTY_PROVIDER"):
+        os.environ["MOLTY_PROVIDER"] = "mistral"
+
     # Tratamento global do modo (-m / --mode)
     if "-m" in sys.argv or "--mode" in sys.argv:
         try:
@@ -1545,40 +1555,6 @@ def main():
 
         install_moltyclaw_path()
         sys.exit(0)
-
-    # ── Provedor de IA ────────────────────────────────────────────────────────
-    if HAS_QUESTIONARY:
-        provider_answer = questionary.select(
-            "Provedor de IA:",
-            choices=[
-                questionary.Choice("⚡  Mistral AI      (MISTRAL_API_KEY)",     value="1"),
-                questionary.Choice("🌐  OpenRouter      (OPENROUTER_API_KEY)",  value="2"),
-                questionary.Choice("♊  Google Gemini    (GEMINI_API_KEY)",      value="3"),
-                questionary.Choice("☁️  Koda Cloud      (Sem API Key)",         value="5"),
-                questionary.Choice("🏠  Ollama (Local)   (OLLAMA_MODEL)",       value="4"),
-            ],
-            style=molty_style,
-        ).ask()
-        provider_choice = provider_answer if provider_answer else "1"
-    else:
-        console.print("\n[bold yellow] Provedor de IA:[/bold yellow]")
-        console.print("1. [bold cyan]Mistral AI[/bold cyan]")
-        console.print("2. [bold magenta]OpenRouter[/bold magenta]")
-        console.print("3. [bold blue]Google Gemini[/bold blue]")
-        console.print("4. [bold white]Ollama (Local)[/bold white]")
-        console.print("5. [bold green]Koda Cloud[/bold green]")
-        provider_choice = Prompt.ask("Selecione", choices=["1", "2", "3", "4", "5"], default="1")
-
-    if provider_choice == "2":
-        os.environ["MOLTY_PROVIDER"] = "openrouter"
-    elif provider_choice == "3":
-        os.environ["MOLTY_PROVIDER"] = "gemini"
-    elif provider_choice == "4":
-        os.environ["MOLTY_PROVIDER"] = "ollama"
-    elif provider_choice == "5":
-        os.environ["MOLTY_PROVIDER"] = "kodacloud"
-    else:
-        os.environ["MOLTY_PROVIDER"] = "mistral"
 
     # ── WebUI ─────────────────────────────────────────────────────────────────
     if env_choice == "1":

@@ -1,7 +1,7 @@
 const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
-const inputWrapper = document.querySelector('.input-wrapper');
+const inputWrapper = document.querySelector('.input-wrapper') || document.querySelector('.input-box');
 const agentStatus = document.getElementById('agent-status-nav');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const appSidebar = document.getElementById('app-sidebar');
@@ -297,7 +297,7 @@ if (sidebarToggle) {
 }
 
 // Restore sidebar state
-if (localStorage.getItem('sidebar-collapsed') === 'true') {
+if (appSidebar && localStorage.getItem('sidebar-collapsed') === 'true') {
     appSidebar.classList.add('collapsed');
 }
 
@@ -841,7 +841,15 @@ function selectAgent(agentId) {
             });
         }, 500);
         
-        document.getElementById('agent-form-env').value = (agent.env_vars || []).join('\n');
+        let envText = '';
+        if (agent.env_vars) {
+            if (Array.isArray(agent.env_vars)) {
+                envText = agent.env_vars.join('\n');
+            } else {
+                envText = Object.entries(agent.env_vars).map(([k, v]) => `${k}=${v}`).join('\n');
+            }
+        }
+        document.getElementById('agent-form-env').value = envText;
         
         document.getElementById('btn-delete-agent').style.display = agent.is_master ? 'none' : 'block';
         
@@ -1028,7 +1036,7 @@ function selectAgentFile(fileId) {
 
     currentAgentFile = fileId;
 
-    document.querySelectorAll('.studio-file-card').forEach(card => card.classList.remove('active'));
+    document.querySelectorAll('.studio-file').forEach(card => card.classList.remove('active'));
     const targetCard = document.getElementById(`card-${fileId}`);
     if (targetCard) targetCard.classList.add('active');
 
@@ -1891,3 +1899,67 @@ switchTab = function(tabId) {
         }, 100);
     }
 };
+
+// Nova lógica de alternância para o layout redesenhado de painéis (pílulas na direita)
+function switchPanel(panelId) {
+    // Esconde todas as visualizações do painel
+    document.querySelectorAll('.panel-view').forEach(view => {
+        view.style.display = 'none';
+        view.classList.remove('active');
+    });
+
+    // Remove classe ativa de todas as pílulas
+    document.querySelectorAll('.pill').forEach(pill => {
+        pill.classList.remove('active');
+    });
+
+    // Mostra a visualização selecionada
+    const targetView = document.getElementById(`panel-${panelId}`);
+    if (targetView) {
+        // Layout de arquivos usa display flex para o editor e sidebar
+        if (panelId === 'files') {
+            targetView.style.display = 'flex';
+        } else {
+            targetView.style.display = 'block';
+        }
+        targetView.classList.add('active');
+    }
+
+    // Ativa a pílula correspondente
+    const targetPill = document.getElementById(`pill-${panelId}`);
+    if (targetPill) {
+        targetPill.classList.add('active');
+    }
+
+    // Carrega os dados correspondentes de forma inteligente
+    if (panelId === 'files') {
+        loadAgentList();
+    } else if (panelId === 'integrations') {
+        fetchIntegrations();
+        setTimeout(() => {
+            addConfigButtonsToIntegrationCards();
+        }, 100);
+    } else if (panelId === 'routing') {
+        fetchBindings();
+    } else if (panelId === 'agent') {
+        loadAgentList();
+    } else if (panelId === 'mcp') {
+        loadMCPList();
+    } else if (panelId === 'skills') {
+        fetchSkills();
+    } else if (panelId === 'scheduler') {
+        fetchSchedulerJobs();
+    }
+
+    localStorage.setItem('active-panel', panelId);
+}
+
+// Vincula a função ao escopo global
+window.switchPanel = switchPanel;
+
+// Inicializa a aba padrão no carregamento
+document.addEventListener('DOMContentLoaded', () => {
+    const savedPanel = localStorage.getItem('active-panel') || 'files';
+    switchPanel(savedPanel);
+});
+
