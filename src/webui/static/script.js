@@ -1,7 +1,7 @@
 const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
-const inputWrapper = document.querySelector('.input-wrapper') || document.querySelector('.input-box');
+const inputWrapper = document.querySelector('.prompt-input-box');
 const agentStatus = document.getElementById('agent-status-nav');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const appSidebar = document.getElementById('app-sidebar');
@@ -101,8 +101,8 @@ function scrollToBottom() {
 }
 
 function adjustTextareaHeight() {
-    messageInput.style.height = '40px'; // Reset to base height
-    const newHeight = Math.min(messageInput.scrollHeight, 200);
+    messageInput.style.height = 'auto';
+    const newHeight = Math.min(messageInput.scrollHeight, 220);
     messageInput.style.height = newHeight + 'px';
 }
 
@@ -149,7 +149,7 @@ async function sendMessage() {
 
     if (!textInput && !file) return;
 
-    const currentAgentId = document.getElementById('chat-agent-select').value;
+    const currentAgentId = (document.getElementById('chat-agent-select-nav') || document.getElementById('chat-agent-select'))?.value || 'MoltyClaw';
     let userDisplay = textInput;
     if (currentAgentId !== 'MoltyClaw') {
         userDisplay = `**[Talking to ${currentAgentId}]**\n` + userDisplay;
@@ -273,41 +273,22 @@ messageInput.addEventListener('keydown', function (e) {
 messageInput.addEventListener('input', adjustTextareaHeight);
 
 function clearSession() {
-    chatContainer.innerHTML = `<div class="system-welcome">Session Cleared. Starting fresh context.</div>`;
+    chatContainer.innerHTML = `
+        <div class="chat-empty-state" id="chat-empty-state">
+            <pre class="chat-ascii" aria-hidden="true">
+███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗
+████╗ ████║██╔═══██╗██║  ╚══██╔══╝╚██╗ ██╔╝██╔════╝██║     ██╔══██╗██║    ██║
+██╔████╔██║██║   ██║██║     ██║    ╚████╔╝ ██║     ██║     ███████║██║ █╗ ██║
+██║╚██╔╝██║██║   ██║██║     ██║     ╚██╔╝  ██║     ██║     ██╔══██║██║███╗██║
+██║ ╚═╝ ██║╚██████╔╝███████╗██║      ██║   ╚██████╗███████╗██║  ██║╚███╔███╔╝
+╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝      ╚═╝    ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝</pre>
+            <p class="chat-empty-hint">Session cleared. Send a message to start again</p>
+        </div>`;
 }
 
-// ─── Mobile Sidebar Functions ───────────────────────────────────────────────
-function openSidebar() {
-    document.querySelector('.sidebar').classList.add('open');
-    document.getElementById('sidebar-overlay').classList.add('active');
-}
-
-function closeSidebar() {
-    document.querySelector('.sidebar').classList.remove('open');
-    document.getElementById('sidebar-overlay').classList.remove('active');
-}
-
-// Sidebar Toggle Logic
-if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', () => {
-        appSidebar.classList.toggle('collapsed');
-        // Save preference
-        localStorage.setItem('sidebar-collapsed', appSidebar.classList.contains('collapsed'));
-    });
-}
-
-// Restore sidebar state
-if (appSidebar && localStorage.getItem('sidebar-collapsed') === 'true') {
-    appSidebar.classList.add('collapsed');
-}
-
-// Mobile Overlay
-const menuToggle = document.querySelector('.menu-toggle');
-if (menuToggle) {
-    menuToggle.addEventListener('click', () => {
-        openSidebar();
-    });
-}
+// ─── Mobile Sidebar Functions (kept as no-ops for compat) ───────────────────
+function openSidebar() {}
+function closeSidebar() {}
 
 // Theme Switching Logic
 function applyTheme(theme) {
@@ -485,52 +466,114 @@ checkStatus();
 
 // Tab Switching Logic
 function switchTab(tabId) {
-    // Hide all views
-    document.querySelectorAll('.view-content').forEach(view => {
-        view.style.display = 'none';
-        view.classList.remove('active');
-    });
-
-    // Remove active state from nav items
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
-
-    // Show selected view
-    const targetView = document.getElementById(`view-${tabId}`);
-    if (targetView) {
-        targetView.style.display = 'block';
-        targetView.classList.add('active');
-    }
-
-    // Set active state on nav item
-    const targetNav = document.getElementById(`nav-${tabId}`);
-    if (targetNav) {
-        targetNav.classList.add('active');
-    }
-
-    if (tabId === 'integrations') {
-        fetchIntegrations();
-    } else if (tabId === 'routing') {
-        fetchBindings();
-    } else if (tabId === 'agent') {
-        loadAgentList();
-    } else if (tabId === 'mcp') {
-        loadMCPList();
-    } else if (tabId === 'heartbeat') {
-        fetchSchedulerJobs();
-    } else if (tabId === 'skills') {
-        fetchSkills();
-    }
-
-    // Sync mobile bottom nav active state
-    document.querySelectorAll('.mobile-nav-item').forEach(item => item.classList.remove('active'));
-    const mobileActive = document.getElementById(`mobile-nav-${tabId}`);
-    if (mobileActive) mobileActive.classList.add('active');
-
-    // Close sidebar on mobile after switching tab
-    closeSidebar();
+    // Legacy calls from inside views (agent sub-tabs etc.) — no-op here,
+    // those views live permanently in the right panel now.
 }
+
+// ─── Right Panel Logic ───────────────────────────────────────────────────────
+const _rpViews = ['integrations','routing','agent','mcp','skills','heartbeat'];
+let _rpCurrentTab = null;
+let _rpOpen = false;
+
+function _initRightPanel() {
+    const rpBody = document.getElementById('rp-body');
+    _rpViews.forEach(id => {
+        const el = document.getElementById(`view-${id}`);
+        if (el && rpBody) {
+            el.classList.remove('active');
+            rpBody.appendChild(el);
+        }
+    });
+    const panel = document.getElementById('right-panel');
+    panel.classList.add('hidden');
+    document.getElementById('panel-resizer').style.display = 'none';
+
+    // ── Resizer drag logic ──
+    const resizer  = document.getElementById('panel-resizer');
+    const mainWs   = document.getElementById('main-workspace');
+    let startX, startPanelW, startMainW;
+
+    resizer.addEventListener('mousedown', e => {
+        e.preventDefault();
+        startX      = e.clientX;
+        startPanelW = panel.getBoundingClientRect().width;
+        startMainW  = mainWs.getBoundingClientRect().width;
+        resizer.classList.add('dragging');
+
+        const onMove = e => {
+            const delta      = startX - e.clientX;          // drag left = panel grows
+            const minPanel   = 280;
+            const maxPanel   = window.innerWidth * 0.70;
+            const newPanelW  = Math.min(maxPanel, Math.max(minPanel, startPanelW + delta));
+            panel.style.width = newPanelW + 'px';
+        };
+
+        const onUp = () => {
+            resizer.classList.remove('dragging');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            // Persist
+            localStorage.setItem('rp-width', panel.style.width);
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+
+    // Restore saved width
+    const saved = localStorage.getItem('rp-width');
+    if (saved) panel.style.width = saved;
+}
+
+function toggleRightPanel() {
+    const panel   = document.getElementById('right-panel');
+    const resizer = document.getElementById('panel-resizer');
+    if (_rpOpen) {
+        panel.classList.add('hidden');
+        panel.classList.remove('open');
+        resizer.style.display = 'none';
+        _rpOpen = false;
+    } else {
+        switchRightTab(_rpCurrentTab || 'integrations');
+    }
+}
+
+function switchRightTab(tabId) {
+    const panel   = document.getElementById('right-panel');
+    const resizer = document.getElementById('panel-resizer');
+
+    if (!_rpOpen) {
+        panel.classList.remove('hidden');
+        panel.classList.add('open');
+        resizer.style.display = 'block';
+        _rpOpen = true;
+    }
+
+    if (_rpCurrentTab) {
+        const prev = document.getElementById(`view-${_rpCurrentTab}`);
+        if (prev) prev.classList.remove('active');
+        const prevBtn = document.getElementById(`rp-tab-${_rpCurrentTab}`);
+        if (prevBtn) prevBtn.classList.remove('active');
+    }
+
+    const next = document.getElementById(`view-${tabId}`);
+    if (next) next.classList.add('active');
+    const nextBtn = document.getElementById(`rp-tab-${tabId}`);
+    if (nextBtn) nextBtn.classList.add('active');
+
+    _rpCurrentTab = tabId;
+
+    if (tabId === 'integrations') fetchIntegrations();
+    else if (tabId === 'routing')   fetchBindings();
+    else if (tabId === 'agent')     loadAgentList();
+    else if (tabId === 'mcp')       loadMCPList();
+    else if (tabId === 'heartbeat') fetchSchedulerJobs();
+    else if (tabId === 'skills')    fetchSkills();
+}
+
+// Init on load
+document.addEventListener('DOMContentLoaded', _initRightPanel);
+
 
 async function fetchSchedulerJobs() {
     try {
@@ -648,19 +691,21 @@ async function loadAgentList() {
 }
 
 function updateChatAgentSelector() {
-    const select = document.getElementById('chat-agent-select');
-    if (!select) return;
-    
-    const currentVal = select.value;
-    select.innerHTML = '<option value="MoltyClaw">MoltyClaw (Master)</option>';
-    
-    agentListCache.forEach(agent => {
-        if (!agent.is_master) {
-            const opt = document.createElement('option');
-            opt.value = agent.id;
-            opt.textContent = `${agent.name} (${agent.id})`;
-            select.appendChild(opt);
-        }
+    // Support both old id (chat-agent-select) and new nav id (chat-agent-select-nav)
+    ['chat-agent-select', 'chat-agent-select-nav'].forEach(selId => {
+        const select = document.getElementById(selId);
+        if (!select) return;
+        const currentVal = select.value;
+        select.innerHTML = '<option value="MoltyClaw">MoltyClaw (Master)</option>';
+        agentListCache.forEach(agent => {
+            if (!agent.is_master) {
+                const opt = document.createElement('option');
+                opt.value = agent.id;
+                opt.textContent = `${agent.name} (${agent.id})`;
+                select.appendChild(opt);
+            }
+        });
+        if (Array.from(select.options).some(o => o.value === currentVal)) select.value = currentVal;
     });
     
     // Update all integration selectors too
@@ -677,10 +722,6 @@ function updateChatAgentSelector() {
         });
         if (Array.from(intSelect.options).some(o => o.value === intVal)) intSelect.value = intVal;
     });
-
-    if (Array.from(select.options).some(o => o.value === currentVal)) {
-        select.value = currentVal;
-    }
 }
 
 function onChatAgentChange() {

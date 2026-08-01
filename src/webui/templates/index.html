@@ -22,9 +22,6 @@
         <!-- Top Navbar -->
         <header class="navbar">
             <div class="navbar-left">
-                <button class="nav-toggle-btn" id="sidebar-toggle" title="Toggle Sidebar">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
                 <div class="navbar-brand">
                     <span class="brand-title">MOLTYCLAW</span>
                     <span class="brand-subtitle">GATEWAY DASHBOARD</span>
@@ -35,6 +32,13 @@
                     <span class="status-badge ready" id="agent-status-nav">
                         <i class="fa-solid fa-circle"></i> Health OK
                     </span>
+                </div>
+                <div class="agent-selector-chat" style="padding: 4px 10px;">
+                    <i class="fa-solid fa-robot" style="color: var(--accent);"></i>
+                    <select id="chat-agent-select-nav" class="agent-select-small all-agents-select"
+                        onchange="updateChatAgent()" title="Select your main agent">
+                        <option value="MoltyClaw">MoltyClaw</option>
+                    </select>
                 </div>
                 <div class="theme-switch-container">
                     <div class="theme-toggle" id="theme-toggle">
@@ -50,98 +54,58 @@
                         <div class="theme-slider"></div>
                     </div>
                 </div>
+                <button class="nav-toggle-btn" id="panel-toggle" onclick="toggleRightPanel()" title="Toggle Panel">
+                    <i class="fa-solid fa-table-columns"></i>
+                </button>
             </div>
         </header>
 
         <div class="app-layout">
-            <!-- Sidebar -->
-            <aside class="sidebar" id="app-sidebar">
-                <div class="sidebar-content">
-                    <div class="nav-section">
-                        <div class="nav-section-title">Chat <span>-</span></div>
-                        <div class="nav-item active" id="nav-chat" onclick="switchTab('chat')">
-                            <i class="fa-regular fa-comment-dots"></i>
-                            <span>Chat</span>
-                        </div>
-                        <div class="nav-item" id="nav-integrations" onclick="switchTab('integrations')">
-                            <i class="fa-solid fa-plug"></i>
-                            <span>Integrations</span>
-                        </div>
-                        <div class="nav-item" id="nav-routing" onclick="switchTab('routing')">
-                            <i class="fa-solid fa-route"></i>
-                            <span>Routing</span>
-                        </div>
-                    </div>
-
-                    <div class="nav-section">
-                        <div class="nav-section-title">MOLTYCLAW <span>-</span></div>
-                        <div class="nav-item" id="nav-agent" onclick="switchTab('agent')">
-                            <i class="fa-solid fa-robot"></i>
-                            <span>Agent</span>
-                        </div>
-                        <div class="nav-item" id="nav-mcp" onclick="switchTab('mcp')">
-                            <i class="fa-solid fa-plug"></i>
-                            <span>Model Context Protocol</span>
-                        </div>
-                        <div class="nav-item" id="nav-skills" onclick="switchTab('skills')">
-                            <i class="fa-solid fa-puzzle-piece"></i>
-                            <span>Skills (Habilidades)</span>
-                        </div>
-                    </div>
-
-                    <div class="nav-section">
-                        <div class="nav-section-title">CONTROL <span>-</span></div>
-                        <div class="nav-item" id="nav-heartbeat" onclick="switchTab('heartbeat')">
-                            <i class="fa-solid fa-clock"></i>
-                            <span>Scheduler (Cron)</span>
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Main Workspace -->
-            <main class="main-workspace">
+            <!-- Main: Chat always visible on the left -->
+            <main class="main-workspace" id="main-workspace">
 
                 <!-- Chat View -->
                 <div id="view-chat" class="view-content active">
-                    <header class="main-header">
-                        <div class="header-left">
-                            <h1 class="page-title">Chat</h1>
-                            <p class="page-subtitle">Direct gateway chat session for quick interventions.</p>
-                        </div>
-                        <div class="header-right">
-                            <div class="agent-selector-chat">
-                                <i class="fa-solid fa-robot"></i>
-                                <select id="chat-agent-select" class="agent-select-small all-agents-select"
-                                    onchange="updateChatAgent()" title="Select your main agent">
-                                    <option value="MoltyClaw">MoltyClaw</option>
-                                </select>
-                            </div>
-                        </div>
-                    </header>
 
                     <div class="chat-container" id="chat-container">
-                        <div class="system-welcome">
-                            Welcome to MoltyClaw WebUI. Lets chat!
+                        <div class="chat-empty-state" id="chat-empty-state">
+                            <pre class="chat-ascii" aria-hidden="true">
+███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗
+████╗ ████║██╔═══██╗██║  ╚══██╔══╝╚██╗ ██╔╝██╔════╝██║     ██╔══██╗██║    ██║
+██╔████╔██║██║   ██║██║     ██║    ╚████╔╝ ██║     ██║     ███████║██║ █╗ ██║
+██║╚██╔╝██║██║   ██║██║     ██║     ╚██╔╝  ██║     ██║     ██╔══██║██║███╗██║
+██║ ╚═╝ ██║╚██████╔╝███████╗██║      ██║   ╚██████╗███████╗██║  ██║╚███╔███╔╝
+╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝      ╚═╝    ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝</pre>
+                            <p class="chat-empty-hint">Send a message to start the session</p>
                         </div>
                     </div>
 
-                    <div class="input-area">
-                        <div class="input-wrapper">
-                            <textarea id="message-input"
-                                placeholder="Message (↵ to send, Shift+↵ for line breaks)"></textarea>
+                    <div class="prompt-box-area">
+                        <div class="prompt-input-box" id="prompt-box">
+                            <textarea
+                                id="message-input"
+                                class="prompt-textarea"
+                                placeholder="Message MoltyClaw..."
+                                rows="1"
+                            ></textarea>
+                            <div class="prompt-box-footer">
+                                <div class="prompt-box-left">
+                                    <input type="file" id="fileAttachment" style="display:none;" />
+                                    <button class="prompt-icon-btn" onclick="document.getElementById('fileAttachment').click()" title="Attach file">
+                                        <i class="fa-solid fa-paperclip"></i>
+                                    </button>
+                                    <button class="prompt-icon-btn" onclick="clearSession()" title="New session">
+                                        <i class="fa-solid fa-rotate-left"></i>
+                                    </button>
+                                </div>
+                                <div class="prompt-box-right">
+                                    <button id="send-btn" class="prompt-send-btn" onclick="sendMessage()" title="Send (Enter)">
+                                        <i class="fa-solid fa-arrow-up"></i>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="input-actions">
-                            <button class="btn-secondary" onclick="clearSession()">New session</button>
-                            <input type="file" id="fileAttachment" style="display: none;" />
-                            <button class="icon-btn" onclick="document.getElementById('fileAttachment').click()"
-                                title="Anexar Arquivo">
-                                <i class="fa-solid fa-paperclip"></i>
-                            </button>
-                            <button id="send-btn" class="btn-primary" onclick="sendMessage()">
-                                Send <i class="fa-solid fa-paper-plane" style="margin-left: 8px;"></i>
-                            </button>
-                        </div>
+                        <p class="prompt-hint">↵ to send &nbsp;·&nbsp; Shift+↵ for new line</p>
                     </div>
                 </div>
 
@@ -442,6 +406,7 @@
                                                     <option value="mistral">Mistral AI (Nativo)</option>
                                                     <option value="gemini">Google Gemini</option>
                                                     <option value="openrouter">OpenRouter (Múltiplos)</option>
+                                                    <option value="opencode">OpenCode Zen</option>
                                                     <option value="ollama">Ollama (Local)</option>
                                                 </select>
                                             </div>
@@ -825,25 +790,58 @@
 
             </main>
 
+            <!-- Resize handle between chat and right panel -->
+            <div class="panel-resizer" id="panel-resizer"></div>
+
+            <!-- Right Panel -->
+            <aside class="right-panel" id="right-panel">
+                <!-- Tab bar -->
+                <div class="rp-tabbar">
+                    <button class="rp-tab active" id="rp-tab-integrations" onclick="switchRightTab('integrations')">
+                        <i class="fa-solid fa-plug"></i> Integrations
+                    </button>
+                    <button class="rp-tab" id="rp-tab-agent" onclick="switchRightTab('agent')">
+                        <i class="fa-solid fa-robot"></i> Agent
+                    </button>
+                    <button class="rp-tab" id="rp-tab-mcp" onclick="switchRightTab('mcp')">
+                        <i class="fa-solid fa-server"></i> MCP
+                    </button>
+                    <button class="rp-tab" id="rp-tab-skills" onclick="switchRightTab('skills')">
+                        <i class="fa-solid fa-puzzle-piece"></i> Skills
+                    </button>
+                    <button class="rp-tab" id="rp-tab-routing" onclick="switchRightTab('routing')">
+                        <i class="fa-solid fa-route"></i> Routing
+                    </button>
+                    <button class="rp-tab" id="rp-tab-heartbeat" onclick="switchRightTab('heartbeat')">
+                        <i class="fa-solid fa-clock"></i> Scheduler
+                    </button>
+                    <button class="rp-close" onclick="toggleRightPanel()" title="Close panel">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <!-- Tab content area — views are moved here via JS -->
+                <div class="rp-body" id="rp-body"></div>
+            </aside>
+
         </div>
 
         <!-- Mobile Bottom Navigation (only visible on small screens) -->
         <div class="mobile-bottom-nav">
-            <div class="mobile-nav-item active" id="mobile-nav-chat" onclick="switchTab('chat')">
-                <i class="fa-regular fa-comment-dots"></i>
-                <span>Chat</span>
-            </div>
-            <div class="mobile-nav-item" id="mobile-nav-integrations" onclick="switchTab('integrations')">
-                <i class="fa-solid fa-link"></i>
+            <div class="mobile-nav-item active" id="mobile-nav-chat" onclick="switchRightTab('integrations')">
+                <i class="fa-solid fa-plug"></i>
                 <span>Links</span>
             </div>
-            <div class="mobile-nav-item" id="mobile-nav-agent" onclick="switchTab('agent')">
+            <div class="mobile-nav-item" id="mobile-nav-agent" onclick="switchRightTab('agent')">
                 <i class="fa-solid fa-robot"></i>
                 <span>Agent</span>
             </div>
-            <div class="mobile-nav-item" id="mobile-nav-mcp" onclick="switchTab('mcp')">
+            <div class="mobile-nav-item" id="mobile-nav-mcp" onclick="switchRightTab('mcp')">
                 <i class="fa-solid fa-plug"></i>
                 <span>MCP</span>
+            </div>
+            <div class="mobile-nav-item" id="mobile-nav-skills" onclick="switchRightTab('skills')">
+                <i class="fa-solid fa-puzzle-piece"></i>
+                <span>Skills</span>
             </div>
         </div>
 

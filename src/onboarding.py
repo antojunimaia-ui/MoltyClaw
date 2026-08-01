@@ -74,13 +74,14 @@ def run_onboarding():
                 questionary.Choice("Google Gemini (Recomendado)", value="gemini"),
                 questionary.Choice("Mistral AI", value="mistral"),
                 questionary.Choice("OpenRouter (Acesso a múltiplos modelos)", value="openrouter"),
+                questionary.Choice("OpenCode Zen (Modelos otimizados)", value="opencode"),
                 questionary.Choice("Ollama (Modelos Locais)", value="ollama")
             ]
         ).ask()
     else:
-        console.print("1) Gemini (Recomendado)  2) Mistral  3) OpenRouter  4) Ollama")
-        p = Prompt.ask("Selecione seu provedor", choices=["1", "2", "3", "4"], default="1")
-        provider = "gemini" if p == "1" else "mistral" if p == "2" else "openrouter" if p == "3" else "ollama"
+        console.print("1) Gemini (Recomendado)  2) Mistral  3) OpenRouter  4) OpenCode Zen  5) Ollama")
+        p = Prompt.ask("Selecione seu provedor", choices=["1", "2", "3", "4", "5"], default="1")
+        provider = "gemini" if p == "1" else "mistral" if p == "2" else "openrouter" if p == "3" else "opencode" if p == "4" else "ollama"
         
     # 2. API Key / Host
     if provider == "ollama":
@@ -111,6 +112,16 @@ def run_onboarding():
                 # No openrouter, filtramos para não exibir centenas de modelos
                 models_list = [m for m in all_models if "free" in m.lower() or "gemini" in m.lower() or "claude" in m.lower()][:25]
                 if not models_list: models_list = all_models[:25]
+        elif provider == "opencode":
+            # OpenCode Zen expõe endpoint OpenAI-compatível de listagem de modelos
+            req = urllib.request.Request("https://opencode.ai/zen/v1/models")
+            req.add_header("Authorization", f"Bearer {api_key}")
+            with urllib.request.urlopen(req) as response:
+                data = json.loads(response.read().decode())
+                all_models = [m["id"] for m in data.get("data", [])]
+                # Prioriza modelos gratuitos/conhecidos do Zen
+                models_list = [m for m in all_models if "free" in m.lower() or "deepseek" in m.lower() or "gpt-5" in m.lower()][:25]
+                if not models_list: models_list = all_models[:25]
         elif provider == "ollama":
             # api_key aqui é o HOST
             req = urllib.request.Request(f"{api_key.rstrip('/')}/api/tags")
@@ -122,6 +133,7 @@ def run_onboarding():
         if provider == "gemini": models_list = ["gemini-2.0-flash", "gemini-2.5-pro"]
         elif provider == "mistral": models_list = ["mistral-large-latest", "pixtral-large-2411", "mistral-small-latest"]
         elif provider == "openrouter": models_list = ["google/gemini-2.0-flash-exp:free", "anthropic/claude-3-5-sonnet:beta"]
+        elif provider == "opencode": models_list = ["deepseek-v4-flash-free", "deepseek-v4-flash", "gpt-5.5", "claude-sonnet-5"]
         elif provider == "ollama": models_list = ["llama3", "mistral", "phi3", "gemma"]
         
     if not models_list:
@@ -210,12 +222,14 @@ def run_onboarding():
     key_map_api = {
         "gemini": "GEMINI_API_KEY",
         "mistral": "MISTRAL_API_KEY",
-        "openrouter": "OPENROUTER_API_KEY"
+        "openrouter": "OPENROUTER_API_KEY",
+        "opencode": "OPENCODE_ZEN_API_KEY"
     }
     key_map_model = {
         "gemini": "GEMINI_MODEL",
         "mistral": "MISTRAL_MODEL",
         "openrouter": "OPENROUTER_MODEL",
+        "opencode": "OPENCODE_ZEN_MODEL",
         "ollama": "OLLAMA_MODEL"
     }
     

@@ -210,6 +210,22 @@ def cli_config_get(key):
     console.print(f"[bold yellow]⚠ Chave {key} não encontrada no .env[/bold yellow]")
     sys.exit(0)
 
+def _fetch_kodacloud_models():
+    """Busca a lista de modelos do Koda Cloud em tempo real via /v1/models."""
+    import urllib.request, json as _json
+    try:
+        req = urllib.request.Request("http://cn-01.hostzera.com.br:2137/v1/models")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read().decode())
+            return data.get("models", [])
+    except Exception as e:
+        console.print(f"[dim yellow]⚠ Koda Cloud inacessível ({e}). Usando lista de fallback.[/dim yellow]")
+        return [
+            "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview",
+            "mistral-small-2503", "codestral-2501", "devstral-medium-2507",
+            "magistral-medium-2507", "meta-llama/llama-3.3-70b-instruct:free",
+        ]
+
 def cli_provider():
     """Gerencia o provider de IA (seleção e configuração)"""
     from rich.table import Table
@@ -236,11 +252,17 @@ def cli_provider():
             "url": "https://openrouter.ai/keys",
             "models": ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.3-70b-instruct", "anthropic/claude-3.5-sonnet"]
         },
+        "opencode": {
+            "name": "OpenCode Zen",
+            "key": "OPENCODE_ZEN_API_KEY",
+            "url": "https://opencode.ai/auth",
+            "models": ["deepseek-v4-flash-free", "deepseek-v4-flash", "gpt-5.5", "claude-sonnet-5", "gemini-3.5-flash"]
+        },
         "kodacloud": {
             "name": "Koda Cloud",
             "key": None,
             "url": "http://cn-01.hostzera.com.br:2137",
-            "models": ["gemini-2.5-flash", "gemini-3-flash-preview", "mistral-large-2411", "mistral-small-2503", "codestral-2501"]
+            "models": _fetch_kodacloud_models()
         },
         "ollama": {
             "name": "Ollama (Local)",
@@ -330,7 +352,7 @@ def cli_provider():
 def cli_model():
     """Gerencia o modelo de IA (seleção por provider)"""
     from rich.table import Table
-    
+
     env_path = os.path.join(MOLTY_DIR, '.env')
     
     # Lê provider atual
@@ -346,59 +368,71 @@ def cli_model():
                 current_provider = provider_match.group(1).strip()
             
             # Detecta modelo atual baseado no provider
-            model_key = f"{current_provider.upper()}_MODEL"
+            model_key = f"{current_provider.upper()}_MODEL" if current_provider != "opencode" else "OPENCODE_ZEN_MODEL"
             model_match = re.search(rf'{model_key}=(.*)', content)
             if model_match:
                 current_model = model_match.group(1).strip()
-    
+
+    def _as_tuples(models):
+        """Converte lista de strings em (id, descrição amigável)."""
+        def _desc(m):
+            return m.split("/")[-1].replace(":free", " (Free)").replace("-", " ").title()
+        return [(m, _desc(m)) for m in models]
+
     # Modelos por provider
     models_by_provider = {
         "mistral": {
             "name": "Mistral AI",
             "models": [
-                ("mistral-small-latest", "Rápido e eficiente"),
+                ("mistral-small-latest",  "Rápido e eficiente"),
                 ("mistral-medium-latest", "Balanceado"),
-                ("mistral-large-latest", "Máxima capacidade"),
-                ("pixtral-large-latest", "Visão + Texto"),
+                ("mistral-large-latest",  "Máxima capacidade"),
+                ("pixtral-large-latest",  "Visão + Texto"),
             ]
         },
         "gemini": {
             "name": "Google Gemini",
             "models": [
-                ("gemini-1.5-flash", "Rápido e gratuito"),
+                ("gemini-1.5-flash",    "Rápido e gratuito"),
                 ("gemini-1.5-flash-8b", "Ultra rápido"),
-                ("gemini-1.5-pro", "Alta capacidade"),
-                ("gemini-2.0-flash-exp", "Experimental v2.0"),
+                ("gemini-1.5-pro",      "Alta capacidade"),
+                ("gemini-2.0-flash-exp","Experimental v2.0"),
             ]
         },
         "openrouter": {
             "name": "OpenRouter",
             "models": [
-                ("google/gemini-2.0-flash-exp:free", "Gemini 2.0 (Grátis)"),
-                ("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B"),
-                ("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet"),
-                ("google/gemini-pro-1.5", "Gemini Pro 1.5"),
-                ("mistralai/mistral-large", "Mistral Large"),
+                ("google/gemini-2.0-flash-exp:free",         "Gemini 2.0 (Grátis)"),
+                ("meta-llama/llama-3.3-70b-instruct",        "Llama 3.3 70B"),
+                ("anthropic/claude-3.5-sonnet",              "Claude 3.5 Sonnet"),
+                ("google/gemini-pro-1.5",                    "Gemini Pro 1.5"),
+                ("mistralai/mistral-large",                  "Mistral Large"),
+            ]
+        },
+        "opencode": {
+            "name": "OpenCode Zen",
+            "models": [
+                ("deepseek-v4-flash-free",   "DeepSeek V4 Flash (Grátis)"),
+                ("deepseek-v4-flash",        "DeepSeek V4 Flash"),
+                ("deepseek-v4-pro",          "DeepSeek V4 Pro"),
+                ("gpt-5.5",                  "GPT-5.5"),
+                ("gpt-5.6-luna",             "GPT-5.6 Luna"),
+                ("claude-sonnet-5",          "Claude Sonnet 5"),
+                ("gemini-3.5-flash",         "Gemini 3.5 Flash"),
             ]
         },
         "kodacloud": {
             "name": "Koda Cloud",
-            "models": [
-                ("gemini-2.5-flash", "Gemini 2.5 Flash"),
-                ("gemini-3-flash-preview", "Gemini 3 Flash (Preview)"),
-                ("mistral-large-2411", "Mistral Large 2411"),
-                ("mistral-small-2503", "Mistral Small 2503"),
-                ("codestral-2501", "Codestral 2501"),
-            ]
+            "models": _as_tuples(_fetch_kodacloud_models())
         },
         "ollama": {
             "name": "Ollama (Local)",
             "models": [
-                ("llama3", "Llama 3 8B"),
-                ("llama3.1", "Llama 3.1 8B"),
-                ("mistral", "Mistral 7B"),
-                ("codellama", "Code Llama"),
-                ("phi3", "Phi-3 Mini"),
+                ("llama3",     "Llama 3 8B"),
+                ("llama3.1",   "Llama 3.1 8B"),
+                ("mistral",    "Mistral 7B"),
+                ("codellama",  "Code Llama"),
+                ("phi3",       "Phi-3 Mini"),
             ]
         }
     }
@@ -407,7 +441,7 @@ def cli_model():
     if not provider_info:
         console.print(f"[bold red]❌ Provider '{current_provider}' não reconhecido[/bold red]")
         sys.exit(1)
-    
+
     # Mostra tabela de modelos
     console.print(Panel.fit(
         f"[bold cyan]🧠 GERENCIADOR DE MODELOS[/bold cyan]\n"
@@ -451,7 +485,7 @@ def cli_model():
         selected_model = provider_info["models"][int(choice) - 1][0]
     
     # Salva o modelo selecionado
-    model_key = f"{current_provider.upper()}_MODEL"
+    model_key = f"{current_provider.upper()}_MODEL" if current_provider != "opencode" else "OPENCODE_ZEN_MODEL"
     cli_config_set(model_key, selected_model)
     console.print(f"\n[bold green]✅ Modelo alterado para: {selected_model}[/bold green]")
     sys.exit(0)
@@ -1383,6 +1417,68 @@ def main():
         elif arg == "gateway":
             if "--share" in sys.argv:
                 os.environ["MOLTY_WEBUI_SHARE"] = "1"
+
+            # ── --with discord,telegram,...  ──────────────────────────────────
+            # Permite ao usuário definir quais integrações devem subir junto.
+            # Exemplos:
+            #   moltyclaw gateway --with discord,telegram
+            #   moltyclaw gateway --with all
+            #   moltyclaw gateway            ← sobe só a WebUI, sem integrações
+            if "--with" in sys.argv:
+                with_idx = sys.argv.index("--with")
+                try:
+                    with_val = sys.argv[with_idx + 1].lower().strip()
+                except IndexError:
+                    console.print("[bold red]Uso: moltyclaw gateway --with <integrações>[/bold red]")
+                    console.print("[dim]Exemplo: moltyclaw gateway --with discord,telegram[/dim]")
+                    sys.exit(1)
+                os.environ["MOLTY_GATEWAY_INTEGRATIONS"] = with_val
+                console.print(f"[bold cyan]📡 Integrações para auto-start:[/bold cyan] {with_val}")
+
+            # ── --setup  ──────────────────────────────────────────────────────
+            # Abre seletor interativo antes de subir o gateway.
+            elif "--setup" in sys.argv:
+                _all = ["discord", "telegram", "whatsapp", "twitter", "bluesky"]
+                _labels = {
+                    "whatsapp": "🟢  WhatsApp     — Server Python + Bridge Node.js",
+                    "discord":  "🔵  Discord      — Bot via API Oficial",
+                    "telegram": "✈️   Telegram     — Bot python-telegram-bot",
+                    "twitter":  "🐦  X / Twitter  — Bot API v2",
+                    "bluesky":  "🦋  Bluesky      — Bot AT Protocol (atproto)",
+                }
+                if HAS_QUESTIONARY:
+                    molty_style = QStyle([
+                        ('qmark', 'fg:#00d7ff bold'), ('question', 'bold'),
+                        ('answer', 'fg:#00d7ff bold'), ('pointer', 'fg:#00d7ff bold'),
+                        ('highlighted', 'fg:#00d7ff bold'), ('selected', 'fg:#00ff87'),
+                        ('separator', 'fg:#555555'), ('instruction', 'fg:#888888'),
+                    ])
+                    chosen = questionary.checkbox(
+                        "Integrações a ligar com o Gateway (Enter sem marcar = só WebUI):",
+                        choices=[questionary.Choice(_labels[p], value=p) for p in _all],
+                        style=molty_style,
+                        instruction="(↑↓ navegar  •  Espaço selecionar  •  Enter confirmar)",
+                    ).ask()
+                    if chosen is None:
+                        sys.exit(0)
+                else:
+                    console.print("\n[bold cyan]Integrações para ligar com o Gateway:[/bold cyan]")
+                    for i, p in enumerate(_all, 1):
+                        console.print(f"{i}. {_labels[p]}")
+                    console.print("0. [bold white]Só a WebUI (sem integrações)[/bold white]")
+                    raw_in = Prompt.ask("Digite os números separados por vírgula (ex: 1,2)", default="0")
+                    mapping = {str(i + 1): p for i, p in enumerate(_all)}
+                    if raw_in.strip() == "0":
+                        chosen = []
+                    else:
+                        chosen = [mapping[c.strip()] for c in raw_in.split(",") if c.strip() in mapping]
+
+                os.environ["MOLTY_GATEWAY_INTEGRATIONS"] = ",".join(chosen) if chosen else ""
+                if chosen:
+                    console.print(f"[bold cyan]📡 Integrações selecionadas:[/bold cyan] {', '.join(chosen)}")
+                else:
+                    console.print("[dim]ℹ️  Nenhuma integração selecionada — gateway só WebUI.[/dim]")
+
             console.print("[bold magenta]🔌 Iniciando MoltyClaw Gateway (FastAPI Hub)...[/bold magenta]")
             os.system("python src/webui/gateway.py")
             sys.exit(0)
@@ -1456,6 +1552,11 @@ def main():
                 "[dim]Modificadores globais: use [bold green]-m public[/bold green] (desativa terminal) ou [bold green]-m private[/bold green] antes de qualquer comando.[/dim]\n"
                 "[green]moltyclaw[/green]                             : Abre o menu interativo padrão\n"
                 "[green]moltyclaw web [--share][/green]               : Abre a WebUI imediatamente (exponha na rede com --share)\n"
+                "[green]moltyclaw gateway[/green]                     : Inicia o Gateway FastAPI (só WebUI, sem integrações)\n"
+                "[green]moltyclaw gateway --with <lista>[/green]      : Inicia o Gateway e já sobe as integrações indicadas\n"
+                "[dim]                                          Exemplos: --with discord,telegram   --with all[/dim]\n"
+                "[green]moltyclaw gateway --setup[/green]             : Abre seletor interativo de integrações antes de subir\n"
+                "[green]moltyclaw gateway [--share][/green]           : Expõe o Gateway na rede (0.0.0.0) ao combinar com --share\n"
                 "[green]moltyclaw start <ALVO>[/green]              : Inicia bots (discord, telegram, whatsapp, twitter, all) silenciosamente\n"
                 "[green]moltyclaw update[/green]                      : Sincroniza com as atualizações mais recentes e instala libs via pip\n"
                 "[green]moltyclaw --config[/green] ou [green]-c[/green]              : Abre seu arquivo .env no Bloco de Notas para edição amigável\n"

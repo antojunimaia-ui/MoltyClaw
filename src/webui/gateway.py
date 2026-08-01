@@ -569,19 +569,39 @@ def _stop_integration(name: str, agent_id: str = "MoltyClaw") -> bool:
 def auto_start_configured_integrations():
     """
     Chamado na inicialização do gateway.
-    Sobe automaticamente todas as integrações que já têm credenciais no .env.
-    Usa um pequeno delay para garantir que o browser do Gateway já está estável.
+    Sobe apenas as integrações listadas em MOLTY_GATEWAY_INTEGRATIONS (separadas
+    por vírgula).  Se a variável estiver vazia ou ausente, nenhuma integração é
+    iniciada automaticamente — o usuário pode ligá-las pelo painel da WebUI.
+
+    Exemplos de valor:
+        MOLTY_GATEWAY_INTEGRATIONS=discord,telegram
+        MOLTY_GATEWAY_INTEGRATIONS=all   → sobe tudo que tiver credencial
     """
     import threading
+
+    raw = os.environ.get("MOLTY_GATEWAY_INTEGRATIONS", "").strip().lower()
+    if not raw:
+        console.print("[dim]ℹ️  Nenhuma integração selecionada para auto-start. "
+                      "Use o painel ou inicie com --with para ativar integrações.[/dim]")
+        return
+
+    all_platforms = ["discord", "telegram", "whatsapp", "twitter", "bluesky"]
+    if raw == "all":
+        requested = all_platforms
+    else:
+        requested = [p.strip() for p in raw.split(",") if p.strip() in all_platforms]
+
+    if not requested:
+        console.print("[dim]ℹ️  Nenhuma integração válida em MOLTY_GATEWAY_INTEGRATIONS.[/dim]")
+        return
 
     def _delayed_start():
         import time
         # Aguarda 5s para o browser do Gateway estabilizar na porta 9222
         time.sleep(5)
 
-        platforms = ["discord", "telegram", "whatsapp", "twitter", "bluesky"]
         started = []
-        for platform in platforms:
+        for platform in requested:
             if _is_configured(platform):
                 # Stagger de 1.5s entre cada bot para evitar race condition no lock 9223
                 if started:
@@ -589,9 +609,11 @@ def auto_start_configured_integrations():
                 if _start_integration(platform):
                     started.append(platform)
                     console.print(f"[bold green]🚀 Auto-start:[/bold green] {platform} iniciado automaticamente.")
+            else:
+                console.print(f"[bold yellow]⚠️  {platform}:[/bold yellow] sem credenciais configuradas, pulando.")
 
         if not started:
-            console.print("[dim]ℹ️  Nenhuma integração configurada para auto-start.[/dim]")
+            console.print("[dim]ℹ️  Nenhuma integração pôde ser iniciada (verifique as credenciais no .env).[/dim]")
 
     # Roda em thread separada para não bloquear o lifespan do FastAPI
     threading.Thread(target=_delayed_start, daemon=True).start()

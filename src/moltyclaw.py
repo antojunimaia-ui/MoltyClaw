@@ -131,6 +131,7 @@ class MoltyClaw:
             if prov == "gemini":  return p_cfg.get("api_key") or os.getenv("GEMINI_API_KEY")
             if prov == "ollama":  return "ollama" # Ollama não exige chave, mas usamos placeholder
             if prov == "kodacloud": return "kodacloud" # Koda Cloud não exige chave
+            if prov == "opencode": return p_cfg.get("api_key") or os.getenv("OPENCODE_ZEN_API_KEY")
             return p_cfg.get("api_key") or os.getenv("OPENROUTER_API_KEY")
 
         # --- Lógica de Smart Provider (Auto-Discovery) ---
@@ -138,7 +139,7 @@ class MoltyClaw:
         
         # Se não tem a chave do provedor escolhido, tenta achar qualquer outra disponível
         if not self.api_key:
-            for fallback in ["kodacloud", "gemini", "mistral", "openrouter", "ollama"]:
+            for fallback in ["kodacloud", "gemini", "mistral", "openrouter", "opencode", "ollama"]:
                 if fallback == self.provider: continue
                 fallback_key = get_key_for(fallback)
                 if fallback_key:
@@ -156,6 +157,8 @@ class MoltyClaw:
             self.model = p_cfg.get("model") or os.getenv("OLLAMA_MODEL", "llama3")
         elif self.provider == "kodacloud":
             self.model = p_cfg.get("model") or os.getenv("KODACLOUD_MODEL", "gemini-2.5-flash")
+        elif self.provider == "opencode":
+            self.model = p_cfg.get("model") or os.getenv("OPENCODE_ZEN_MODEL", "deepseek-v4-flash-free")
         else:
             self.model = p_cfg.get("model") or os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash")
         
@@ -218,7 +221,13 @@ class MoltyClaw:
         ]
         
         if not self.api_key:
-            console.print(f"[{self.name}] [warning]Aviso: Chave de API para provedor {self.provider} não encontrada ({'MISTRAL_API_KEY' if self.provider == 'mistral' else 'OPENROUTER_API_KEY'}).[/warning]")
+            _key_env = {
+                "mistral": "MISTRAL_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY",
+                "opencode": "OPENCODE_ZEN_API_KEY",
+            }.get(self.provider, "OPENROUTER_API_KEY")
+            console.print(f"[{self.name}] [warning]Aviso: Chave de API para provedor {self.provider} não encontrada ({_key_env}).[/warning]")
             self.mistral_client = None
             self.openai_client = None
             self.gemini_client = None
@@ -263,6 +272,15 @@ class MoltyClaw:
                 )
                 # Sobrescreve o endpoint para usar /chat em vez de /chat/completions
                 self.kodacloud_endpoint = "http://cn-01.hostzera.com.br:2137/v1/chat"
+            elif self.provider == "opencode":
+                # OpenCode Zen usa API compatível com OpenAI (chat/completions)
+                self.ollama_client = None
+                self.mistral_client = None
+                self.gemini_client = None
+                self.openai_client = AsyncOpenAI(
+                    base_url="https://opencode.ai/zen/v1",
+                    api_key=self.api_key,
+                )
             else:
                 self.ollama_client = None
                 self.mistral_client = None
@@ -1282,12 +1300,16 @@ class MoltyClaw:
             console.print(f"[error]Exceção ao transcrever áudio: {e}[/error]")
             return ""
 
-    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None, reply_callback=None, requester: dict = None):
+    async def ask(self, prompt: str = None, is_tool_response: bool = False, silent: bool = False, stream_callback=None, tool_callback=None, reply_callback=None, requester: dict = None, _empty_retry: int = 0):
+        # Limite de retries por resposta vazia
+        if _empty_retry >= 3:
+            return "..."
+
         # Guarda reply_callback na instância (se for uma chamada nova, não recursiva de tool)
         if reply_callback is not None:
             self._current_reply_callback = reply_callback
         if not self.mistral_client and not self.openai_client and not self.gemini_client:
-            msg = "[SISTEMA: Nenhuma IA (Mistral, Gemini ou OpenRouter) configurada. Verifique suas chaves de API no arquivo .env ou no painel.]"
+            msg = "[SISTEMA: Nenhuma IA (Mistral, Gemini, OpenRouter ou OpenCode Zen) configurada. Verifique suas chaves de API no arquivo .env ou no painel.]"
             console.print(f"[warning]{msg}[/warning]")
             return msg
             
@@ -1408,7 +1430,7 @@ class MoltyClaw:
                             await asyncio.sleep(2 + _retry)
                         else: raise e
             else:
-                # OpenRouter ou Koda Cloud
+                # OpenRouter, OpenCode Zen ou Koda Cloud (API compatível com OpenAI)
                 for _retry in range(4):
                     try:
                         if self.provider == "kodacloud":
@@ -1490,7 +1512,7 @@ class MoltyClaw:
                                 payload
                             )
                         else:
-                            # OpenRouter usa API padrão OpenAI
+                            # OpenRouter e OpenCode Zen usam API padrão OpenAI
                             async_response = await self.openai_client.chat.completions.create(
                                 model=self.model,
                                 messages=self.history,
@@ -1499,7 +1521,7 @@ class MoltyClaw:
                         break
                     except Exception as e:
                         if _retry < 3:
-                            provider_name = "Koda Cloud" if self.provider == "kodacloud" else "OpenRouter"
+                            provider_name = "Koda Cloud" if self.provider == "kodacloud" else ("OpenCode Zen" if self.provider == "opencode" else "OpenRouter")
                             error_msg = str(e)
                             # Mostra mais detalhes do erro para debug
                             if "<!DOCTYPE html>" in error_msg or "<html" in error_msg:
@@ -1602,10 +1624,12 @@ class MoltyClaw:
             elif is_tool_response and not silent:
                 print()
             
-            # Debug: mostra o conteúdo da resposta
+            # Retry silencioso em caso de resposta vazia (até 3 tentativas)
             if not response_chunks.strip():
-                console.print(f"[warning]>> [DEBUG] Resposta vazia recebida! response_chunks: '{response_chunks}'[/warning]")
-                console.print(f"[warning]>> [DEBUG] Provider: {self.provider}, Model: {self.model}[/warning]")
+                return await self.ask(None, is_tool_response=True, silent=silent,
+                                      stream_callback=stream_callback, tool_callback=tool_callback,
+                                      reply_callback=None, requester=None,
+                                      _empty_retry=(_empty_retry or 0) + 1)
                 
             if "NO_REPLY" in response_chunks:
                 self.history.append({"role": "assistant", "content": response_chunks}) 
@@ -2279,6 +2303,9 @@ async def interactive_shell():
     ))
     console.print()
     
+    # Controla se já houve pelo menos uma resposta da IA (para exibir divisor)
+    _turn_count = 0
+
     while True:
         try:
             # Desenha o cabeçalho, prompt e rodapé da caixa de entrada
@@ -2303,6 +2330,17 @@ async def interactive_shell():
             sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha de input (linha 3)
             sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha superior (linha 2)
             sys.stdout.flush()
+
+            # Linha divisória com gradiente laranja→amarelo (igual ao banner), só após a 1ª resposta da IA
+            if _turn_count > 0:
+                divider = "─" * console.width
+                n = len(divider)
+                formatted_divider = ""
+                for i, char in enumerate(divider):
+                    g = int(60 + (i / n) * 170)
+                    color = f"#ff{g:02x}00"
+                    formatted_divider += f"[{color}]{char}[/]"
+                console.print(formatted_divider)
             
             # Printa o input formatado no histórico de forma limpa
             console.print(f"[bold blue]Você:[/bold blue] {user_input}")
@@ -2326,6 +2364,7 @@ async def interactive_shell():
                 
             # Conversa padrão com a IA
             await agent.ask(user_input)
+            _turn_count += 1
             
         except (KeyboardInterrupt, EOFError):
             console.print("\n[moltyclaw]MoltyClaw:[/moltyclaw] Processo interrompido.")

@@ -55,7 +55,7 @@ O MoltyClaw rompe com esse paradigma. Ele é projetado como um **agente de açã
 - **Delegar tarefas** a sub-agentes especializados que rodam em paralelo em background
 - **Trabalhar em Workspaces isolados**, garantindo que cada agente tenha sua própria pasta de arquivos e memórias sem interferência
 
-O modelo base pode ser **Mistral AI**, **Google Gemini** ou qualquer modelo via **OpenRouter** — configurável via `.env` ou arquivo centralizado `~/.moltyclaw/moltyclaw.json`.
+O modelo base pode ser **Mistral AI**, **Google Gemini**, **OpenCode Zen** ou qualquer modelo via **OpenRouter** — configurável via `.env` ou arquivo centralizado `~/.moltyclaw/moltyclaw.json`.
 
 ---
 
@@ -766,6 +766,10 @@ npm install
     "openrouter": {
       "api_key": "${OPENROUTER_API_KEY}",
       "model": "google/gemini-2.5-flash"
+    },
+    "opencode": {
+      "api_key": "${OPENCODE_ZEN_API_KEY}",
+      "model": "deepseek-v4-flash-free"
     }
   }
 }
@@ -775,7 +779,7 @@ npm install
 
 ```env
 # ─── PROVIDER PRINCIPAL ──────────────────────────────────────────────────────
-MOLTY_PROVIDER=mistral             # mistral | gemini | openrouter
+MOLTY_PROVIDER=mistral             # mistral | gemini | openrouter | opencode
 
 MISTRAL_API_KEY=sua_chave_aqui
 MISTRAL_MODEL=mistral-medium
@@ -785,6 +789,9 @@ GEMINI_MODEL=gemini-2.0-flash
 
 OPENROUTER_API_KEY=sua_chave_aqui
 OPENROUTER_MODEL=google/gemini-2.5-flash
+
+OPENCODE_ZEN_API_KEY=sua_chave_aqui
+OPENCODE_ZEN_MODEL=deepseek-v4-flash-free
 
 # ─── INTEGRAÇÕES SOCIAIS ─────────────────────────────────────────────────────
 DISCORD_BOT_TOKEN=seu_token_discord
