@@ -501,38 +501,97 @@ class MoltyClaw:
             return "Erro: O comando CMD está DESABILITADO no modo PUBLIC (ações de terminal bloqueadas por segurança)."
             
         console.print(f"[info][{self.name}] Terminal (PTY Session):[/info] {command}")
-        
-        # Tentativa de conexão via PTY Bridge (WebSocket) na porta 9001
-        try:
-            uri = "ws://localhost:9001"
+        command = (command or "").strip()
+        if not command:
+            return "[PTY] Comando vazio."
+
+        uri = "ws://localhost:9001"
+
+        async def _run_once(do_reset: bool):
+            """Executa uma tentativa no PTY com marcadores únicos de output.
+
+            Retorna (output_limpo, executou_de_verdade). 'executou_de_verdade'
+            é False quando o shell estava travado num prompt de continuação (>>)
+            e só ECOOU o comando sem executá-lo (marcador aparece 1x em vez de 2x).
+            """
+            import uuid
+            marker = f"MOLTYCMD_{uuid.uuid4().hex[:8]}"
+            begin_m = f"{marker}_BEGIN"
+            end_m   = f"{marker}_END"
+
             async with websockets.connect(uri) as websocket:
-                # Envia o comando com Enter no final
-                full_cmd = command + "\n"
-                await websocket.send(json.dumps({"type": "input", "data": full_cmd}))
-                
-                # Aguarda o output por um tempo fixo (3s p/ comandos rápidos, ou até 10s para processos maiores)
-                # Na verdade, como é persistente, coletamos os logs iniciais + o que vir depois do comando.
+                # 1) Cancela qualquer prompt de continuação pendente (>> / >) do shell
+                if do_reset:
+                    for _ in range(2):
+                        await websocket.send(json.dumps({"type": "input", "data": "\x03"}))
+                        await asyncio.sleep(0.15)
+
+                # 2) Envia o comando delimitado por marcadores únicos (echo funciona em
+                #    PowerShell, cmd e bash)
+                payload = f"echo {begin_m}\n{command}\necho {end_m}\n"
+                await websocket.send(json.dumps({"type": "input", "data": payload}))
+
+                # 3) Lê até encontrar o marcador final (ignora o 'init' replay da ponte)
                 output_acc = ""
-                try:
-                    # Lê o buffer inicial (limpa o que tinha antes?)
-                    # Na verdade, a ponte envia o buffer completo no 'init'
-                    while True:
-                        msg = await asyncio.wait_for(websocket.recv(), timeout=3.0)
+                deadline = time.time() + 25.0
+                while time.time() < deadline:
+                    if end_m in output_acc:
+                        break
+                    try:
+                        msg = await asyncio.wait_for(websocket.recv(), timeout=1.5)
+                    except asyncio.TimeoutError:
+                        continue
+                    except Exception:
+                        break
+                    try:
                         data = json.loads(msg)
-                        if data['type'] == 'output' or data['type'] == 'init':
-                            output_acc += data['data']
-                            if len(output_acc) > 8000: # Limite de leitura por turno
-                                break
-                except asyncio.TimeoutError:
-                    pass # Fine, output ended or paused
-                
-                # Limpeza simples de caracteres ANSI para o modelo não se confundir
-                import re
-                clean_output = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', output_acc)
-                
-                # Tenta isolar o output do SEU comando (heuristicamente pegando o final)
-                return f"[Sessão Persistente Ativa]\n{clean_output[-4000:]}"
-                
+                    except Exception:
+                        continue
+                    if data.get('type') != 'output':
+                        continue  # ignora 'init' (replay do buffer antigo) e outros
+                    output_acc += data['data']
+                    if len(output_acc) > 30000:  # teto de segurança por turno
+                        break
+
+                # 4) Isola apenas o trecho entre os marcadores do SEU comando
+                start_idx = output_acc.find(begin_m)
+                end_idx = output_acc.rfind(end_m)
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    clean = output_acc[start_idx + len(begin_m):end_idx]
+                else:
+                    clean = output_acc
+
+                # 5) Remove códigos ANSI / sequências de escape
+                clean = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', clean)
+                clean = clean.replace('\r', '').strip()
+
+                # 6) Detecta se o comando foi REALMENTE executado: o marcador aparece
+                #    2x (eco digitado + saída real). Se aparecer só 1x, o shell apenas
+                #    ecoou num prompt de continuação quebrado (>>).
+                executou = output_acc.count(begin_m) >= 2
+                return clean, executou
+
+        try:
+            # Primeira tentativa
+            out, executou = await _run_once(do_reset=True)
+            # Se nada voltou (ou o shell só ecoou sem executar), está travado:
+            # reinicia a sessão PTY e tenta de novo
+            if not out or not executou:
+                console.print(f"[warning][{self.name}] Terminal sem output real — reiniciando sessão PTY...[/warning]")
+                try:
+                    async with websockets.connect(uri) as ws:
+                        await ws.send(json.dumps({"type": "input", "data": "\u0000RESET\u0000"}))
+                    await asyncio.sleep(1.2)
+                except Exception:
+                    pass
+                out, executou = await _run_once(do_reset=False)
+
+            if not out:
+                return "[PTY] Nenhum output retornado (verifique se o comando travou)."
+            if not executou:
+                return "[PTY] O shell continua travado num prompt de continuação (>>) e não executou o comando. Tente um comando mais simples ou reinicie o MoltyClaw."
+            return f"[Sessão Persistente Ativa]\n{out[-4000:]}"
+
         except Exception as e:
             # Fallback para Subset-Processo se o PTY falhar
             console.print(f"[warning][{self.name}] PTY Bridge offline ({e}), usando fallback de subset-processo...[/warning]")

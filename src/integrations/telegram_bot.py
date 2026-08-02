@@ -128,6 +128,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         except Exception as _cb_err:
             console.print(f"[error]Erro no announce callback do sub-agente: {_cb_err}[/error]")
 
+    # Exibe as Tools chamadas pelo MoltyClaw no chat (igual à WebUI)
+    async def tool_callback(msg: str):
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"⚙️ {msg}",
+            )
+        except Exception:
+            pass
+
     try:
         peer_name = update.message.from_user.full_name or author
 
@@ -136,6 +146,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             channel="telegram",
             peer_id=peer_id,
             peer_name=peer_name,
+            tool_callback=tool_callback,
         )
 
         import re

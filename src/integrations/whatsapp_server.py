@@ -4,6 +4,7 @@ import traceback
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import aiohttp
 from aiohttp import web
 from agent_hub import get_hub
 from rich.console import Console
@@ -36,11 +37,26 @@ async def handle_whatsapp_message(request):
                 else:
                     message = "(Áudio enviado pelo usuário, mas ininteligível ou falha na transcrição)"
 
+        # Exibe as Tools chamadas pelo MoltyClaw no WhatsApp (igual à WebUI),
+        # disparando pelo bridge na porta 8081
+        async def tool_callback(msg: str):
+            try:
+                async with aiohttp.ClientSession() as sess:
+                    async with sess.post(
+                        "http://localhost:8081/send_whatsapp",
+                        json={"to": sender_id, "message": f"⚙️ {msg}"},
+                        timeout=10,
+                    ) as resp:
+                        await resp.read()
+            except Exception:
+                pass
+
         reply = await hub.ask(
             message,
             channel="whatsapp",
             peer_id=sender_id,
             peer_name=sender_name,
+            tool_callback=tool_callback,
         )
 
         import re

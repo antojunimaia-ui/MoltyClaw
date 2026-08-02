@@ -142,7 +142,14 @@ class MoltyClawDiscordBot(discord.Client):
                             break
                 
                 typing_task = asyncio.create_task(keep_typing())
-                
+
+                # Exibe as Tools chamadas pelo MoltyClaw no canal (igual à WebUI)
+                async def tool_callback(msg: str):
+                    try:
+                        await message.channel.send(f"⚙️ {msg}")
+                    except Exception:
+                        pass
+
                 try:
                     reply = await asyncio.wait_for(
                         hub.ask(
@@ -150,12 +157,13 @@ class MoltyClawDiscordBot(discord.Client):
                             channel="discord",
                             peer_id=peer_id,
                             peer_name=peer_name,
+                            tool_callback=tool_callback,
                         ),
                         timeout=300.0
                     )
                 except asyncio.TimeoutError:
                     await message.channel.send("⏱️ Essa tarefa está demorando! Vou continuar processando em background...")
-                    reply = await hub.ask(user_text, channel="discord", peer_id=peer_id, peer_name=peer_name)
+                    reply = await hub.ask(user_text, channel="discord", peer_id=peer_id, peer_name=peer_name, tool_callback=tool_callback)
                 finally:
                     typing_task.cancel()
                     try:

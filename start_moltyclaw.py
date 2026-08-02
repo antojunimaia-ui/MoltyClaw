@@ -174,6 +174,15 @@ def cli_doctor():
                 console.print(f"[bold cyan]ℹ[/bold cyan] Modelo Gemini: [yellow]{model_name}[/yellow]")
             else:
                 console.print("[bold yellow]⚠[/bold yellow] Chave GEMINI_API_KEY ausente.")
+
+            if 'OPENCODE_ZEN_API_KEY=' in content:
+                console.print("[bold green]✔[/bold green] Chave do OpenCode Zen configurada.")
+                import re
+                model_match = re.search(r'OPENCODE_ZEN_MODEL=(.*)', content)
+                model_name = model_match.group(1).strip() if model_match else "deepseek-v4-flash-free (padrão)"
+                console.print(f"[bold cyan]ℹ[/bold cyan] Modelo OpenCode Zen: [yellow]{model_name}[/yellow]")
+            else:
+                console.print("[bold yellow]⚠[/bold yellow] Chave OPENCODE_ZEN_API_KEY ausente.")
     else:
         console.print("[bold red]❌[/bold red] Arquivo .env ausente.")
     sys.exit(0)
@@ -209,6 +218,59 @@ def cli_config_get(key):
                     sys.exit(0)
     console.print(f"[bold yellow]⚠ Chave {key} não encontrada no .env[/bold yellow]")
     sys.exit(0)
+
+def _ensure_provider_api_key():
+    """
+    Garante que o provider atual (MOLTY_PROVIDER) tenha sua API key configurada.
+    Se a chave estiver ausente/vazia, pergunta interativamente e salva no .env
+    (sem sys.exit, para não interromper o start). Providers locais (ollama,
+    kodacloud) não exigem chave e são ignorados.
+    """
+    provider = os.getenv("MOLTY_PROVIDER", "mistral").lower()
+
+    # Providers que exigem API key: id -> (env_var, url de obtenção)
+    key_providers = {
+        "mistral":    ("MISTRAL_API_KEY",     "https://console.mistral.ai/"),
+        "gemini":     ("GEMINI_API_KEY",      "https://aistudio.google.com/apikey"),
+        "openrouter": ("OPENROUTER_API_KEY",  "https://openrouter.ai/keys"),
+        "opencode":   ("OPENCODE_ZEN_API_KEY", "https://opencode.ai/auth"),
+    }
+
+    if provider not in key_providers:
+        return  # ollama / kodacloud: não exigem chave
+
+    env_key, url = key_providers[provider]
+    current = os.getenv(env_key, "").strip()
+    if current:
+        return  # já configurada
+
+    console.print(f"\n[bold yellow]⚠ API Key não configurada para o provider '{provider}'.[/bold yellow]")
+    console.print(f"[dim]Obtenha sua chave em: {url}[/dim]")
+
+    api_key = Prompt.ask(f"\n🔑 Cole sua {env_key}")
+
+    if not api_key.strip():
+        console.print("[bold yellow]⚠ Nenhuma chave informada. O agente tentará iniciar mesmo assim (pode cair no fallback).[/bold yellow]")
+        return
+
+    # Salva direto no .env (sem sys.exit como o cli_config_set)
+    env_path = os.path.join(MOLTY_DIR, '.env')
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+    found = False
+    with open(env_path, 'w', encoding='utf-8') as f:
+        for line in lines:
+            if line.startswith(f"{env_key}="):
+                f.write(f"{env_key}={api_key.strip()}\n")
+                found = True
+            else:
+                f.write(line)
+        if not found:
+            f.write(f"\n{env_key}={api_key.strip()}\n")
+    os.environ[env_key] = api_key.strip()
+    console.print(f"[bold green]✅ API Key salva no .env para '{provider}'.[/bold green]")
 
 def _fetch_kodacloud_models():
     """Busca a lista de modelos do Koda Cloud em tempo real via /v1/models."""
@@ -333,9 +395,10 @@ def cli_provider():
     
     selected_info = providers[selected_id]
     
-    # Verifica se precisa de API key
+    # Verifica se precisa de API key (pergunta sempre que NÃO estiver configurada,
+    # inclusive quando a linha da chave não existe no .env → api_keys retorna None)
     if selected_info["key"]:
-        if api_keys.get(selected_id) == "❌ Ausente":
+        if api_keys.get(selected_id) != "✅ Configurada":
             console.print(f"\n[bold yellow]⚠ API Key não configurada para {selected_info['name']}[/bold yellow]")
             console.print(f"[dim]Obtenha sua chave em: {selected_info['url']}[/dim]")
             
@@ -343,6 +406,9 @@ def cli_provider():
             
             if api_key.strip():
                 cli_config_set(selected_info["key"], api_key.strip())
+                console.print(f"[bold green]✅ API Key salva para {selected_info['name']}.[/bold green]")
+            else:
+                console.print("[bold yellow]⚠ Nenhuma chave informada. Chave não salva.[/bold yellow]")
     
     # Salva o provider selecionado
     cli_config_set("MOLTY_PROVIDER", selected_id)
@@ -809,8 +875,14 @@ def cli_start_bots(target):
         os.environ["MOLTY_PROVIDER"] = "mistral" # Provider padrão apenas se não estiver definido
     
     # Debug: mostra qual provider foi carregado
-    console.print(f"[dim]>> Provider carregado do .env: {os.getenv('MOLTY_PROVIDER')}[/dim]")
-    console.print(f"[dim]>> Modelo carregado: {os.getenv(f'{os.getenv('MOLTY_PROVIDER', 'mistral').upper()}_MODEL')}[/dim]")
+    _debug_provider = os.getenv('MOLTY_PROVIDER', 'mistral').lower()
+    _debug_model_key = "OPENCODE_ZEN_MODEL" if _debug_provider == "opencode" else f"{_debug_provider.upper()}_MODEL"
+    console.print(f"[dim]>> Provider carregado do .env: {_debug_provider}[/dim]")
+    console.print(f"[dim]>> Modelo carregado: {os.getenv(_debug_model_key)}[/dim]")
+
+    # Garante que o provider atual tenha a API key (pergunta se faltar)
+    _ensure_provider_api_key()
+
     active_threads = []
     
     if target == "all":
@@ -1674,6 +1746,10 @@ def main():
 
         if share.lower() in ["y", "s", "sim", "yes", "1"]:
             os.environ["MOLTY_WEBUI_SHARE"] = "1"
+
+        # Garante que o provider atual tenha a API key (pergunta se faltar)
+        _ensure_provider_api_key()
+
         os.system("python src/webui/app.py")
         sys.exit(0)
 
@@ -1724,6 +1800,9 @@ def main():
 
         
     # ── Prepara o ambiente ──────────────────────────────────────────────────
+    # Garante que o provider atual tenha a API key (pergunta se faltar)
+    _ensure_provider_api_key()
+
     if "whatsapp" in selected: os.environ["MOLTY_WHATSAPP_ACTIVE"] = "1"
     if "discord" in selected:  os.environ["MOLTY_DISCORD_ACTIVE"] = "1"
     if "telegram" in selected: os.environ["MOLTY_TELEGRAM_ACTIVE"] = "1"
