@@ -2,8 +2,10 @@ const os = require('os');
 const pty = require('node-pty');
 const WebSocket = require('ws');
 
-// Escolha do shell baseado no Windows ou Linux
-const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+// Escolha do shell e argumentos baseado no Windows ou Linux
+const isWin = os.platform() === 'win32';
+const shell = isWin ? 'powershell.exe' : 'bash';
+const shellArgs = isWin ? ['-NoProfile', '-NonInteractive'] : [];
 
 // Configura o servidor WebSocket na porta 9001
 const wss = new WebSocket.Server({ port: 9001 });
@@ -14,7 +16,7 @@ const MAX_BUFFER = 10000;
 
 // Cria um processo do terminal persistente (reutilizável para reiniciar)
 function spawnPty() {
-    const p = pty.spawn(shell, [], {
+    const p = pty.spawn(shell, shellArgs, {
         name: 'xterm-color',
         cols: 100,
         rows: 30,

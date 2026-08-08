@@ -218,6 +218,13 @@ async def index(request: Request):
 async def get_status():
     return {"ready": ready}
 
+@app.get("/api/sessions")
+async def get_sessions(authorized: bool = Depends(verify_token)):
+    """Retorna todas as sessões registradas no SessionStore."""
+    from sessions import SessionStore
+    store = SessionStore()
+    return {"sessions": store.list_sessions()}
+
 @app.get("/temp/{filename}")
 async def serve_temp(filename: str):
     path = os.path.abspath(os.path.join(MOLTY_DIR, "temp", filename))

@@ -148,6 +148,7 @@ def initialize_moltyclaw():
         os.path.join(MOLTY_DIR, "workspace"),
         os.path.join(MOLTY_DIR, "workspace", "skills"),
         os.path.join(MOLTY_DIR, "memory"),
+        os.path.join(MOLTY_DIR, "sessions"),
         os.path.join(MOLTY_DIR, "canvas"),
         os.path.join(MOLTY_DIR, "logs"),
         os.path.join(MOLTY_DIR, "cron"),

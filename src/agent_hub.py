@@ -99,6 +99,13 @@ class AgentHub:
 
         console.print("[dim cyan]>> AgentHub: Inicializando instância única do MoltyClaw...[/dim cyan]")
 
+        from sessions import SessionStore, SessionKey
+        from queued_turns import QueuedTurnManager
+        from channel_supervisor import ChannelSupervisor
+
+        self.session_store = SessionStore()
+        self.turn_manager = QueuedTurnManager()
+        self.channel_supervisor = ChannelSupervisor(self)
         self.agent = MoltyClaw(name="MoltyClaw")
 
         # Browser
@@ -115,7 +122,7 @@ class AgentHub:
         await self.agent.start_background_services()
 
         self.ready = True
-        console.print("[bold green]✅ AgentHub: Instância única pronta e compartilhada entre todos os canais![/bold green]")
+        console.print("[bold green]✅ AgentHub: Instância única pronta com SessionStore & Control Plane![/bold green]")
 
     # ── API pública ───────────────────────────────────────────────────────────
 
@@ -132,23 +139,17 @@ class AgentHub:
         reply_callback: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> str:
         """
-        Envia uma mensagem ao agente compartilhado.
-
-        Deve ser chamado de dentro do event loop do AgentHub (use ask_sync
-        se estiver em outra thread).
-
-        Args:
-            message:         Texto da mensagem do usuário.
-            channel:         Canal de origem ("discord", "telegram", "whatsapp", "webui", "cli").
-            peer_id:         ID do usuário/chat no canal de origem.
-            peer_name:       Nome legível do usuário.
-            silent:          Se True, não exibe no terminal.
-            stream_callback: Callback async para streaming de tokens (WebUI SSE).
-            tool_callback:   Callback async para notificações de tool use.
-            reply_callback:  Callback async para anunciar resultado de sub-agentes.
+        Envia uma mensagem ao agente compartilhado com isolamento por SessionKey e Fila de Turnos.
         """
         if not self.ready or self.agent is None:
             return "⚠️ Agente ainda não está pronto. Aguarde alguns segundos."
+
+        from sessions import SessionKey
+        s_key = SessionKey(
+            agent_id=self.agent.agent_id or "MoltyClaw",
+            channel=channel or "cli",
+            peer_id=peer_id or "default"
+        )
 
         # Injeta contexto do canal no prompt para o agente saber de onde veio
         enriched = message
@@ -167,16 +168,21 @@ class AgentHub:
                 "id": peer_id or "",
                 "name": peer_name or peer_id or "Desconhecido",
                 "platform": channel or "unknown",
+                "session_key": s_key.key_str,
             }
 
-        return await self.agent.ask(
-            enriched,
-            silent=silent,
-            stream_callback=stream_callback,
-            tool_callback=tool_callback,
-            reply_callback=reply_callback,
-            requester=requester,
-        )
+        async def _do_turn():
+            return await self.agent.ask(
+                enriched,
+                silent=silent,
+                stream_callback=stream_callback,
+                tool_callback=tool_callback,
+                reply_callback=reply_callback,
+                requester=requester,
+            )
+
+        # Executa o turno isolado na fila de turnos da SessionKey
+        return await self.turn_manager.run_turn(s_key.key_str, _do_turn)
 
     def ask_sync(
         self,

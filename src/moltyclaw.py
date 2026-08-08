@@ -553,22 +553,24 @@ class MoltyClaw:
                     if len(output_acc) > 30000:  # teto de segurança por turno
                         break
 
-                # 4) Isola apenas o trecho entre os marcadores do SEU comando
-                start_idx = output_acc.find(begin_m)
-                end_idx = output_acc.rfind(end_m)
-                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                    clean = output_acc[start_idx + len(begin_m):end_idx]
+                # 4) Remove códigos ANSI / sequências de escape antes de buscar marcadores
+                clean_acc = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', output_acc)
+                clean_acc = clean_acc.replace('\r', '')
+
+                # 5) Isola apenas o trecho entre os marcadores do comando
+                first_start = clean_acc.find(begin_m)
+                second_start = clean_acc.find(begin_m, first_start + len(begin_m)) if first_start != -1 else -1
+                start_pos = (second_start + len(begin_m)) if second_start != -1 else ((first_start + len(begin_m)) if first_start != -1 else -1)
+                end_idx = clean_acc.rfind(end_m)
+
+                if start_pos != -1 and end_idx != -1 and end_idx > start_pos:
+                    clean = clean_acc[start_pos:end_idx].strip()
+                    executou = True
                 else:
-                    clean = output_acc
+                    clean = clean_acc.strip()
+                    # Se end_m foi alcançado, o shell definitivamente executou o comando
+                    executou = (end_m in clean_acc) or (start_pos != -1 and end_idx != -1)
 
-                # 5) Remove códigos ANSI / sequências de escape
-                clean = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', clean)
-                clean = clean.replace('\r', '').strip()
-
-                # 6) Detecta se o comando foi REALMENTE executado: o marcador aparece
-                #    2x (eco digitado + saída real). Se aparecer só 1x, o shell apenas
-                #    ecoou num prompt de continuação quebrado (>>).
-                executou = output_acc.count(begin_m) >= 2
                 return clean, executou
 
         try:
@@ -1380,6 +1382,18 @@ class MoltyClaw:
                 platform = requester.get("platform", "Desconhecida")
                 req_info = f"[INFO DO REMETENTE: Nome: {req_name} | ID: {req_id} | Plataforma: {platform}]"
                 final_prompt = f"{req_info}\n\n{prompt}"
+                
+                # Carrega histórico isolado da SessionKey se existir
+                if requester.get("session_key"):
+                    try:
+                        from sessions import SessionStore, SessionKey
+                        s_store = SessionStore()
+                        s_key = SessionKey.parse(requester["session_key"])
+                        s_hist = s_store.load_history(s_key)
+                        if s_hist and len(self.history) <= 1:
+                            self.history.extend(s_hist[-20:])
+                    except Exception:
+                        pass
             self.history.append({"role": "user", "content": final_prompt})
             
         # Avalia sempre que o usuario manda uma mensagem real se precisa flushear contexto
@@ -2096,6 +2110,17 @@ class MoltyClaw:
                     return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                 
             stripped_response = re.sub(r'<think>.*?</think>', '', response_chunks, flags=re.DOTALL).strip()
+            
+            # Persiste o histórico atualizado na SessionStore se houver session_key
+            if requester and requester.get("session_key") and not is_tool_response:
+                try:
+                    from sessions import SessionStore, SessionKey
+                    s_store = SessionStore()
+                    s_key = SessionKey.parse(requester["session_key"])
+                    s_store.save_history(s_key, self.history[1:], peer_name=requester.get("name"))
+                except Exception:
+                    pass
+
             return stripped_response
             
         except Exception as e:
