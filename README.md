@@ -10,7 +10,7 @@
   <a href="https://github.com/antojunimaia-ui/MoltyClaw/blob/main/LICENSE"><img src="https://img.shields.io/github/license/antojunimaia-ui/MoltyClaw?style=flat-square&color=00d7ff" alt="License"></a>
 </p>
 
-> **MoltyClaw** é um agente de IA autônomo e local, construído em Python, que opera o seu computador Windows e a Internet em tempo real com autonomia total. Ele não fica preso em uma janela de chat — ele age, pesquisa, clica, organiza arquivos, manda mensagens, controla música, delega tarefas a sub-agentes, renderiza código visualmente e responde a você por WhatsApp, Discord e Telegram simultaneamente.
+> **MoltyClaw** é um agente de IA autônomo e local, construído em Python, que opera o seu computador (Windows, Linux ou macOS) e a Internet em tempo real com autonomia total. Ele não fica preso em uma janela de chat — ele age, pesquisa, clica, organiza arquivos, manda mensagens, controla música, delega tarefas a sub-agentes, renderiza código visualmente e responde a você por WhatsApp, Discord e Telegram simultaneamente.
 
 ---
 
@@ -45,7 +45,7 @@ A maioria dos assistentes de IA disponíveis no mercado são sistemas "passivos"
 
 O MoltyClaw rompe com esse paradigma. Ele é projetado como um **agente de ação**, onde a linguagem natural é apenas a superfície — a real potência está na capacidade de:
 
-- **Atuar sobre o sistema operacional** via CMD/PowerShell com total autonomia
+- **Atuar sobre o sistema operacional** via CMD/PowerShell (Windows) ou Bash (Linux/macOS) com total autonomia
 - **Navegar a web de forma humana** com bypass de anti-bots e fingerprint stealth
 - **Renderizar código e documentos** em tempo real num painel visual interativo (Canvas)
 - **Integrar-se a plataformas sociais** (WhatsApp, Discord, Telegram, Twitter/X, Bluesky)
@@ -135,7 +135,7 @@ O MoltyClaw não usa o sistema nativo de "function calling" das APIs. Em vez dis
 
 | Tool | Descrição |
 |---|---|
-| `CMD` | Executa qualquer comando no shell do Windows. Captura `stdout` + `stderr`. Executa no diretório workspace do agente. Bloqueado no modo público. |
+| `CMD` | Executa qualquer comando no shell do sistema (PowerShell/CMD no Windows, Bash no Linux/macOS). Captura `stdout` + `stderr`. Executa no diretório workspace do agente. Bloqueado no modo público. |
 
 ### 🖼️ Canvas — Artefatos Visuais
 
@@ -339,7 +339,7 @@ browser = await playwright.chromium.connect_over_cdp("http://localhost:9222")
 
 Um **lock via socket** na porta `9223` garante que apenas um agente inicialize o browser por vez, evitando race conditions mesmo em cenários de múltiplos agentes simultâneos. Como o lock é em nível de SO, é liberado automaticamente mesmo se o processo Python crashar.
 
-O resultado é uma sessão que, para todos os fins dos sistemas anti-bot, parece ser uma pessoa real usando o Edge no Windows.
+O resultado é uma sessão que, para todos os fins dos sistemas anti-bot, parece ser uma pessoa real usando um navegador comum (Edge/Chrome no Windows, ou Chromium no Linux/macOS).
 
 ---
 

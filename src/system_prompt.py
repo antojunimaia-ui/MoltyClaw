@@ -181,7 +181,7 @@ def _build_runtime_line(
 ) -> list[str]:
     """
     Gera a linha de Runtime inspirada no OpenClaw:
-    Runtime: agent=MoltyClaw | host=WIN-PC | os=Windows (AMD64) | python=3.11.0 | model=mistral-medium | provider=mistral | channel=telegram
+    Runtime: agent=MoltyClaw | host=meu-pc | os=Linux (x86_64) | python=3.11.0 | model=mistral-medium | provider=mistral | channel=telegram
     """
     parts = [
         f"agent={agent_id}",
