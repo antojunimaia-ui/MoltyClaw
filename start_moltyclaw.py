@@ -1473,8 +1473,9 @@ def main():
 
         if arg in ["--config", "-c"]:
             console.print("[bold cyan]📝 Abrindo arquivo .env para configuração...[/bold cyan]")
-            # No Windows, abre o notepad direto no arquivo
-            os.system(f"notepad {os.path.join(os.getcwd(), '.env')}")
+            env_path = os.path.join(MOLTY_DIR, '.env')
+            # No Windows, abre o notepad direto no arquivo dentro de MOLTY_DIR (.moltyclaw)
+            os.system(f'notepad "{env_path}"')
             sys.exit(0)
         elif arg == "web":
             import webbrowser

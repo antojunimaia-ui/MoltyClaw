@@ -495,135 +495,65 @@ class MoltyClaw:
                     lock_socket.close()
                 except: pass
 
-    async def execute_terminal_command(self, command: str) -> str:
+    async def execute_terminal_command(self, command: str, timeout_seconds: int = 45) -> str:
         if os.environ.get("MOLTY_MODE", "private") == "public":
             console.print(f"[warning][{self.name}] Tentativa de uso de CMD intercedida pelo Modo Publico.[/warning]")
             return "Erro: O comando CMD está DESABILITADO no modo PUBLIC (ações de terminal bloqueadas por segurança)."
 
-        console.print(f"[info][{self.name}] Terminal (PTY Session):[/info] {command}")
+        console.print(f"[info][{self.name}] Executando comando:[/info] {command}")
         command = (command or "").strip()
         if not command:
-            return "[PTY] Comando vazio."
+            return "Comando vazio."
 
-        uri = "ws://localhost:9001"
-
-        async def _run_once(do_reset: bool):
-            """Executa uma tentativa no PTY com marcadores únicos de output.
-
-            Retorna (output_limpo, executou_de_verdade).
-            """
-            import uuid
-            marker = f"MOLTYCMD_{uuid.uuid4().hex[:8]}"
-            begin_m = f"{marker}_BEGIN"
-            end_m   = f"{marker}_END"
-
-            async with websockets.connect(uri) as websocket:
-                # 1) Cancela qualquer prompt de continuação pendente (>> / >) do shell
-                if do_reset:
-                    for _ in range(2):
-                        await websocket.send(json.dumps({"type": "input", "data": "\x03"}))
-                        await asyncio.sleep(0.15)
-                    # Aguarda o shell absorver o Ctrl+C antes de enviar o próximo payload
-                    await asyncio.sleep(0.3)
-
-                # 2) Envia os 3 comandos separados com pequeno delay entre eles.
-                #    No PowerShell -NonInteractive o prompt não é ecoado, então um único
-                #    bloco \n\n\n às vezes chega antes do shell estar pronto para ler.
-                await websocket.send(json.dumps({"type": "input", "data": f"echo {begin_m}\n"}))
-                await asyncio.sleep(0.1)
-                await websocket.send(json.dumps({"type": "input", "data": f"{command}\n"}))
-                await asyncio.sleep(0.1)
-                await websocket.send(json.dumps({"type": "input", "data": f"echo {end_m}\n"}))
-
-                # 3) Lê até encontrar o marcador final
-                output_acc = ""
-                deadline = time.time() + 25.0
-                while time.time() < deadline:
-                    if end_m in output_acc:
-                        break
-                    try:
-                        msg = await asyncio.wait_for(websocket.recv(), timeout=1.5)
-                    except asyncio.TimeoutError:
-                        continue
-                    except Exception:
-                        break
-                    try:
-                        data = json.loads(msg)
-                    except Exception:
-                        continue
-                    if data.get('type') != 'output':
-                        continue
-                    output_acc += data['data']
-                    if len(output_acc) > 30000:
-                        break
-
-                # 4) Remove códigos ANSI / sequências de escape antes de buscar marcadores
-                clean_acc = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', output_acc)
-                clean_acc = clean_acc.replace('\r', '')
-
-                # 5) Isola o trecho entre os marcadores.
-                #    PowerShell -NonInteractive não ecoa o "echo begin_m", então begin_m
-                #    pode aparecer apenas 1x. Ambos os casos (1x e 2x) são válidos.
-                first_start = clean_acc.find(begin_m)
-                second_start = clean_acc.find(begin_m, first_start + len(begin_m)) if first_start != -1 else -1
-
-                if second_start != -1:
-                    start_pos = second_start + len(begin_m)
-                elif first_start != -1:
-                    start_pos = first_start + len(begin_m)
-                else:
-                    start_pos = -1
-
-                end_idx = clean_acc.rfind(end_m)
-
-                if start_pos != -1 and end_idx != -1 and end_idx > start_pos:
-                    clean = clean_acc[start_pos:end_idx].strip()
-                    executou = True
-                else:
-                    clean = clean_acc.strip()
-                    executou = (end_m in clean_acc)
-
-                return clean, executou
+        # Prepara variáveis de ambiente garantindo suporte UTF-8
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        if sys.platform == "win32":
+            env["PYTHONUTF8"] = "1"
 
         try:
-            # Primeira tentativa
-            out, executou = await _run_once(do_reset=True)
-            # Se nada voltou (ou o shell só ecoou sem executar), está travado:
-            # reinicia a sessão PTY e tenta de novo
-            if not out or not executou:
-                console.print(f"[warning][{self.name}] Terminal sem output real — reiniciando sessão PTY...[/warning]")
-                try:
-                    async with websockets.connect(uri) as ws:
-                        await ws.send(json.dumps({"type": "input", "data": "\u0000RESET\u0000"}))
-                    await asyncio.sleep(1.2)
-                except Exception:
-                    pass
-                out, executou = await _run_once(do_reset=False)
+            # Executa o comando via subprocesso no diretório do workspace
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=self.workspace_dir,
+                env=env
+            )
 
-            if not out:
-                return "[PTY] Nenhum output retornado (verifique se o comando travou)."
-            if not executou:
-                return "[PTY] O shell continua travado num prompt de continuação (>>) e não executou o comando. Tente um comando mais simples ou reinicie o MoltyClaw."
-            return f"[Sessão Persistente Ativa]\n{out[-4000:]}"
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=float(timeout_seconds))
+            except asyncio.TimeoutError:
+                # Mata a árvore inteira de processos em caso de timeout (estilo OpenClaw kill-tree)
+                if sys.platform == "win32":
+                    subprocess.run(f"taskkill /F /T /PID {process.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+                return f"[Timeout] O comando excedeu o limite de tempo de {timeout_seconds}s e foi encerrado."
+
+            out_text = stdout.decode("utf-8", errors="replace").strip()
+            err_text = stderr.decode("utf-8", errors="replace").strip()
+
+            # Remove códigos de cor ANSI para enviar texto limpo para o LLM
+            clean_out = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', out_text)
+            clean_err = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', err_text)
+
+            res_parts = []
+            if clean_out:
+                res_parts.append(clean_out)
+            if clean_err:
+                res_parts.append(f"[STDERR]\n{clean_err}")
+            if process.returncode != 0:
+                res_parts.append(f"[Exit Code: {process.returncode}]")
+
+            result_str = "\n".join(res_parts).strip()
+            return result_str if result_str else "Comando executado com sucesso (sem saída no terminal)."
 
         except Exception as e:
-            # Fallback para Subset-Processo se o PTY falhar
-            console.print(f"[warning][{self.name}] PTY Bridge offline ({e}), usando fallback de subset-processo...[/warning]")
-            try:
-                process = await asyncio.create_subprocess_shell(
-                    command,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=self.workspace_dir
-                )
-                stdout, stderr = await process.communicate()
-                output = stdout.decode("utf-8", errors="replace").strip()
-                error = stderr.decode("utf-8", errors="replace").strip()
-                if process.returncode != 0:
-                    return f"Erro (código {process.returncode}):\n{error}"
-                return output if output else "Comando executado com sucesso."
-            except Exception as inner_e:
-                return f"Exceção: {inner_e}"
+            return f"Exceção ao executar comando: {e}"
 
     async def run_browser_action(self, action: str, param: str) -> str:
         if action == "OPEN_BROWSER":
@@ -1086,6 +1016,165 @@ class MoltyClaw:
             return "Erro: O bridge do WhatsApp (porta 8081) não está acessível. Certifique-se de que o WhatsApp está conectado."
         except Exception as e:
             return f"Exceção ao consultar bridge do WhatsApp: {e}"
+    async def execute_github_action(self, action: str, param: str) -> str:
+        """Executa ações na API do GitHub usando PyGithub (pip install PyGithub)."""
+        token = os.getenv("GITHUB_TOKEN")
+        if not token:
+            return "ERRO: GITHUB_TOKEN não configurado no .env. Gere um token em https://github.com/settings/tokens"
+
+        def _run_sync():
+            try:
+                from github import Github, GithubException
+            except ImportError:
+                return "ERRO: Biblioteca PyGithub não instalada. Execute: pip install PyGithub"
+
+            g = Github(token)
+
+            if action == "GITHUB_LIST_REPOS":
+                # param: opcional — "usuario" ou vazio para o próprio usuário
+                try:
+                    user = g.get_user(param.strip()) if param.strip() else g.get_user()
+                    repos = list(user.get_repos())[:20]
+                    lines = [f"📦 Repositórios de {user.login}:"]
+                    for r in repos:
+                        stars = f"⭐{r.stargazers_count}" if r.stargazers_count else ""
+                        lines.append(f"  • {r.full_name} [{r.language or 'N/A'}] {stars}")
+                    return "\n".join(lines)
+                except GithubException as e:
+                    return f"Erro ao listar repos: {e.data.get('message', str(e))}"
+
+            elif action == "GITHUB_LIST_ISSUES":
+                # param: "owner/repo" ou "owner/repo | state:open|closed|all | limit:N"
+                parts = [p.strip() for p in param.split("|")]
+                repo_name = parts[0]
+                state = "open"
+                limit = 10
+                for p in parts[1:]:
+                    if p.startswith("state:"):
+                        state = p.split(":", 1)[1].strip()
+                    elif p.startswith("limit:"):
+                        try: limit = int(p.split(":", 1)[1].strip())
+                        except: pass
+                try:
+                    repo = g.get_repo(repo_name)
+                    issues = list(repo.get_issues(state=state))[:limit]
+                    if not issues:
+                        return f"Nenhuma issue {state} em {repo_name}."
+                    lines = [f"🐛 Issues {state} em {repo_name}:"]
+                    for i in issues:
+                        lines.append(f"  #{i.number} [{i.state}] {i.title} — @{i.user.login}")
+                    return "\n".join(lines)
+                except GithubException as e:
+                    return f"Erro ao listar issues: {e.data.get('message', str(e))}"
+
+            elif action == "GITHUB_CREATE_ISSUE":
+                # param: "owner/repo | título | corpo opcional"
+                parts = [p.strip() for p in param.split("|", 2)]
+                if len(parts) < 2:
+                    return "Uso: GITHUB_CREATE_ISSUE owner/repo | título | corpo opcional"
+                repo_name, title = parts[0], parts[1]
+                body = parts[2] if len(parts) > 2 else ""
+                try:
+                    repo = g.get_repo(repo_name)
+                    issue = repo.create_issue(title=title, body=body)
+                    return f"✅ Issue criada: #{issue.number} — {issue.title}\n🔗 {issue.html_url}"
+                except GithubException as e:
+                    return f"Erro ao criar issue: {e.data.get('message', str(e))}"
+
+            elif action == "GITHUB_LIST_PRS":
+                # param: "owner/repo" ou "owner/repo | state:open|closed|all"
+                parts = [p.strip() for p in param.split("|")]
+                repo_name = parts[0]
+                state = "open"
+                for p in parts[1:]:
+                    if p.startswith("state:"):
+                        state = p.split(":", 1)[1].strip()
+                try:
+                    repo = g.get_repo(repo_name)
+                    prs = list(repo.get_pulls(state=state))[:10]
+                    if not prs:
+                        return f"Nenhum PR {state} em {repo_name}."
+                    lines = [f"🔀 PRs {state} em {repo_name}:"]
+                    for pr in prs:
+                        lines.append(f"  #{pr.number} {pr.title} — @{pr.user.login} ({pr.head.ref} → {pr.base.ref})")
+                    return "\n".join(lines)
+                except GithubException as e:
+                    return f"Erro ao listar PRs: {e.data.get('message', str(e))}"
+
+            elif action == "GITHUB_GET_PR":
+                # param: "owner/repo | número_pr"
+                parts = [p.strip() for p in param.split("|")]
+                if len(parts) < 2:
+                    return "Uso: GITHUB_GET_PR owner/repo | número"
+                try:
+                    repo = g.get_repo(parts[0])
+                    pr = repo.get_pull(int(parts[1]))
+                    files = [f.filename for f in pr.get_files()]
+                    return (
+                        f"🔀 PR #{pr.number}: {pr.title}\n"
+                        f"Estado: {pr.state} | Merge: {'✅' if pr.merged else '❌'}\n"
+                        f"Autor: @{pr.user.login} | {pr.head.ref} → {pr.base.ref}\n"
+                        f"Arquivos modificados ({len(files)}): {', '.join(files[:15])}\n"
+                        f"Descrição: {(pr.body or 'Sem descrição.')[:500]}\n"
+                        f"🔗 {pr.html_url}"
+                    )
+                except GithubException as e:
+                    return f"Erro ao obter PR: {e.data.get('message', str(e))}"
+
+            elif action == "GITHUB_CREATE_COMMENT":
+                # param: "owner/repo | issue_ou_pr_numero | comentário"
+                parts = [p.strip() for p in param.split("|", 2)]
+                if len(parts) < 3:
+                    return "Uso: GITHUB_CREATE_COMMENT owner/repo | número | comentário"
+                try:
+                    repo = g.get_repo(parts[0])
+                    issue = repo.get_issue(int(parts[1]))
+                    comment = issue.create_comment(parts[2])
+                    return f"✅ Comentário adicionado na #{parts[1]}: {comment.html_url}"
+                except GithubException as e:
+                    return f"Erro ao comentar: {e.data.get('message', str(e))}"
+
+            elif action == "GITHUB_GET_FILE":
+                # param: "owner/repo | caminho/arquivo | branch_opcional"
+                parts = [p.strip() for p in param.split("|")]
+                if len(parts) < 2:
+                    return "Uso: GITHUB_GET_FILE owner/repo | caminho/arquivo | branch_opcional"
+                try:
+                    repo = g.get_repo(parts[0])
+                    kwargs = {}
+                    if len(parts) >= 3:
+                        kwargs["ref"] = parts[2]
+                    content = repo.get_contents(parts[1], **kwargs)
+                    decoded = content.decoded_content.decode("utf-8", errors="replace")
+                    return f"📄 {parts[1]} ({content.encoding}):\n```\n{decoded[:3000]}\n```"
+                except GithubException as e:
+                    return f"Erro ao obter arquivo: {e.data.get('message', str(e))}"
+
+            elif action == "GITHUB_LIST_COMMITS":
+                # param: "owner/repo | branch_opcional | limit_opcional"
+                parts = [p.strip() for p in param.split("|")]
+                repo_name = parts[0]
+                sha = parts[1] if len(parts) > 1 else None
+                limit = 10
+                try: limit = int(parts[2]) if len(parts) > 2 else 10
+                except: pass
+                try:
+                    repo = g.get_repo(repo_name)
+                    kwargs = {}
+                    if sha:
+                        kwargs["sha"] = sha
+                    commits = list(repo.get_commits(**kwargs))[:limit]
+                    lines = [f"📝 Commits em {repo_name}{' (' + sha + ')' if sha else ''}:"]
+                    for c in commits:
+                        msg = c.commit.message.split("\n")[0][:70]
+                        lines.append(f"  {c.sha[:7]} — {msg} (@{c.commit.author.name})")
+                    return "\n".join(lines)
+                except GithubException as e:
+                    return f"Erro ao listar commits: {e.data.get('message', str(e))}"
+
+            return f"Ação GitHub desconhecida: {action}"
+
+        return await asyncio.get_event_loop().run_in_executor(None, _run_sync)
 
     async def execute_social_send(self, action: str, param: str) -> str:
         if action == "X_POST":
@@ -2100,6 +2189,15 @@ class MoltyClaw:
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
                         if tool_callback: await tool_callback(f"[{action}]")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+
+                    elif action.startswith("GITHUB_"):
+                        if not silent: console.print(f"\n[info]🐙 Módulo GITHUB ({action}):[/info] {param}")
+                        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                            progress.add_task(description=f"Comunicando com GitHub API...", total=None)
+                            result = await self.execute_github_action(action, param)
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado {action}] -> {result}"})
+                        if tool_callback: await tool_callback(f"[{action}]")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
                         
                     elif action in ["WHATSAPP_SEND", "DISCORD_SEND", "TELEGRAM_SEND", "X_POST", "BLUESKY_POST", "BLUESKY_GET_PROFILE"]:
                         if not silent: 
@@ -2347,6 +2445,16 @@ class MoltyClaw:
             "SPOTIFY_ADD_QUEUE": '"SPOTIFY_ADD_QUEUE" (param: URI)',
             "YOUTUBE_SUMMARIZE": '"YOUTUBE_SUMMARIZE" (param: link)',
             "VOICE_REPLY": '"VOICE_REPLY" (param: "texto de reposta em voz. Opcional: Adicione | ID_DO_USUARIO apenas se quiser mandar ativamente para OUTRA PESSOA. NÃO adicione ID ou plataforma se for apenas responder a conversa atual!")',
+            
+            # GitHub Tools
+            "GITHUB_LIST_REPOS": '"GITHUB_LIST_REPOS" (param: "usuario_opcional") - Lista repositórios públicos/privados acessíveis pelo token.',
+            "GITHUB_LIST_ISSUES": '"GITHUB_LIST_ISSUES" (param: "owner/repo | state:open|closed|all | limit:10") - Lista issues de um repositório.',
+            "GITHUB_CREATE_ISSUE": '"GITHUB_CREATE_ISSUE" (param: "owner/repo | titulo | corpo_opcional") - Cria uma nova issue num repositório.',
+            "GITHUB_LIST_PRS": '"GITHUB_LIST_PRS" (param: "owner/repo | state:open|closed|all") - Lista Pull Requests de um repositório.',
+            "GITHUB_GET_PR": '"GITHUB_GET_PR" (param: "owner/repo | numero_pr") - Obtém detalhes, arquivos alterados e status de um Pull Request.',
+            "GITHUB_CREATE_COMMENT": '"GITHUB_CREATE_COMMENT" (param: "owner/repo | numero_issue_ou_pr | comentario") - Adiciona comentário em uma Issue ou PR.',
+            "GITHUB_GET_FILE": '"GITHUB_GET_FILE" (param: "owner/repo | caminho_arquivo | branch_opcional") - Lê o conteúdo de um arquivo no repositório.',
+            "GITHUB_LIST_COMMITS": '"GITHUB_LIST_COMMITS" (param: "owner/repo | branch_ou_sha_opcional | limit:10") - Lista commits recentes de um repositório.',
             
             # Social Tools
             "WHATSAPP_SEND": '"WHATSAPP_SEND" (param: "numero | opcional texto | opcional caminho arquivo absoluto")',

@@ -25,3 +25,4 @@ questionary
 google-generativeai
 ollama
 requests
+PyGithub

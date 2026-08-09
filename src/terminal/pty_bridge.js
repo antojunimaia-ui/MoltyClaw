@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 // Escolha do shell e argumentos baseado no Windows ou Linux
 const isWin = os.platform() === 'win32';
 const shell = isWin ? 'powershell.exe' : 'bash';
-const shellArgs = isWin ? ['-NoProfile', '-NonInteractive'] : [];
+const shellArgs = isWin ? ['-NoLogo', '-NoExit'] : [];
 
 // Configura o servidor WebSocket na porta 9001
 const wss = new WebSocket.Server({ port: 9001 });
@@ -16,13 +16,19 @@ const MAX_BUFFER = 10000;
 
 // Cria um processo do terminal persistente (reutilizável para reiniciar)
 function spawnPty() {
+    const env = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
     const p = pty.spawn(shell, shellArgs, {
-        name: 'xterm-color',
-        cols: 100,
+        name: 'xterm-256color',
+        cols: 120,
         rows: 30,
         cwd: process.cwd(),
-        env: process.env
+        env: env
     });
+
+    if (isWin) {
+        // Ajusta tabela de código para UTF-8 no Windows
+        p.write('chcp 65001\r\n');
+    }
 
     p.onData((data) => {
         outputBuffer += data;
