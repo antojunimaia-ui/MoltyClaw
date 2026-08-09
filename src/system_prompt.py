@@ -91,7 +91,15 @@ def _build_tool_format_section(is_minimal: bool) -> list[str]:
         "Você só pode chamar UMA ferramenta por turno.",
         "Não misture texto narrativo livre (visível ao usuário) fora do bloco <think> com chamadas de ferramenta no mesmo turno.",
         "",
+        "⛔ FORMATO PROIBIDO — NUNCA use XML nativo, DSML ou qualquer outro schema de tool call:",
+        "   ❌ <tool_calls><invoke name=\"...\"><parameter name=\"param\">...</parameter></invoke></tool_calls>",
+        "   ❌ <DSML|tool_calls>...</DSML|tool_calls>",
+        "   ❌ <function_calls>...</function_calls>",
+        "   ❌ ```json {\"tool\": \"...\"}```",
+        f"   ✅ ÚNICO FORMATO ACEITO: {TOOL_FORMAT_EXAMPLE}",
+        "",
     ]
+
 
 
 def _build_autonomy_section(is_minimal: bool) -> list[str]:

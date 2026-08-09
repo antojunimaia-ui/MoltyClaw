@@ -1748,7 +1748,31 @@ class MoltyClaw:
                                 console.print(f"[dim]>> [Parser] Ferramenta detectada em bloco markdown. Normalizando para ação '{candidate['action']}'...[/dim]")
                     except (json.JSONDecodeError, Exception):
                         pass
-            
+
+            # Fallback: detecta chamadas em formato DSML/XML que alguns modelos emitem
+            # Ex: <tool_calls><invoke name="FS_LIST"><parameter name="param">C:\...</parameter></invoke></tool_calls>
+            #     <DSML|tool_calls><DSML|invoke name="CMD">...</DSML|invoke></DSML|tool_calls>
+            if not tool_match:
+                # Padrão genérico: captura name do invoke e conteúdo do parameter
+                dsml_match = re.search(
+                    r'(?:<[^>]*?invoke[^>]+name=["\']?)([A-Z_]+)["\']?[^>]*>.*?'
+                    r'(?:<[^>]*?parameter[^>]*>)(.*?)(?:</[^>]*?parameter)',
+                    response_chunks, re.DOTALL | re.IGNORECASE
+                )
+                if dsml_match:
+                    try:
+                        action = dsml_match.group(1).strip().upper()
+                        param = re.sub(r'<[^>]+>', '', dsml_match.group(2)).strip()
+                        candidate = {"action": action, "param": param}
+                        class _FakeMatch:
+                            def __init__(self, s): self._s = s
+                            def group(self, n): return self._s
+                        tool_match = _FakeMatch(json.dumps(candidate))
+                        console.print(f"[dim yellow]>> [Parser DSML] Formato XML/DSML detectado e convertido para ação '{action}'.[/dim yellow]")
+                    except Exception:
+                        pass
+
+
             # Adiciona a resposta do assistente no histórico DENTRO de try ANTES das novas chamadas de tool ou do retorno final
             if response_chunks.strip():
                 self.history.append({"role": "assistant", "content": response_chunks})
