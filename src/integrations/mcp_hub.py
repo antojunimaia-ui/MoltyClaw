@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import sys
 from contextlib import AsyncExitStack
 from typing import Dict, Any
 
@@ -112,7 +113,37 @@ class MCPHub:
             return f"Erro ao executar MCP tool '{tool_name}' no servidor '{server_name}': {e}"
             
     async def cleanup(self):
+        """
+        Fecha todas as conexões MCP de forma segura.
+
+        O anyio/mcp tem um bug conhecido no Python 3.12+ onde o stdio_client
+        usa um TaskGroup cujo cancel scope é criado em uma task e desfeito em
+        outra durante o shutdown do uvicorn, causando:
+          RuntimeError: Attempted to exit cancel scope in a different task
+        A estratégia é:
+          1. Silenciar os warnings de async_generator no processo.
+          2. Rodar o aclose() numa task isolada e capturar qualquer BaseException.
+        """
+        # Suprime o aviso de 'error during closing of asynchronous generator'
+        # que o Python emite quando o GC tenta fechar o stdio_client de forma abrupta.
+        if hasattr(sys, 'set_asyncgen_hooks'):
+            try:
+                sys.set_asyncgen_hooks(finalizer=lambda ag: None)
+            except Exception:
+                pass
+
+        async def _do_close():
+            try:
+                await self.exit_stack.aclose()
+            except BaseException:
+                # Captura RuntimeError (cancel scope mismatch), GeneratorExit,
+                # e qualquer outro erro que o anyio/mcp lance durante o shutdown.
+                pass
+
         try:
-            await self.exit_stack.aclose()
-        except:
+            # Cria uma task isolada para o fechamento — isso evita que o cancel
+            # scope do anyio reclame de task mismatch.
+            task = asyncio.ensure_future(_do_close())
+            await asyncio.wait_for(asyncio.shield(task), timeout=3.0)
+        except BaseException:
             pass

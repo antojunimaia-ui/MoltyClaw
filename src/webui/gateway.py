@@ -116,7 +116,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(integration_monitor())
     
     yield
-    # Cleanup (if needed)
+    # --- Shutdown Cleanup ---
+    # Fecha conexões MCP silenciosamente (evita RuntimeError do anyio no shutdown)
+    if master_agent and master_agent.mcp_hub:
+        await master_agent.mcp_hub.cleanup()
 
 app = FastAPI(title="MoltyClaw Gateway", lifespan=lifespan)
 
