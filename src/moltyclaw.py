@@ -499,7 +499,7 @@ class MoltyClaw:
         if os.environ.get("MOLTY_MODE", "private") == "public":
             console.print(f"[warning][{self.name}] Tentativa de uso de CMD intercedida pelo Modo Publico.[/warning]")
             return "Erro: O comando CMD está DESABILITADO no modo PUBLIC (ações de terminal bloqueadas por segurança)."
-            
+
         console.print(f"[info][{self.name}] Terminal (PTY Session):[/info] {command}")
         command = (command or "").strip()
         if not command:
@@ -510,9 +510,7 @@ class MoltyClaw:
         async def _run_once(do_reset: bool):
             """Executa uma tentativa no PTY com marcadores únicos de output.
 
-            Retorna (output_limpo, executou_de_verdade). 'executou_de_verdade'
-            é False quando o shell estava travado num prompt de continuação (>>)
-            e só ECOOU o comando sem executá-lo (marcador aparece 1x em vez de 2x).
+            Retorna (output_limpo, executou_de_verdade).
             """
             import uuid
             marker = f"MOLTYCMD_{uuid.uuid4().hex[:8]}"
@@ -525,13 +523,19 @@ class MoltyClaw:
                     for _ in range(2):
                         await websocket.send(json.dumps({"type": "input", "data": "\x03"}))
                         await asyncio.sleep(0.15)
+                    # Aguarda o shell absorver o Ctrl+C antes de enviar o próximo payload
+                    await asyncio.sleep(0.3)
 
-                # 2) Envia o comando delimitado por marcadores únicos (echo funciona em
-                #    PowerShell, cmd e bash)
-                payload = f"echo {begin_m}\n{command}\necho {end_m}\n"
-                await websocket.send(json.dumps({"type": "input", "data": payload}))
+                # 2) Envia os 3 comandos separados com pequeno delay entre eles.
+                #    No PowerShell -NonInteractive o prompt não é ecoado, então um único
+                #    bloco \n\n\n às vezes chega antes do shell estar pronto para ler.
+                await websocket.send(json.dumps({"type": "input", "data": f"echo {begin_m}\n"}))
+                await asyncio.sleep(0.1)
+                await websocket.send(json.dumps({"type": "input", "data": f"{command}\n"}))
+                await asyncio.sleep(0.1)
+                await websocket.send(json.dumps({"type": "input", "data": f"echo {end_m}\n"}))
 
-                # 3) Lê até encontrar o marcador final (ignora o 'init' replay da ponte)
+                # 3) Lê até encontrar o marcador final
                 output_acc = ""
                 deadline = time.time() + 25.0
                 while time.time() < deadline:
@@ -548,19 +552,28 @@ class MoltyClaw:
                     except Exception:
                         continue
                     if data.get('type') != 'output':
-                        continue  # ignora 'init' (replay do buffer antigo) e outros
+                        continue
                     output_acc += data['data']
-                    if len(output_acc) > 30000:  # teto de segurança por turno
+                    if len(output_acc) > 30000:
                         break
 
                 # 4) Remove códigos ANSI / sequências de escape antes de buscar marcadores
                 clean_acc = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', output_acc)
                 clean_acc = clean_acc.replace('\r', '')
 
-                # 5) Isola apenas o trecho entre os marcadores do comando
+                # 5) Isola o trecho entre os marcadores.
+                #    PowerShell -NonInteractive não ecoa o "echo begin_m", então begin_m
+                #    pode aparecer apenas 1x. Ambos os casos (1x e 2x) são válidos.
                 first_start = clean_acc.find(begin_m)
                 second_start = clean_acc.find(begin_m, first_start + len(begin_m)) if first_start != -1 else -1
-                start_pos = (second_start + len(begin_m)) if second_start != -1 else ((first_start + len(begin_m)) if first_start != -1 else -1)
+
+                if second_start != -1:
+                    start_pos = second_start + len(begin_m)
+                elif first_start != -1:
+                    start_pos = first_start + len(begin_m)
+                else:
+                    start_pos = -1
+
                 end_idx = clean_acc.rfind(end_m)
 
                 if start_pos != -1 and end_idx != -1 and end_idx > start_pos:
@@ -568,8 +581,7 @@ class MoltyClaw:
                     executou = True
                 else:
                     clean = clean_acc.strip()
-                    # Se end_m foi alcançado, o shell definitivamente executou o comando
-                    executou = (end_m in clean_acc) or (start_pos != -1 and end_idx != -1)
+                    executou = (end_m in clean_acc)
 
                 return clean, executou
 
@@ -1787,7 +1799,53 @@ class MoltyClaw:
                         self.history.append({"role": "user", "content": f"[SISTEMA: Resultado CMD] -> {result}"})
                         if tool_callback: await tool_callback(f"[CMD] {param}")
                         return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
-                        
+
+                    elif action == "FS_LIST":
+                        console.print(f"\n[info]📂 Listando Diretório (FS Nativo):[/info] {param or '~'}")
+                        try:
+                            import os as _os
+                            target_path = (_os.path.expanduser(param.strip()) if param and param.strip() else _os.path.expanduser("~"))
+                            if not _os.path.isabs(target_path):
+                                result = f"[FS_LIST] Erro: o caminho deve ser absoluto. Recebido: '{param}'"
+                            elif not _os.path.exists(target_path):
+                                result = f"[FS_LIST] Caminho não encontrado: {target_path}"
+                            else:
+                                entries = []
+                                try:
+                                    with _os.scandir(target_path) as it:
+                                        for entry in it:
+                                            try:
+                                                stat = entry.stat(follow_symlinks=True)
+                                                kind = "DIR " if entry.is_dir(follow_symlinks=True) else "FILE"
+                                                size = f" ({stat.st_size:,} bytes)" if kind == "FILE" else ""
+                                                entries.append((kind, entry.name, size))
+                                            except Exception:
+                                                entries.append(("???", entry.name, ""))
+                                except PermissionError:
+                                    result = f"[FS_LIST] Acesso negado: {target_path}"
+                                    self.history.append({"role": "user", "content": f"[SISTEMA: Resultado FS_LIST] -> {result}"})
+                                    if tool_callback: await tool_callback(f"[FS_LIST] {param}")
+                                    return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+
+                                dirs = sorted([(n, s) for k, n, s in entries if k == "DIR "], key=lambda x: x[0].lower())
+                                files = sorted([(n, s) for k, n, s in entries if k == "FILE"], key=lambda x: x[0].lower())
+                                parent = _os.path.dirname(target_path)
+
+                                lines = [f"📁 {target_path}"]
+                                if parent != target_path:
+                                    lines.append(f"  ⬆️  .. ({parent})")
+                                for name, _ in dirs:
+                                    lines.append(f"  📁 {name}/")
+                                for name, size in files:
+                                    lines.append(f"  📄 {name}{size}")
+                                lines.append(f"\nTotal: {len(dirs)} pasta(s), {len(files)} arquivo(s)")
+                                result = "\n".join(lines)
+                        except Exception as e:
+                            result = f"[FS_LIST] Erro inesperado: {str(e)}"
+                        self.history.append({"role": "user", "content": f"[SISTEMA: Resultado FS_LIST] -> {result}"})
+                        if tool_callback: await tool_callback(f"[FS_LIST] {param}")
+                        return await self.ask(None, is_tool_response=True, silent=silent, stream_callback=stream_callback, tool_callback=tool_callback)
+
                     elif action == "DDG_SEARCH":
                         console.print(f"\n[info]🦆 Executando Busca Nativa ({action}):[/info] {param}")
                         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
@@ -2250,6 +2308,7 @@ class MoltyClaw:
             
             # System Tools
             "CMD": '"CMD" (param: comando de terminal)',
+            "FS_LIST": '"FS_LIST" (param: "caminho_absoluto_opcional") - Lista diretórios e arquivos de um caminho do sistema de arquivos NATIVO, sem precisar do terminal. Mais rápido e mais confiável que CMD para navegação de pastas. Se param vazio, lista o diretório home do usuário.',
             "CANVAS_UPDATE": '"CANVAS_UPDATE" (param: "id_do_artefato | typo (html, markdown, svg, react) | CODE/CONTENT") - Renderiza em tempo real o código/documento num painel visual interativo na Web UI.',
             
             # Email Tools
