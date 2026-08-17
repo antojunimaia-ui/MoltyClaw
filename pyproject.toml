@@ -64,3 +64,7 @@ py-modules = ["start_moltyclaw"]
 
 [tool.setuptools.packages.find]
 include = ["src*"]
+
+[tool.pyright]
+extraPaths = [".", "src"]
+

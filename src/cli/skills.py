@@ -81,11 +81,13 @@ def cli_skill_info(name):
     sys.exit(0)
 
 
-def cli_skill_install(path):
+def cli_skill_install(path_or_url):
     from skills import install_skill
 
-    console.print(f"[bold cyan]📥 Instalando skill:[/bold cyan] {path}")
-    success, msg = install_skill(path)
+    is_url = path_or_url.startswith("http://") or path_or_url.startswith("https://")
+    label = "Baixando e instalando skill de URL" if is_url else "Instalando skill"
+    console.print(f"[bold cyan]📥 {label}:[/bold cyan] {path_or_url}")
+    success, msg = install_skill(path_or_url)
     if success:
         console.print(f"[bold green]✅ {msg}[/bold green]")
     else:
@@ -132,16 +134,24 @@ def cli_skill_package(path):
 def cli_skill():
     """Dispatcher para subcomandos de skills."""
     if len(sys.argv) < 3:
-        console.print("[bold red]Uso: moltyclaw skill list/info/install/uninstall/create/package <NOME|PATH>[/bold red]")
+        console.print("[bold red]Uso: moltyclaw skill <list|info|install|create|package> [argumentos][/bold red]")
+        console.print("[dim]Exemplo URL: moltyclaw skill install --url https://exemplo.com/skill.md[/dim]")
         sys.exit(1)
 
     sub = sys.argv[2].lower()
-    if sub == "list":
+
+    # Suporte direto a moltyclaw skill --url <URL>
+    if sub == "--url" and len(sys.argv) >= 4:
+        cli_skill_install(sys.argv[3])
+    elif sub == "list":
         cli_skill_list()
     elif sub == "info" and len(sys.argv) >= 4:
         cli_skill_info(sys.argv[3])
     elif sub == "install" and len(sys.argv) >= 4:
-        cli_skill_install(sys.argv[3])
+        if sys.argv[3] == "--url" and len(sys.argv) >= 5:
+            cli_skill_install(sys.argv[4])
+        else:
+            cli_skill_install(sys.argv[3])
     elif sub == "uninstall" and len(sys.argv) >= 4:
         cli_skill_uninstall(sys.argv[3])
     elif sub == "create" and len(sys.argv) >= 4:
@@ -149,5 +159,5 @@ def cli_skill():
     elif sub == "package" and len(sys.argv) >= 4:
         cli_skill_package(sys.argv[3])
     else:
-        console.print("[bold red]Uso: moltyclaw skill list/info/install/uninstall/create/package <NOME|PATH>[/bold red]")
+        console.print("[bold red]Uso: moltyclaw skill <list|info|install [--url]|create|package> [argumentos][/bold red]")
         sys.exit(1)

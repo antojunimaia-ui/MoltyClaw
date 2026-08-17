@@ -294,17 +294,98 @@ def find_skill_by_name(entries: list[SkillEntry], name: str) -> Optional[SkillEn
 
 # ── Instalação / Desinstalação ────────────────────────────────────────────────
 
+def install_skill_from_url(url: str) -> tuple[bool, str]:
+    """
+    Baixa e instala uma skill a partir de uma URL remota.
+    Pode ser um arquivo SKILL.md direto ou um pacote .skill (zip).
+    """
+    import urllib.request
+    import urllib.error
+    import tempfile
+    from urllib.parse import urlparse
+
+    os.makedirs(MANAGED_SKILLS_DIR, exist_ok=True)
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "MoltyClaw-Skill-Installer/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            content_bytes = response.read()
+
+        parsed_url = urlparse(url)
+        url_path = parsed_url.path
+        filename = os.path.basename(url_path)
+
+        # Se for um pacote .skill / zip
+        if filename.endswith(".skill") or filename.endswith(".zip"):
+            with tempfile.NamedTemporaryFile(suffix=".skill", delete=False) as tmp:
+                tmp.write(content_bytes)
+                tmp_path = tmp.name
+
+            try:
+                success, msg = install_skill(tmp_path)
+                return success, msg
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+
+        # Caso seja arquivo Markdown (skill.md, SKILL.md, etc.) ou texto cru
+        try:
+            content_text = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return False, "O conteúdo baixado da URL não é um texto UTF-8 válido nem um pacote .skill."
+
+        meta = _parse_frontmatter(content_text)
+        skill_name = meta.get("name")
+
+        if not skill_name:
+            # Fallback: extrair o nome da URL (ex: https://site.com/skills/weather/skill.md -> weather)
+            parts = [p for p in url_path.strip("/").split("/") if p]
+            if len(parts) > 1 and parts[-1].lower().endswith(".md"):
+                skill_name = parts[-2]
+            elif parts:
+                skill_name = os.path.splitext(parts[-1])[0]
+            else:
+                skill_name = "downloaded-skill"
+
+        # Sanitiza o nome do diretório
+        skill_name = re.sub(r"[^a-zA-Z0-9_\-]", "-", skill_name).strip("-").lower()
+        if not skill_name:
+            skill_name = "custom-skill"
+
+        dest_dir = os.path.join(MANAGED_SKILLS_DIR, skill_name)
+        os.makedirs(dest_dir, exist_ok=True)
+
+        dest_file = os.path.join(dest_dir, "SKILL.md")
+        with open(dest_file, "w", encoding="utf-8") as f:
+            f.write(content_text)
+
+        return True, f"Skill '{skill_name}' baixada e instalada em {dest_dir}"
+
+    except urllib.error.URLError as e:
+        return False, f"Erro ao acessar URL: {e.reason if hasattr(e, 'reason') else e}"
+    except Exception as e:
+        return False, f"Erro ao baixar skill da URL: {e}"
+
+
 def install_skill(source_path: str) -> tuple[bool, str]:
     """
     Instala uma skill no diretório managed (~/.moltyclaw/skills/).
 
     Aceita:
+      - URL http:// ou https://
       - Caminho para uma pasta contendo SKILL.md
       - Caminho para um arquivo .skill (zip)
 
     Retorna (sucesso, mensagem).
     """
     os.makedirs(MANAGED_SKILLS_DIR, exist_ok=True)
+
+    # Caso 0: URL
+    if source_path.startswith("http://") or source_path.startswith("https://"):
+        return install_skill_from_url(source_path)
 
     # Caso 1: arquivo .skill (zip)
     if source_path.endswith(".skill") and os.path.isfile(source_path):

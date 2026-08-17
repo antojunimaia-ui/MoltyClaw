@@ -53,38 +53,36 @@ def install_moltyclaw_path():
 
 
 def _show_help():
-    console.print(Panel.fit(
-        "[bold cyan]🚀 COMANDOS GLOBAIS DO MOLTYCLAW 🚀[/bold cyan]\n\n"
-        "[dim]Modificadores globais: use [bold green]-m public[/bold green] (desativa terminal) ou [bold green]-m private[/bold green] antes de qualquer comando.[/dim]\n"
-        "[green]moltyclaw[/green]                             : Abre o menu interativo padrão\n"
-        "[green]moltyclaw web [--share][/green]               : Abre a WebUI imediatamente (exponha na rede com --share)\n"
-        "[green]moltyclaw gateway[/green]                     : Inicia o Gateway FastAPI (só WebUI, sem integrações)\n"
-        "[green]moltyclaw gateway --with <lista>[/green]      : Inicia o Gateway e já sobe as integrações indicadas\n"
-        "[dim]                                          Exemplos: --with discord,telegram   --with all[/dim]\n"
-        "[green]moltyclaw gateway --setup[/green]             : Abre seletor interativo de integrações antes de subir\n"
-        "[green]moltyclaw gateway [--share][/green]           : Expõe o Gateway na rede (0.0.0.0) ao combinar com --share\n"
-        "[green]moltyclaw start <ALVO>[/green]              : Inicia bots (discord, telegram, whatsapp, twitter, all) silenciosamente\n"
-        "[green]moltyclaw update[/green]                      : Sincroniza com as atualizações mais recentes e instala libs via pip\n"
-        "[green]moltyclaw --config[/green] ou [green]-c[/green]              : Abre seu arquivo .env no Bloco de Notas para edição amigável\n"
-        "[green]moltyclaw doctor[/green]                      : Executa um diagnóstico de dependências (.env, Python, Node)\n"
-        "[green]moltyclaw config set <CHAVE> <VALOR>[/green]  : Cria ou altera uma variável do `.env` por comando de linha\n"
-        "[green]moltyclaw config get <CHAVE>[/green]          : Lê e devolve o valor de uma secret no seu `.env`\n"
-        "[green]moltyclaw organize <PASTA>[/green]            : Organiza arquivos de uma bagunça instantaneamente usando LLM\n"
-        "[green]moltyclaw organize --undo <PASTA>[/green]     : Desfaz a última organização usando o manifesto salvo\n"
-        "[green]moltyclaw research \"<TEMA>\"[/green]           : Puxa um resumo web consolidado e rápido pro seu prompt\n"
-        "[green]moltyclaw onboard[/green]                       : Inicia o assistente de configuração (Setup Wizard) guiado\n"
-        "[green]moltyclaw reset memory[/green]                : Engatilha o protocolo de amnésia do agente esvaziando a MEMORY\n"
-        "[green]moltyclaw mcp list/install/on/off[/green]      : Gerenciamento de Servidores MCP externos\n"
-        "[green]moltyclaw provider[/green]                     : Seleciona e configura o provider de IA (Mistral, Gemini, OpenRouter, Ollama)\n"
-        "[green]moltyclaw model[/green]                        : Seleciona o modelo de IA para o provider atual\n"
-        "[green]moltyclaw skill list/info/create[/green]      : Gerenciamento do Sistema de Skills modulares\n"
-        "[green]moltyclaw skill install <PATH>[/green]        : Instala uma skill a partir de pasta ou arquivo .skill\n"
-        "[green]moltyclaw skill info <NOME>[/green]           : Detalhes, requisitos e manual de uma skill\n"
-        "[green]moltyclaw browser headless=true/false[/green] : Ativa/Desativa o modo invisível do navegador\n"
-        "[green]moltyclaw browser on/off[/green]              : Liga ou Desliga completamente o módulo de navegação\n"
-        "[green]moltyclaw --help[/green] ou [green]-h[/green]                : Exibe este menu de ajuda",
-        border_style="cyan"
-    ))
+    help_text = """
+[bold #ff6600]USO:[/bold #ff6600]
+  [bold #ff8800]moltyclaw[/bold #ff8800] [dim][flags][/dim] <comando> [dim][argumentos][/dim]
+
+[bold #ff7700]FLAGS GLOBAIS:[/bold #ff7700]
+  [#ffa500]-m, --mode[/#ffa500] <public|private>   Define escopo de acesso [dim](public silencia terminal)[/dim]
+  [#ffa500]-h, --help[/#ffa500]                     Exibe este menu de ajuda
+
+[bold #ff7700]COMANDOS PRINCIPAIS:[/bold #ff7700]
+  [#ffa500]web[/#ffa500]        Inicia a WebUI local imediatamente [dim](--share para rede)[/dim]
+  [#ffa500]gateway[/#ffa500]    Inicia o Gateway API [dim](--with <alvos>, --setup, --share)[/dim]
+  [#ffa500]start[/#ffa500]      Sobe integrações [dim](discord, telegram, whatsapp, twitter, all)[/dim]
+
+[bold #ff7700]CONFIGURAÇÃO & IA:[/bold #ff7700]
+  [#ffa500]provider[/#ffa500]   Configura provedor de IA [dim](Gemini, Mistral, Ollama, OpenRouter)[/dim]
+  [#ffa500]model[/#ffa500]      Seleciona o modelo ativo do provedor
+  [#ffa500]config[/#ffa500]     Gerencia variáveis do .env [dim](get, set, --config)[/dim]
+  [#ffa500]onboard[/#ffa500]    Assistente interativo de primeiro uso
+  [#ffa500]doctor[/#ffa500]     Diagnóstico e validação de saúde do ambiente
+
+[bold #ff7700]EXTENSÕES & FERRAMENTAS:[/bold #ff7700]
+  [#ffa500]skill[/#ffa500]      Gerenciamento de skills [dim](list, info, create, install [--url])[/dim]
+  [#ffa500]mcp[/#ffa500]        Servidores MCP [dim](list, install, on, off)[/dim]
+  [#ffa500]organize[/#ffa500]   Organização inteligente de arquivos via IA [dim](--undo)[/dim]
+  [#ffa500]research[/#ffa500]   Pesquisa rápida na web com síntese contextual
+  [#ffa500]browser[/#ffa500]    Navegador automatizado [dim](on, off, headless)[/dim]
+  [#ffa500]reset[/#ffa500]      Protocolo de reset [dim](reset memory)[/dim]
+  [#ffa500]update[/#ffa500]     Sincroniza com git e atualiza dependências
+"""
+    console.print(help_text)
     sys.exit(0)
 
 
