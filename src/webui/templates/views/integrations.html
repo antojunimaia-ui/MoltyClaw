@@ -1,0 +1,110 @@
+<!-- Integrations View -->
+<div id="view-integrations" class="view-content" style="display: none;">
+    <header class="main-header">
+        <div class="header-left">
+            <h1 class="page-title">Integrations</h1>
+            <p class="page-subtitle">Manage background connections to external platforms.</p>
+        </div>
+    </header>
+
+    <div class="integrations-container">
+        <!-- WhatsApp -->
+        <div class="integration-card" id="card-whatsapp">
+            <i class="fa-brands fa-whatsapp int-icon" style="color:#25D366"></i>
+            <div class="int-info">
+                <h3>WhatsApp</h3>
+                <p>Bridge Node.js</p>
+                <div class="int-active-agents" id="active-whatsapp"></div>
+            </div>
+            <div class="int-controls">
+                <select class="agent-select-small" id="select-whatsapp"
+                    title="Select agent for WhatsApp">
+                    <option value="MoltyClaw">MoltyClaw</option>
+                </select>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-whatsapp"
+                        onchange="toggleIntegration('whatsapp')">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Discord -->
+        <div class="integration-card" id="card-discord">
+            <i class="fa-brands fa-discord int-icon" style="color:#5865F2"></i>
+            <div class="int-info">
+                <h3>Discord</h3>
+                <p>Bot autônomo</p>
+                <div class="int-active-agents" id="active-discord"></div>
+            </div>
+            <div class="int-controls">
+                <select class="agent-select-small" id="select-discord" title="Select agent for Discord">
+                    <option value="MoltyClaw">MoltyClaw</option>
+                </select>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-discord" onchange="toggleIntegration('discord')">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Telegram -->
+        <div class="integration-card" id="card-telegram">
+            <i class="fa-brands fa-telegram int-icon" style="color:#229ED9"></i>
+            <div class="int-info">
+                <h3>Telegram</h3>
+                <p>Bot de Chat</p>
+                <div class="int-active-agents" id="active-telegram"></div>
+            </div>
+            <div class="int-controls">
+                <select class="agent-select-small" id="select-telegram"
+                    title="Select agent for Telegram">
+                    <option value="MoltyClaw">MoltyClaw</option>
+                </select>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-telegram"
+                        onchange="toggleIntegration('telegram')">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Twitter -->
+        <div class="integration-card" id="card-twitter">
+            <i class="fa-brands fa-x-twitter int-icon" style="color:#000000"></i>
+            <div class="int-info">
+                <h3>X (Twitter)</h3>
+                <p>Bot Stealth</p>
+                <div class="int-active-agents" id="active-twitter"></div>
+            </div>
+            <div class="int-controls">
+                <select class="agent-select-small" id="select-twitter" title="Select agent for Twitter">
+                    <option value="MoltyClaw">MoltyClaw</option>
+                </select>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-twitter" onchange="toggleIntegration('twitter')">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Bluesky -->
+        <div class="integration-card" id="card-bluesky">
+            <i class="fa-brands fa-bluesky int-icon" style="color:#0085ff"></i>
+            <div class="int-info">
+                <h3>Bluesky</h3>
+                <p>AT Protocol</p>
+                <div class="int-active-agents" id="active-bluesky"></div>
+            </div>
+            <div class="int-controls">
+                <select class="agent-select-small" id="select-bluesky" title="Select agent for Bluesky">
+                    <option value="MoltyClaw">MoltyClaw</option>
+                </select>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-bluesky" onchange="toggleIntegration('bluesky')">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+</div>

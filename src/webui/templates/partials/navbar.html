@@ -1,0 +1,40 @@
+<!-- Top Navbar -->
+<header class="navbar">
+    <div class="navbar-left">
+        <div class="navbar-brand">
+            <span class="brand-title">MOLTYCLAW</span>
+            <span class="brand-subtitle">GATEWAY DASHBOARD</span>
+        </div>
+    </div>
+    <div class="navbar-right">
+        <div class="status-indicator">
+            <span class="status-badge ready" id="agent-status-nav">
+                <i class="fa-solid fa-circle"></i> Health OK
+            </span>
+        </div>
+        <div class="agent-selector-chat" style="padding: 4px 10px;">
+            <i class="fa-solid fa-robot" style="color: var(--accent);"></i>
+            <select id="chat-agent-select-nav" class="agent-select-small all-agents-select"
+                onchange="updateChatAgent()" title="Select your main agent">
+                <option value="MoltyClaw">MoltyClaw</option>
+            </select>
+        </div>
+        <div class="theme-switch-container">
+            <div class="theme-toggle" id="theme-toggle">
+                <button class="theme-btn active" data-theme="light" title="Light Mode">
+                    <i class="fa-solid fa-sun"></i>
+                </button>
+                <button class="theme-btn" data-theme="dark" title="Dark Mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+                <button class="theme-btn" data-theme="system" title="System Preference">
+                    <i class="fa-solid fa-desktop"></i>
+                </button>
+                <div class="theme-slider"></div>
+            </div>
+        </div>
+        <button class="nav-toggle-btn" id="panel-toggle" onclick="toggleRightPanel()" title="Toggle Panel">
+            <i class="fa-solid fa-table-columns"></i>
+        </button>
+    </div>
+</header>

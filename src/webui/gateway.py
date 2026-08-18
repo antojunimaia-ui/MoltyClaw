@@ -219,7 +219,7 @@ async def index(request: Request):
 
 @app.get("/api/status")
 async def get_status():
-    return {"ready": ready}
+    return {"ready": ready, "ws": True}
 
 @app.get("/api/sessions")
 async def get_sessions(authorized: bool = Depends(verify_token)):

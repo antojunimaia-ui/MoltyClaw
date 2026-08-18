@@ -1,0 +1,55 @@
+<!-- Scheduler View -->
+<div id="view-heartbeat" class="view-content" style="display: none;">
+    <header class="main-header">
+        <div class="header-left">
+            <h1 class="page-title">Scheduler (Cron)</h1>
+            <p class="page-subtitle">Agende batidas de consciência ou tarefas específicas para seu
+                agente monitorar o mundo.</p>
+        </div>
+    </header>
+
+    <div class="scheduler-container"
+        style="padding: 20px 40px; display: grid; grid-template-columns: 1fr 350px; gap: 24px; align-items: start;">
+
+        <!-- Lista de Jobs -->
+        <div class="jobs-column">
+            <h3 style="margin-bottom: 16px;">Ciclos Ativos</h3>
+            <div id="scheduler-jobs-list" style="display: flex; flex-direction: column; gap: 16px;">
+                <!-- Preenchido via JS -->
+            </div>
+        </div>
+
+        <!-- Formulário de Criação -->
+        <div class="form-column">
+            <div class="card">
+                <h3 style="margin-bottom: 16px;">Novo Agendamento</h3>
+                <div class="form-group">
+                    <label>Nome / Identificador</label>
+                    <input type="text" id="sched-name" placeholder="Ex: monitor_noticias">
+                </div>
+                <div class="form-group">
+                    <label>Agente Responsável</label>
+                    <select id="sched-agent" class="all-agents-select">
+                        <option value="MoltyClaw">MoltyClaw</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Intervalo / Expressão Cron</label>
+                    <input type="text" id="sched-cron" placeholder="Ex: */10 * * * * (a cada 10 min)">
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">Formato padrão do cron: minuto hora dia mês dia-da-semana</small>
+                </div>
+                <div class="form-group">
+                    <label>Prompt / Instrução da Ação</label>
+                    <textarea id="sched-prompt"
+                        placeholder="O que o agente deve fazer? Ex: Checar e-mails e resumir os mais importantes."
+                        style="height: 100px;"></textarea>
+                </div>
+
+                <button class="btn primary" style="width: 100%; margin-top: 16px;"
+                    onclick="addSchedulerJob()">
+                    <i class="fa-solid fa-plus"></i> Criar Tarefa
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

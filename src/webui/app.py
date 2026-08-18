@@ -14,10 +14,15 @@ log.setLevel(logging.ERROR) # Silenciar spams do flask no console
 
 # Adiciona o diretório base para ler os imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from agent_hub import get_hub
 import skills
 from rich.console import Console
 from initializer import MOLTY_DIR
+try:
+    from env_manager import EnvManager
+except ImportError:
+    from src.webui.env_manager import EnvManager
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 console = Console()
@@ -59,7 +64,7 @@ def index():
 
 @app.route("/api/status", methods=["GET"])
 def status():
-    return jsonify({"ready": hub.ready})
+    return jsonify({"ready": hub.ready, "ws": False})
 
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
@@ -226,7 +231,6 @@ def stop_integration(name, agent_id="MoltyClaw"):
 @app.route("/api/integrations", methods=["GET"])
 def get_integrations():
     """Retorna o status de quais integrações estão ativas e quais estão configuradas."""
-    from .env_manager import EnvManager
     env_mgr = EnvManager()
     
     active = hub.get_active_integrations()
@@ -248,7 +252,6 @@ def get_integrations():
 @app.route("/api/integrations/<platform>/config", methods=["GET"])
 def get_integration_config(platform):
     """Retorna a configuração atual de uma integração (com tokens mascarados)"""
-    from .env_manager import EnvManager
     env_mgr = EnvManager()
     config = env_mgr.get_integration_config(platform)
     return jsonify(config)
@@ -256,7 +259,6 @@ def get_integration_config(platform):
 @app.route("/api/integrations/<platform>/config", methods=["POST"])
 def save_integration_config(platform):
     """Salva a configuração de uma integração no .env"""
-    from .env_manager import EnvManager
     data = request.json
     fields = data.get("fields", {})
     

@@ -1,0 +1,43 @@
+<!-- Chat View -->
+<div id="view-chat" class="view-content active">
+    <div class="chat-container" id="chat-container">
+        <div class="chat-empty-state" id="chat-empty-state">
+            <pre class="chat-ascii" aria-hidden="true">
+███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗
+████╗ ████║██╔═══██╗██║  ╚══██╔══╝╚██╗ ██╔╝██╔════╝██║     ██╔══██╗██║    ██║
+██╔████╔██║██║   ██║██║     ██║    ╚████╔╝ ██║     ██║     ███████║██║ █╗ ██║
+██║╚██╔╝██║██║   ██║██║     ██║     ╚██╔╝  ██║     ██║     ██╔══██║██║███╗██║
+██║ ╚═╝ ██║╚██████╔╝███████╗██║      ██║   ╚██████╗███████╗██║  ██║╚███╔███╔╝
+╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝      ╚═╝    ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝</pre>
+            <p class="chat-empty-hint">Send a message to start the session</p>
+        </div>
+    </div>
+
+    <div class="prompt-box-area">
+        <div class="prompt-input-box" id="prompt-box">
+            <textarea
+                id="message-input"
+                class="prompt-textarea"
+                placeholder="Message MoltyClaw..."
+                rows="1"
+            ></textarea>
+            <div class="prompt-box-footer">
+                <div class="prompt-box-left">
+                    <input type="file" id="fileAttachment" style="display:none;" />
+                    <button class="prompt-icon-btn" onclick="document.getElementById('fileAttachment').click()" title="Attach file">
+                        <i class="fa-solid fa-paperclip"></i>
+                    </button>
+                    <button class="prompt-icon-btn" onclick="clearSession()" title="New session">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                </div>
+                <div class="prompt-box-right">
+                    <button id="send-btn" class="prompt-send-btn" onclick="sendMessage()" title="Send (Enter)">
+                        <i class="fa-solid fa-arrow-up"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <p class="prompt-hint">↵ to send &nbsp;·&nbsp; Shift+↵ for new line</p>
+    </div>
+</div>

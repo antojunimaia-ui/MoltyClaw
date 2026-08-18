@@ -3,9 +3,17 @@ MoltyClaw — Environment Manager
 Gerencia leitura e escrita segura do arquivo .env
 """
 import os
+import sys
 import re
 from typing import Dict, Optional, List
-from initializer import MOLTY_DIR
+
+try:
+    from initializer import MOLTY_DIR
+except ImportError:
+    try:
+        from src.initializer import MOLTY_DIR
+    except ImportError:
+        MOLTY_DIR = os.path.expanduser("~/.moltyclaw")
 
 
 class EnvManager:

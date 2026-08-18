@@ -1205,29 +1205,70 @@ async function toggleIntegration(name) {
 // Initial fetch to sync states
 fetchIntegrations();
 
-// --- WebSocket for Real-time Status ---
-function setupStatusWS() {
-    const token = getAuthToken();
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws${token ? `?token=${token}` : ''}`;
-    const ws = new WebSocket(wsUrl);
+// --- WebSocket / Polling for Real-time Status ---
+let wsPollingInterval = null;
 
-    ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'integrations_status') {
-            console.log("WebSocket Status Update:", msg.data);
-            renderIntegrations(msg.data);
+async function setupStatusWS() {
+    try {
+        const res = await fetchWithAuth('/api/status');
+        if (res.ok) {
+            const data = await res.json();
+            // Se o backend explicitamente não suportar WS (Flask simples)
+            if (data.ws === false) {
+                if (!wsPollingInterval) {
+                    wsPollingInterval = setInterval(fetchIntegrations, 10000);
+                }
+                return;
+            }
         }
-    };
+    } catch (e) {
+        // Se a chamada de status falhar, usa polling
+        if (!wsPollingInterval) {
+            wsPollingInterval = setInterval(fetchIntegrations, 10000);
+        }
+        return;
+    }
 
-    ws.onclose = () => {
-        console.warn("WebSocket status connection closed. Retrying in 5s...");
-        setTimeout(setupStatusWS, 5000);
-    };
+    try {
+        const token = getAuthToken();
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws${token ? `?token=${token}` : ''}`;
+        const ws = new WebSocket(wsUrl);
 
-    ws.onerror = (err) => {
-        console.error("WebSocket Status Error:", err);
-    };
+        ws.onopen = () => {
+            if (wsPollingInterval) {
+                clearInterval(wsPollingInterval);
+                wsPollingInterval = null;
+            }
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'integrations_status') {
+                    renderIntegrations(msg.data);
+                }
+            } catch (e) {
+                console.warn("WS message parse error:", e);
+            }
+        };
+
+        ws.onclose = () => {
+            if (!wsPollingInterval) {
+                wsPollingInterval = setInterval(fetchIntegrations, 10000);
+            }
+        };
+
+        ws.onerror = () => {
+            if (!wsPollingInterval) {
+                wsPollingInterval = setInterval(fetchIntegrations, 10000);
+            }
+        };
+    } catch (e) {
+        if (!wsPollingInterval) {
+            wsPollingInterval = setInterval(fetchIntegrations, 10000);
+        }
+    }
 }
 setupStatusWS();
 

@@ -1,0 +1,405 @@
+<!-- Agent View -->
+<div id="view-agent" class="view-content" style="display: none;">
+    <div class="agents-layout">
+        <!-- Sidebar -->
+        <section class="card agents-sidebar">
+            <div class="row" style="justify-content: space-between;">
+                <div>
+                    <div class="card-title">Agents</div>
+                    <div class="card-sub" id="agents-count-text">0 configured.</div>
+                </div>
+                <button class="btn btn--sm" onclick="loadAgentList()">Refresh</button>
+            </div>
+            <div class="agent-list" id="agent-list-container" style="margin-top: 12px;">
+                <!-- Populated by JS -->
+            </div>
+        </section>
+
+        <!-- Main Content -->
+        <section class="agents-main">
+            <div id="agent-selection-placeholder">
+                <div class="card">
+                    <div class="card-title">Select an agent</div>
+                    <div class="card-sub">Pick an agent to inspect its workspace and tools.</div>
+                </div>
+            </div>
+
+            <div id="agent-details-container" style="display: none; flex-direction: column; gap: 16px;">
+                <!-- Agent Header -->
+                <section class="card agent-header">
+                    <div class="agent-header-main">
+                        <div class="agent-avatar agent-avatar--lg" id="selected-agent-avatar">
+                            M
+                        </div>
+                        <div>
+                            <div class="card-title" id="selected-agent-name">MoltyClaw</div>
+                            <div class="card-sub" id="selected-agent-subtitle">Agent workspace and routing.</div>
+                        </div>
+                    </div>
+                    <div class="agent-header-meta">
+                        <div class="mono" id="selected-agent-id">moltyclaw</div>
+                        <span class="agent-pill" id="selected-agent-badge" style="display: none;">default</span>
+                    </div>
+                </section>
+
+                <!-- Agent Tabs -->
+                <div class="agent-tabs">
+                    <button class="agent-tab active" id="btn-agent-core"
+                        onclick="switchAgentSegment('core')">Identity & Memory</button>
+                    <button class="agent-tab" id="btn-agent-config"
+                        onclick="switchAgentSegment('config')">Setup</button>
+                    <button class="agent-tab" id="btn-agent-context"
+                        onclick="switchAgentSegment('context')">Context</button>
+                </div>
+
+                <!-- Tab Contents -->
+                <div id="agent-segment-core" class="agent-segment active">
+                    <div class="agent-studio-wrapper">
+                        <!-- Sidebar for files -->
+                        <div class="studio-sidebar">
+                            <div class="studio-file-card active" id="card-soul"
+                                onclick="selectAgentFile('soul')">
+                                <h4>SOUL.md</h4>
+                                <span>Alma do Agente</span>
+                            </div>
+                            <div class="studio-file-card" id="card-identity"
+                                onclick="selectAgentFile('identity')">
+                                <h4>IDENTITY.md</h4>
+                                <span>Identidade do Agente</span>
+                            </div>
+                            <div class="studio-file-card" id="card-user"
+                                onclick="selectAgentFile('user')">
+                                <h4>USER.md</h4>
+                                <span>Perfil do Usuário</span>
+                            </div>
+                            <div class="studio-file-card" id="card-bootstrap"
+                                onclick="selectAgentFile('bootstrap')">
+                                <h4>BOOTSTRAP.md</h4>
+                                <span>Ritual de Despertar</span>
+                            </div>
+                            <div class="studio-file-card" id="card-memory"
+                                onclick="selectAgentFile('memory')">
+                                <h4>MEMORY.md</h4>
+                                <span>Memórias Longas</span>
+                            </div>
+                        </div>
+                        <!-- Main area -->
+                        <div class="studio-main">
+                            <div class="editor-header">
+                                <div class="editor-title">
+                                    <h3 id="current-editor-title">SOUL.md</h3>
+                                    <span id="current-editor-path">~/.moltyclaw/SOUL.md</span>
+                                </div>
+                                <div class="editor-actions">
+                                    <button class="btn btn-primary btn--sm"
+                                        onclick="saveCurrentAgentFile()">Salvar</button>
+                                </div>
+                            </div>
+                            <textarea id="active-editor" class="code-editor"
+                                placeholder="Escreva a alma do seu agente aqui..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="agent-segment-config" class="agent-segment" style="display: none;">
+                    <div class="card" style="width: 100%;">
+                        <div class="form-wrapper">
+                            <div class="form-group">
+                                <label>ID do Agente (Único)</label>
+                                <input type="text" id="agent-form-id" placeholder="Ex: pesquisador_web">
+                            </div>
+                            <div class="form-group">
+                                <label>Nome Visível</label>
+                                <input type="text" id="agent-form-name"
+                                    placeholder="Ex: Molty Pesquisador">
+                            </div>
+                            <div class="form-group">
+                                <label>Descrição / Objetivo</label>
+                                <textarea id="agent-form-description"
+                                    placeholder="O que este agente faz?"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Provedor de IA (LLM)</label>
+                                <select id="agent-form-provider">
+                                    <option value="mistral">Mistral AI (Nativo)</option>
+                                    <option value="gemini">Google Gemini</option>
+                                    <option value="openrouter">OpenRouter (Múltiplos)</option>
+                                    <option value="opencode">OpenCode Zen</option>
+                                    <option value="ollama">Ollama (Local)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Variáveis de Ambiente (.env) - Ex: CHAVE=valor</label>
+                                <textarea id="agent-form-env"
+                                    placeholder="GEMINI_API_KEY=xxx\nOUTRA_KEY=yyy"
+                                    style="height: 100px;"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>🛠️ Tools Nativas Locais</label>
+                                <div class="tools-selector-container">
+                                    <div class="tools-grid">
+                                        <!-- Browser Tools -->
+                                        <div class="tool-category">
+                                            <div class="tool-category-header">
+                                                <i class="fa-solid fa-globe"></i> Navegação Web
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="OPEN_BROWSER">
+                                                    <span class="tool-name">OPEN_BROWSER</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="GOTO">
+                                                    <span class="tool-name">GOTO</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="READ_PAGE">
+                                                    <span class="tool-name">READ_PAGE</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="INSPECT_PAGE">
+                                                    <span class="tool-name">INSPECT_PAGE</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="CLICK">
+                                                    <span class="tool-name">CLICK</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="TYPE">
+                                                    <span class="tool-name">TYPE</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="PRESS_ENTER">
+                                                    <span class="tool-name">PRESS_ENTER</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="SCREENSHOT">
+                                                    <span class="tool-name">SCREENSHOT</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="SCROLL_DOWN">
+                                                    <span class="tool-name">SCROLL_DOWN</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="DDG_SEARCH" checked>
+                                                    <span class="tool-name">DDG_SEARCH</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- System Tools -->
+                                        <div class="tool-category">
+                                            <div class="tool-category-header">
+                                                <i class="fa-solid fa-terminal"></i> Sistema
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="CMD">
+                                                    <span class="tool-name">CMD</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Email Tools -->
+                                        <div class="tool-category">
+                                            <div class="tool-category-header">
+                                                <i class="fa-solid fa-envelope"></i> E-mail
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="READ_EMAILS">
+                                                    <span class="tool-name">READ_EMAILS</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="SEND_EMAIL">
+                                                    <span class="tool-name">SEND_EMAIL</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="DELETE_EMAIL">
+                                                    <span class="tool-name">DELETE_EMAIL</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Media Tools -->
+                                        <div class="tool-category">
+                                            <div class="tool-category-header">
+                                                <i class="fa-solid fa-music"></i> Mídia
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="SPOTIFY_PLAY">
+                                                    <span class="tool-name">SPOTIFY_PLAY</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="SPOTIFY_PAUSE">
+                                                    <span class="tool-name">SPOTIFY_PAUSE</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="SPOTIFY_SEARCH">
+                                                    <span class="tool-name">SPOTIFY_SEARCH</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="YOUTUBE_SUMMARIZE">
+                                                    <span class="tool-name">YOUTUBE_SUMMARIZE</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="VOICE_REPLY">
+                                                    <span class="tool-name">VOICE_REPLY</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Social Tools -->
+                                        <div class="tool-category">
+                                            <div class="tool-category-header">
+                                                <i class="fa-solid fa-share-nodes"></i> Social
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="WHATSAPP_SEND">
+                                                    <span class="tool-name">WHATSAPP_SEND</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="DISCORD_SEND">
+                                                    <span class="tool-name">DISCORD_SEND</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="TELEGRAM_SEND">
+                                                    <span class="tool-name">TELEGRAM_SEND</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="X_POST">
+                                                    <span class="tool-name">X_POST</span>
+                                                </label>
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="BLUESKY_POST">
+                                                    <span class="tool-name">BLUESKY_POST</span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <!-- Memory Tools -->
+                                        <div class="tool-category">
+                                            <div class="tool-category-header">
+                                                <i class="fa-solid fa-brain"></i> Memória
+                                            </div>
+                                            <div class="tool-item">
+                                                <label class="tool-toggle">
+                                                    <input type="checkbox" class="native-tool-check"
+                                                        value="MEMORY_WRITE">
+                                                    <span class="tool-name">MEMORY_WRITE</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="tools-actions">
+                                        <button type="button" class="btn-secondary"
+                                            onclick="selectAllTools(true)"
+                                            style="font-size: 0.8rem; padding: 6px 12px;">
+                                            <i class="fa-solid fa-check-double"></i> Selecionar Todas
+                                        </button>
+                                        <button type="button" class="btn-secondary"
+                                            onclick="selectAllTools(false)"
+                                            style="font-size: 0.8rem; padding: 6px 12px;">
+                                            <i class="fa-solid fa-xmark"></i> Desmarcar Todas
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>🔌 Servidores MCP</label>
+                                <div class="mcp-selector-container" id="mcp-tools-selector">
+                                    <div class="mcp-loading">
+                                        <i class="fa-solid fa-circle-notch fa-spin"></i> Carregando
+                                        servidores MCP...
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn-primary" onclick="saveAgentConfig()"
+                                    style="flex: 1; margin-top: 15px;">Salvar Sub-Agente</button>
+                                <button class="btn-secondary" id="btn-delete-agent"
+                                    onclick="deleteAgent()"
+                                    style="margin-top: 15px; border-color: #ef4444; color: #ef4444; display:none;">Excluir</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="agent-segment-context" class="agent-segment" style="display: none;">
+                    <div class="card" style="width: 100%;">
+                        <div class="card-title">Context Management</div>
+                        <div class="card-sub">Import or export your agent's learned context.</div>
+                        <div class="row" style="margin-top: 20px;">
+                            <button class="btn" onclick="importContext()">Import Context</button>
+                            <button class="btn" onclick="exportContext()">Export Context</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>

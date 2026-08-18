@@ -1,0 +1,57 @@
+<!-- Routing Tab -->
+<div id="view-routing" class="view-content" style="display: none;">
+    <div class="view-header">
+        <h2><i class="fa-solid fa-route"></i> Routing Management (OpenClaw Style)</h2>
+        <p>Configure which agent responds to specific channels, servers or peers.</p>
+    </div>
+
+    <div class="routing-container">
+        <div class="routing-form card">
+            <h3>Add New Binding</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Platform</label>
+                    <select id="route-platform" title="Select platform">
+                        <option value="discord">Discord</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="whatsapp">WhatsApp</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Agent</label>
+                    <select id="route-agent" title="Select agent" class="all-agents-select">
+                        <option value="MoltyClaw">MoltyClaw</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Guild/Chat ID (Optional)</label>
+                    <input type="text" id="route-guild" placeholder="Server ID" title="Enter Server ID">
+                </div>
+                <div class="form-group">
+                    <label>Peer/User ID (Optional)</label>
+                    <input type="text" id="route-peer" placeholder="User ID" title="Enter User ID">
+                </div>
+            </div>
+            <button class="btn-primary" onclick="addBinding()" style="margin-top: 15px;">
+                <i class="fa-solid fa-plus"></i> Add Binding
+            </button>
+        </div>
+
+        <div class="routing-list card">
+            <h3>Active Bindings</h3>
+            <table class="routing-table">
+                <thead>
+                    <tr>
+                        <th>Platform</th>
+                        <th>Agent</th>
+                        <th>Match Context</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="bindings-list">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

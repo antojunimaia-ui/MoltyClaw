@@ -1,0 +1,29 @@
+<!-- Right Panel -->
+<aside class="right-panel" id="right-panel">
+    <!-- Tab bar -->
+    <div class="rp-tabbar">
+        <button class="rp-tab active" id="rp-tab-integrations" onclick="switchRightTab('integrations')">
+            <i class="fa-solid fa-plug"></i> Integrations
+        </button>
+        <button class="rp-tab" id="rp-tab-agent" onclick="switchRightTab('agent')">
+            <i class="fa-solid fa-robot"></i> Agent
+        </button>
+        <button class="rp-tab" id="rp-tab-mcp" onclick="switchRightTab('mcp')">
+            <i class="fa-solid fa-server"></i> MCP
+        </button>
+        <button class="rp-tab" id="rp-tab-skills" onclick="switchRightTab('skills')">
+            <i class="fa-solid fa-puzzle-piece"></i> Skills
+        </button>
+        <button class="rp-tab" id="rp-tab-routing" onclick="switchRightTab('routing')">
+            <i class="fa-solid fa-route"></i> Routing
+        </button>
+        <button class="rp-tab" id="rp-tab-heartbeat" onclick="switchRightTab('heartbeat')">
+            <i class="fa-solid fa-clock"></i> Scheduler
+        </button>
+        <button class="rp-close" onclick="toggleRightPanel()" title="Close panel">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+    <!-- Tab content area — views are moved here via JS -->
+    <div class="rp-body" id="rp-body"></div>
+</aside>
