@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MoltyClaw Gateway Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=14">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.0/css/all.min.css">
     <!-- Marked.js for markdown rendering -->
@@ -698,8 +698,7 @@
                         </div>
                     </header>
 
-                    <div class="mcp-grid" id="mcp-grid"
-                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                    <div class="mcp-grid" id="mcp-grid">
                         <!-- Preenchido via JS -->
                     </div>
                 </div>
@@ -721,7 +720,7 @@
                         </div>
                     </header>
 
-                    <div style="padding: 0 40px 20px 40px;">
+                    <div class="skills-view-body" style="padding: 0 40px 20px 40px;">
                         <div class="filters-bar" style="display: flex; gap: 10px; margin-bottom: 20px;">
                             <div class="search-wrapper" style="flex: 1; position: relative;">
                                 <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 12px; color: #94a3b8;"></i>
@@ -947,7 +946,7 @@
         </div>
 
         <!-- Script at the bottom -->
-        <script src="{{ url_for('static', path='script.js') }}?v=7"></script>
+        <script src="{{ url_for('static', filename='script.js') }}?v=12"></script>
 </body>
 
 </html>

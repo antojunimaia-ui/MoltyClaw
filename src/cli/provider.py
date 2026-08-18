@@ -8,6 +8,11 @@ import json
 from . import console, MOLTY_DIR, Panel, Prompt, HAS_QUESTIONARY, MOLTY_STYLE, config_set
 
 try:
+    import questionary
+except ImportError:
+    questionary = None
+
+try:
     from rich.table import Table
 except ImportError:
     pass
@@ -28,6 +33,59 @@ def _fetch_kodacloud_models():
             "mistral-small-2503", "codestral-2501", "devstral-medium-2507",
             "magistral-medium-2507", "meta-llama/llama-3.3-70b-instruct:free",
         ]
+
+
+def _fetch_gemini_models(api_key: str):
+    """Busca modelos disponíveis da API do Google Gemini em tempo real."""
+    import urllib.request
+    import urllib.error
+
+    GEMINI_FALLBACK = [
+        ("gemini-2.5-flash",         "Flash — Rápido e gratuito"),
+        ("gemini-2.5-flash-lite",     "Flash Lite — Ultra rápido"),
+        ("gemini-2.5-pro",            "Pro — Alta capacidade"),
+        ("gemini-2.0-flash",          "Flash 2.0"),
+        ("gemini-2.0-flash-lite",     "Flash Lite 2.0"),
+    ]
+
+    if not api_key:
+        return GEMINI_FALLBACK
+
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}&pageSize=100"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode())
+
+        results = []
+        for m in data.get("models", []):
+            # Filtra somente modelos que suportam generateContent
+            if "generateContent" not in m.get("supportedGenerationMethods", []):
+                continue
+            model_id = m["name"].replace("models/", "")
+            display = m.get("displayName", model_id)
+            description = m.get("description", display)
+            # Encurta descrições longas
+            if len(description) > 50:
+                description = description[:47] + "..."
+            results.append((model_id, description))
+
+        return results if results else GEMINI_FALLBACK
+
+    except Exception as e:
+        console.print(f"[dim yellow]⚠ Não foi possível buscar modelos Gemini ({e}). Usando lista de fallback.[/dim yellow]")
+        return GEMINI_FALLBACK
+
+
+def _read_env_key(env_path: str, key: str) -> str:
+    """Lê o valor de uma chave do arquivo .env sem dependências externas."""
+    if not os.path.exists(env_path):
+        return ""
+    with open(env_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.startswith(key + "="):
+                return line.split("=", 1)[1].strip()
+    return ""
 
 
 def cli_provider():
@@ -185,12 +243,7 @@ def cli_model():
         },
         "gemini": {
             "name": "Google Gemini",
-            "models": [
-                ("gemini-1.5-flash",    "Rápido e gratuito"),
-                ("gemini-1.5-flash-8b", "Ultra rápido"),
-                ("gemini-1.5-pro",      "Alta capacidade"),
-                ("gemini-2.0-flash-exp","Experimental v2.0"),
-            ]
+            "models": _fetch_gemini_models(_read_env_key(env_path, "GEMINI_API_KEY"))
         },
         "openrouter": {
             "name": "OpenRouter",

@@ -334,6 +334,11 @@ async def chat(
 
 @app.get("/api/integrations")
 async def get_integrations():
+    import sys
+    sys.path.append(os.path.join(BASE_DIR, "webui"))
+    from .env_manager import EnvManager
+    env_mgr = EnvManager()
+
     status = {}
     for key, procs in active_processes.items():
         if any(p.poll() is None for p in procs):
@@ -342,7 +347,16 @@ async def get_integrations():
             agent_id = "_".join(parts[1:])
             if int_name not in status: status[int_name] = []
             status[int_name].append(agent_id)
-    return status
+
+    configured = {}
+    for p in ["whatsapp", "discord", "telegram", "twitter", "bluesky"]:
+        cfg = env_mgr.get_integration_config(p)
+        configured[p] = cfg.get("configured", False)
+
+    return {
+        "active": status,
+        "configured": configured
+    }
 
 @app.get("/api/integrations/{platform}/config")
 async def get_integration_config(platform: str):

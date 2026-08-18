@@ -225,12 +225,24 @@ def stop_integration(name, agent_id="MoltyClaw"):
 
 @app.route("/api/integrations", methods=["GET"])
 def get_integrations():
-    """Retorna o status de quais integrações estão ativas."""
+    """Retorna o status de quais integrações estão ativas e quais estão configuradas."""
+    from .env_manager import EnvManager
+    env_mgr = EnvManager()
+    
     active = hub.get_active_integrations()
     status = {}
     for name in active:
         status[name] = ["MoltyClaw"]
-    return jsonify(status)
+        
+    configured = {}
+    for p in ["whatsapp", "discord", "telegram", "twitter", "bluesky"]:
+        cfg = env_mgr.get_integration_config(p)
+        configured[p] = cfg.get("configured", False)
+        
+    return jsonify({
+        "active": status,
+        "configured": configured
+    })
 
 
 @app.route("/api/integrations/<platform>/config", methods=["GET"])

@@ -27,6 +27,7 @@ from src.cli.skills import cli_skill
 from src.cli.start import cli_start_bots
 from src.cli.update import cli_update, cli_reset_memory
 from src.cli.utils import cli_browser_toggle, cli_research, cli_onboard
+from src.cli.status import cli_status
 
 
 def install_moltyclaw_path():
@@ -67,6 +68,7 @@ def _show_help():
   [#ffa500]start[/#ffa500]      Sobe integrações [dim](discord, telegram, whatsapp, twitter, all)[/dim]
 
 [bold #ff7700]CONFIGURAÇÃO & IA:[/bold #ff7700]
+  [#ffa500]status[/#ffa500]     Dashboard geral de saúde do agente, IA e recursos
   [#ffa500]provider[/#ffa500]   Configura provedor de IA [dim](Gemini, Mistral, Ollama, OpenRouter)[/dim]
   [#ffa500]model[/#ffa500]      Seleciona o modelo ativo do provedor
   [#ffa500]config[/#ffa500]     Gerencia variáveis do .env [dim](get, set, --config)[/dim]
@@ -74,7 +76,7 @@ def _show_help():
   [#ffa500]doctor[/#ffa500]     Diagnóstico e validação de saúde do ambiente
 
 [bold #ff7700]EXTENSÕES & FERRAMENTAS:[/bold #ff7700]
-  [#ffa500]skill[/#ffa500]      Gerenciamento de skills [dim](list, info, create, install [--url])[/dim]
+  [#ffa500]skill[/#ffa500]      Gerenciamento de skills [dim](list, info, enable, disable, install)[/dim]
   [#ffa500]mcp[/#ffa500]        Servidores MCP [dim](list, install, on, off)[/dim]
   [#ffa500]organize[/#ffa500]   Organização inteligente de arquivos via IA [dim](--undo)[/dim]
   [#ffa500]research[/#ffa500]   Pesquisa rápida na web com síntese contextual
@@ -168,33 +170,67 @@ def _interactive_menu():
     """Menu interativo principal."""
     console.clear()
 
-    mcp_text = "[dim]Nenhum servidor MCP detectado.[/dim]"
+    # Versão
+    ver = "0.4.2"
+    ver_file = os.path.join(os.getcwd(), "VERSION")
+    if os.path.exists(ver_file):
+        try:
+            with open(ver_file, "r", encoding="utf-8") as f:
+                ver = f.read().strip()
+        except Exception:
+            pass
+
+    # Provider & Modelo
+    provider = os.getenv("MOLTY_PROVIDER", "gemini").lower()
+    model_keys = {
+        "gemini": "GEMINI_MODEL",
+        "mistral": "MISTRAL_MODEL",
+        "openrouter": "OPENROUTER_MODEL",
+        "opencode": "OPENCODE_ZEN_MODEL",
+        "kodacloud": "KODACLOUD_MODEL",
+        "ollama": "OLLAMA_MODEL",
+    }
+    model = os.getenv(model_keys.get(provider, f"{provider.upper()}_MODEL"), "padrão")
+
+    # Contagem de Skills e MCP
+    skills_count = 0
+    try:
+        from src.skills import load_skill_entries
+        entries = load_skill_entries()
+        skills_count = sum(1 for e in entries if e.eligible and e.enabled)
+    except Exception:
+        pass
+
+    mcp_count = 0
+    mcp_names = []
     mcp_path = "mcp_servers.json"
     if os.path.exists(mcp_path):
         try:
             with open(mcp_path, "r", encoding='utf-8') as f:
                 mcp_data = json.load(f)
-                servers = list(mcp_data.get("mcpServers", {}).keys())
-                if servers:
-                    mcp_text = f"[bold green]🔌 {len(servers)} Servidores MCP Detectados:[/bold green] [cyan]{', '.join(servers)}[/cyan]"
+                servers = mcp_data.get("mcpServers", {})
+                mcp_names = list(servers.keys())
+                mcp_count = len(servers)
         except Exception:
-            mcp_text = "[bold red]Erro ao ler mcp_servers.json[/bold red]"
+            pass
 
-    console.print(Panel.fit(
-        f"[bold cyan]🚀 INICIALIZADOR DO MOLTYCLAW 🚀[/bold cyan]\n"
-        f"[dim]Escolha qual módulo de inteligência você quer acordar hoje.[/dim]\n"
-        f"{mcp_text}",
-        border_style="cyan"
-    ))
+    mcp_summary = f"🔌 {mcp_count} MCP ({', '.join(mcp_names)})" if mcp_names else "🔌 0 MCP"
+
+    # Cabeçalho Laranja MoltyClaw
+    v_str = f"v{ver.lstrip('v')}"
+    console.print(f"\n  [bold #ff6600]⚡ MOLTYCLAW[/bold #ff6600] [bold #ffa500]{v_str}[/bold #ffa500]  [dim]•[/dim]  [cyan]{provider.title()}[/cyan] [dim]({model})[/dim]")
+    console.print("  [#ff7700]─────────────────────────────────────────────────────────────[/#ff7700]")
+    console.print(f"  [dim green]{mcp_summary}[/dim green]  [dim]•[/dim]  [dim blue]🧩 {skills_count} Skills Ativas[/dim blue]  [dim]•[/dim]  [dim yellow]Ambiente: {os.environ.get('MOLTY_MODE', 'private').upper()}[/dim yellow]\n")
 
     if HAS_QUESTIONARY:
         import questionary
         env_answer = questionary.select(
-            "Ambiente Tático — selecione o modo:",
+            "Selecione o modo de operação:",
             choices=[
                 questionary.Choice("🌐  WebUI Dashboard         (painel web em 127.0.0.1:5000)",      value="1"),
                 questionary.Choice("🤖  Terminal & Conectores   (Discord, WhatsApp, Telegram…)",     value="2"),
-                questionary.Choice("🔧  Configurar 'moltyclaw' Global  (adiciona atalho ao PATH)",   value="3"),
+                questionary.Choice("📊  Status & Diagnóstico    (painel de IA, canais e saúde)",     value="4"),
+                questionary.Choice("🔧  Configurar Global       (adiciona atalho 'moltyclaw' ao PATH)", value="3"),
             ],
             style=MOLTY_STYLE,
             use_shortcuts=False,
@@ -204,11 +240,16 @@ def _interactive_menu():
             sys.exit(0)
         env_choice = env_answer
     else:
-        console.print("\n[bold yellow] Ambiente Tático:[/bold yellow]")
-        console.print("1. [bold cyan]Modo WebUI Dashboard[/bold cyan]")
-        console.print("2. [bold magenta]Modo Terminal & Conectores[/bold magenta]")
-        console.print("3. [bold green]Configurar 'moltyclaw' Global[/bold green]")
-        env_choice = Prompt.ask("Selecione", choices=["1", "2", "3"], default="2")
+        console.print("\n[bold #ff7700]Modos de Inicialização:[/bold #ff7700]")
+        console.print("1. [bold cyan]🌐 WebUI Dashboard[/bold cyan]")
+        console.print("2. [bold magenta]🤖 Terminal & Conectores[/bold magenta]")
+        console.print("3. [bold yellow]📊 Status & Diagnóstico[/bold yellow]")
+        console.print("4. [bold green]🔧 Configurar Global (PATH)[/bold green]")
+        env_choice = Prompt.ask("Selecione", choices=["1", "2", "3", "4"], default="2")
+
+    if env_choice == "4":
+        cli_status()
+        sys.exit(0)
 
     if env_choice == "3":
         console.print("\n[bold yellow]⚠ AVISO IMPORTANTE:[/bold yellow]")
@@ -365,6 +406,8 @@ def main():
             sys.exit(0)
         elif arg == "gateway":
             _handle_gateway()
+        elif arg in ["status", "stats"]:
+            cli_status()
         elif arg == "doctor":
             cli_doctor()
             sys.exit(0)

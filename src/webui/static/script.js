@@ -1154,8 +1154,11 @@ async function fetchIntegrations() {
 
 function renderIntegrations(data) {
     const platforms = ['whatsapp', 'discord', 'telegram', 'twitter', 'bluesky'];
+    const activeMap = data.active !== undefined ? data.active : data;
+    const configuredMap = data.configured || {};
+
     platforms.forEach(p => {
-        const activeList = data[p] || [];
+        const activeList = activeMap[p] || [];
         const toggle = document.getElementById(`toggle-${p}`);
         const activeDiv = document.getElementById(`active-${p}`);
         
@@ -1164,8 +1167,9 @@ function renderIntegrations(data) {
             activeDiv.innerHTML = activeList.map(id => `<span class="int-agent-pill">${id}</span>`).join('');
         }
 
-        // Atualiza badge de status configurado
-        updateIntegrationCardStatus(p, activeList.length > 0);
+        // Se o backend informou o status de configuração no .env, usa ele
+        const isConfigured = (p in configuredMap) ? configuredMap[p] : (activeList.length > 0);
+        updateIntegrationCardStatus(p, isConfigured);
     });
 }
 

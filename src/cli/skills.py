@@ -25,7 +25,13 @@ def cli_skill_list():
     table.add_column("Status", justify="center")
 
     for e in sorted(entries, key=lambda x: x.name):
-        status = "[bold green]✅ Ativo[/bold green]" if e.eligible else f"[bold red]❌ Inativo[/bold red]"
+        if not e.enabled:
+            status = "[dim red]⏸ Desativada[/dim red]"
+        elif e.eligible:
+            status = "[bold green]✅ Ativo[/bold green]"
+        else:
+            status = "[bold yellow]⚠ Inelegível[/bold yellow]"
+
         source_color = "magenta" if e.source == "workspace" else ("blue" if e.source == "managed" else "dim")
         table.add_row(
             e.emoji,
@@ -36,7 +42,7 @@ def cli_skill_list():
         )
 
     console.print(table)
-    console.print("\n[dim]Use 'moltyclaw skill info <nome>' para mais detalhes.[/dim]")
+    console.print("\n[dim]Use 'moltyclaw skill info <nome>', 'enable <nome>' ou 'disable <nome>'.[/dim]")
     sys.exit(0)
 
 
@@ -60,7 +66,12 @@ def cli_skill_info(name):
     console.print(f"\n[bold]📍 Caminho:[/bold] [dim]{skill.skill_dir}[/dim]")
     console.print(f"[bold]📦 Fonte:[/bold] [magenta]{skill.source}[/magenta]")
 
-    status = "[bold green]✅ Elegível (Pronta para uso)[/bold green]" if skill.eligible else f"[bold red]❌ Inelegível: {skill.eligibility_reason}[/bold red]"
+    if not skill.enabled:
+        status = "[dim red]⏸ Desativada pelo usuário (use 'moltyclaw skill enable <nome>' para ativar)[/dim red]"
+    elif skill.eligible:
+        status = "[bold green]✅ Elegível (Pronta para uso)[/bold green]"
+    else:
+        status = f"[bold red]❌ Inelegível: {skill.eligibility_reason}[/bold red]"
     console.print(f"[bold]⚖️ Status:[/bold] {status}")
 
     if skill.requires:
@@ -79,6 +90,28 @@ def cli_skill_info(name):
         pass
 
     sys.exit(0)
+
+
+def cli_skill_enable(name):
+    from skills import enable_skill
+
+    success, msg = enable_skill(name)
+    if success:
+        console.print(f"[bold green]✅ {msg}[/bold green]")
+    else:
+        console.print(f"[bold red]❌ {msg}[/bold red]")
+    sys.exit(0 if success else 1)
+
+
+def cli_skill_disable(name):
+    from skills import disable_skill
+
+    success, msg = disable_skill(name)
+    if success:
+        console.print(f"[bold yellow]⏸ {msg}[/bold yellow]")
+    else:
+        console.print(f"[bold red]❌ {msg}[/bold red]")
+    sys.exit(0 if success else 1)
 
 
 def cli_skill_install(path_or_url):
@@ -134,8 +167,8 @@ def cli_skill_package(path):
 def cli_skill():
     """Dispatcher para subcomandos de skills."""
     if len(sys.argv) < 3:
-        console.print("[bold red]Uso: moltyclaw skill <list|info|install|create|package> [argumentos][/bold red]")
-        console.print("[dim]Exemplo URL: moltyclaw skill install --url https://exemplo.com/skill.md[/dim]")
+        console.print("[bold red]Uso: moltyclaw skill <list|info|enable|disable|install|create|package> [argumentos][/bold red]")
+        console.print("[dim]Exemplo: moltyclaw skill enable <nome> | moltyclaw skill disable <nome>[/dim]")
         sys.exit(1)
 
     sub = sys.argv[2].lower()
@@ -147,6 +180,10 @@ def cli_skill():
         cli_skill_list()
     elif sub == "info" and len(sys.argv) >= 4:
         cli_skill_info(sys.argv[3])
+    elif sub == "enable" and len(sys.argv) >= 4:
+        cli_skill_enable(sys.argv[3])
+    elif sub == "disable" and len(sys.argv) >= 4:
+        cli_skill_disable(sys.argv[3])
     elif sub == "install" and len(sys.argv) >= 4:
         if sys.argv[3] == "--url" and len(sys.argv) >= 5:
             cli_skill_install(sys.argv[4])
@@ -159,5 +196,5 @@ def cli_skill():
     elif sub == "package" and len(sys.argv) >= 4:
         cli_skill_package(sys.argv[3])
     else:
-        console.print("[bold red]Uso: moltyclaw skill <list|info|install [--url]|create|package> [argumentos][/bold red]")
+        console.print("[bold red]Uso: moltyclaw skill <list|info|enable|disable|install [--url]|create|package> [argumentos][/bold red]")
         sys.exit(1)

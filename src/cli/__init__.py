@@ -29,14 +29,14 @@ custom_theme = Theme({
 console = Console(theme=custom_theme)
 
 MOLTY_STYLE = QStyle([
-    ('qmark', 'fg:#00d7ff bold'),
-    ('question', 'bold'),
-    ('answer', 'fg:#00d7ff bold'),
-    ('pointer', 'fg:#00d7ff bold'),
-    ('highlighted', 'fg:#00d7ff bold'),
-    ('selected', 'fg:#00ff87'),
+    ('qmark', 'fg:#ff7700 bold'),
+    ('question', 'bold #ffffff'),
+    ('answer', 'fg:#ffa500 bold'),
+    ('pointer', 'fg:#ff7700 bold'),
+    ('highlighted', 'fg:#ffa500 bold'),
+    ('selected', 'fg:#00ff87 bold'),
     ('separator', 'fg:#555555'),
-    ('instruction', 'fg:#888888'),
+    ('instruction', 'fg:#888888 dim'),
 ]) if HAS_QUESTIONARY else None
 
 

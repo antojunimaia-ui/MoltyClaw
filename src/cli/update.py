@@ -6,6 +6,11 @@ import sys
 import json
 from . import console, MOLTY_DIR, Panel, Prompt, HAS_QUESTIONARY, MOLTY_STYLE
 
+try:
+    import questionary
+except ImportError:
+    questionary = None
+
 
 def cli_update():
     import urllib.request

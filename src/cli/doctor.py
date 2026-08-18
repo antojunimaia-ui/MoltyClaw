@@ -35,7 +35,7 @@ def cli_doctor():
             if 'GEMINI_API_KEY=' in content:
                 console.print("[bold green]✔[/bold green] Chave do Gemini configurada.")
                 model_match = re.search(r'GEMINI_MODEL=(.*)', content)
-                model_name = model_match.group(1).strip() if model_match else "gemini-1.5-flash (padrão)"
+                model_name = model_match.group(1).strip() if model_match else "gemini-2.5-flash (padrão)"
                 console.print(f"[bold cyan]ℹ[/bold cyan] Modelo Gemini: [yellow]{model_name}[/yellow]")
             else:
                 console.print("[bold yellow]⚠[/bold yellow] Chave GEMINI_API_KEY ausente.")

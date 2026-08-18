@@ -219,7 +219,7 @@ def initialize_moltyclaw():
             
             "providers": {
                 "mistral": {"api_key": "${MISTRAL_API_KEY}", "model": "mistral-medium"},
-                "gemini": {"api_key": "${GEMINI_API_KEY}", "model": "gemini-1.5-flash"},
+                "gemini": {"api_key": "${GEMINI_API_KEY}", "model": "gemini-2.5-flash"},
                 "openrouter": {"api_key": "${OPENROUTER_API_KEY}", "model": "google/gemini-2.0-flash"}
             },
             "channels": {

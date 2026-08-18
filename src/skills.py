@@ -41,6 +41,7 @@ class SkillEntry:
     requires: dict = field(default_factory=dict)
     eligible: bool = True
     eligibility_reason: str = ""
+    enabled: bool = True
 
 
 # ── Parser de YAML Frontmatter ────────────────────────────────────────────────
@@ -188,6 +189,7 @@ def _scan_skills_dir(directory: str, source: str) -> list[SkillEntry]:
             requires = {}
 
         eligible, reason = _check_eligibility(requires)
+        enabled = not os.path.isfile(os.path.join(skill_dir, ".disabled"))
 
         entries.append(SkillEntry(
             name=name,
@@ -199,6 +201,7 @@ def _scan_skills_dir(directory: str, source: str) -> list[SkillEntry]:
             requires=requires,
             eligible=eligible,
             eligibility_reason=reason,
+            enabled=enabled,
         ))
 
     return entries
@@ -232,8 +235,8 @@ def load_skill_entries(workspace_dir: str = "") -> list[SkillEntry]:
 
 
 def filter_eligible_skills(entries: list[SkillEntry]) -> list[SkillEntry]:
-    """Retorna apenas skills cujos requisitos são atendidos."""
-    return [e for e in entries if e.eligible]
+    """Retorna apenas skills cujos requisitos são atendidos e que estão habilitadas."""
+    return [e for e in entries if e.eligible and e.enabled]
 
 
 # ── Geração de Prompt ─────────────────────────────────────────────────────────
@@ -453,6 +456,51 @@ def uninstall_skill(name: str) -> tuple[bool, str]:
 
     shutil.rmtree(skill_dir)
     return True, f"Skill '{name}' desinstalada com sucesso"
+
+
+def enable_skill(name: str) -> tuple[bool, str]:
+    """
+    Habilita uma skill removendo a flag .disabled.
+    Retorna (sucesso, mensagem).
+    """
+    entries = load_skill_entries()
+    skill = find_skill_by_name(entries, name)
+
+    if not skill:
+        return False, f"Skill '{name}' não encontrada."
+
+    disabled_flag = os.path.join(skill.skill_dir, ".disabled")
+    if not os.path.exists(disabled_flag):
+        return True, f"Skill '{skill.name}' já está ativada."
+
+    try:
+        os.remove(disabled_flag)
+        return True, f"Skill '{skill.name}' ativada com sucesso."
+    except Exception as e:
+        return False, f"Erro ao ativar skill '{skill.name}': {e}"
+
+
+def disable_skill(name: str) -> tuple[bool, str]:
+    """
+    Desabilita temporariamente uma skill criando a flag .disabled.
+    Retorna (sucesso, mensagem).
+    """
+    entries = load_skill_entries()
+    skill = find_skill_by_name(entries, name)
+
+    if not skill:
+        return False, f"Skill '{name}' não encontrada."
+
+    disabled_flag = os.path.join(skill.skill_dir, ".disabled")
+    if os.path.exists(disabled_flag):
+        return True, f"Skill '{skill.name}' já está desativada."
+
+    try:
+        with open(disabled_flag, "w", encoding="utf-8") as f:
+            f.write("# Disabled by MoltyClaw CLI\n")
+        return True, f"Skill '{skill.name}' desativada com sucesso."
+    except Exception as e:
+        return False, f"Erro ao desativar skill '{skill.name}': {e}"
 
 
 # ── Scaffold de Nova Skill ────────────────────────────────────────────────────

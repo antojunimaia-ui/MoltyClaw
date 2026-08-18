@@ -150,17 +150,17 @@ class MoltyClaw:
 
         p_cfg = molty_config.get("providers", {}).get(self.provider, {})
         if self.provider == "mistral":
-            self.model = p_cfg.get("model") or os.getenv("MISTRAL_MODEL", "mistral-medium")
+            self.model = os.getenv("MISTRAL_MODEL") or p_cfg.get("model") or "mistral-medium"
         elif self.provider == "gemini":
-            self.model = p_cfg.get("model") or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+            self.model = os.getenv("GEMINI_MODEL") or p_cfg.get("model") or "gemini-2.5-flash"
         elif self.provider == "ollama":
-            self.model = p_cfg.get("model") or os.getenv("OLLAMA_MODEL", "llama3")
+            self.model = os.getenv("OLLAMA_MODEL") or p_cfg.get("model") or "llama3"
         elif self.provider == "kodacloud":
-            self.model = p_cfg.get("model") or os.getenv("KODACLOUD_MODEL", "gemini-2.5-flash")
+            self.model = os.getenv("KODACLOUD_MODEL") or p_cfg.get("model") or "gemini-2.5-flash"
         elif self.provider == "opencode":
-            self.model = p_cfg.get("model") or os.getenv("OPENCODE_ZEN_MODEL", "deepseek-v4-flash-free")
+            self.model = os.getenv("OPENCODE_ZEN_MODEL") or p_cfg.get("model") or "deepseek-v4-flash-free"
         else:
-            self.model = p_cfg.get("model") or os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash")
+            self.model = os.getenv("OPENROUTER_MODEL") or p_cfg.get("model") or "google/gemini-2.0-flash"
         
         # Debug: mostra qual modelo foi carregado
         if self.is_master:
