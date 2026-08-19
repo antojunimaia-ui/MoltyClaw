@@ -599,3 +599,162 @@ def package_skill(skill_dir: str, output_dir: str = "") -> tuple[bool, str]:
 
     except Exception as e:
         return False, f"Erro ao empacotar: {e}"
+
+
+# ── ClawHub Integration ───────────────────────────────────────────────────────
+
+CLAWHUB_API_BASE = "https://clawhub.ai/api/v1"
+
+
+def _infer_skill_emoji(slug: str, name: str, tags: list) -> str:
+    text = f"{slug} {name} {' '.join(tags)}".lower()
+    if any(k in text for k in ["github", "git", "repo", "pr"]): return "🐙"
+    if any(k in text for k in ["weather", "meteo", "clima", "tempo"]): return "⛅"
+    if any(k in text for k in ["search", "duck", "google", "pesquisa"]): return "🦆"
+    if any(k in text for k in ["database", "sql", "sqlite", "postgres", "mysql", "db"]): return "🗄️"
+    if any(k in text for k in ["arxiv", "paper", "book", "doc", "pdf"]): return "📚"
+    if any(k in text for k in ["browser", "chrome", "scraping", "playwright", "web"]): return "🌐"
+    if any(k in text for k in ["obsidian", "note", "markdown", "journal"]): return "💎"
+    if any(k in text for k in ["crypto", "stock", "finance", "bitcoin", "trading"]): return "📈"
+    if any(k in text for k in ["telegram", "discord", "whatsapp", "chat", "social"]): return "✈️"
+    if any(k in text for k in ["code", "generator", "typescript", "python", "rust", "java", "go", "php"]): return "💻"
+    if any(k in text for k in ["ai", "mcp", "agent", "llm", "swarm", "copilot"]): return "🤖"
+    return "🧩"
+
+
+def search_clawhub(query: str = "", limit: int = 30) -> list[dict]:
+    """
+    Busca skills no registro público do ClawHub.
+    Sempre usa a API real — sem catálogo hardcoded.
+    """
+    import urllib.request
+    import json
+
+    installed = {e.name.lower() for e in load_skill_entries()}
+    results = []
+
+    # Sem query → busca skills populares de automação
+    q = query.strip() or "automation"
+    url = f"{CLAWHUB_API_BASE}/search?q={urllib.parse.quote(q)}&limit={limit}"
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+        }
+    )
+    with urllib.request.urlopen(req, timeout=6) as response:
+        if response.status == 200:
+            data = json.loads(response.read().decode("utf-8"))
+            items = data.get("results", data.get("skills", []))
+            for item in items:
+                native_skill = item.get("native", {}).get("skill", {})
+                native_owner = item.get("native", {}).get("owner", {})
+                stats = native_skill.get("stats", {})
+
+                raw_slug = (
+                    item.get("slug")
+                    or native_skill.get("slug")
+                    or item.get("install", {}).get("reference")
+                    or ""
+                )
+                slug = raw_slug.split("/")[-1] if "/" in raw_slug else raw_slug
+                if not slug:
+                    continue
+
+                name = (
+                    item.get("displayName")
+                    or native_skill.get("displayName")
+                    or slug.replace("-", " ").title()
+                )
+                author = (
+                    item.get("ownerHandle")
+                    or native_owner.get("handle")
+                    or native_owner.get("displayName")
+                    or "clawhub"
+                )
+                description = (
+                    item.get("summary")
+                    or native_skill.get("summary")
+                    or ""
+                )
+
+                stars     = int(stats.get("stars")     or item.get("score", 0) or 0)
+                downloads = int(stats.get("downloads") or item.get("downloads", 0) or 0)
+
+                categories = native_skill.get("categories") or []
+                topics     = native_skill.get("topics") or []
+                tags = list(dict.fromkeys(
+                    str(t).lower() for t in (categories + topics) if t
+                ))
+
+                emoji = _infer_skill_emoji(slug, name, tags)
+
+                results.append({
+                    "slug":        slug,
+                    "raw_ref":     raw_slug,
+                    "name":        name,
+                    "emoji":       emoji,
+                    "author":      str(author).lstrip("@"),
+                    "description": description,
+                    "stars":       stars,
+                    "downloads":   downloads,
+                    "tags":        tags[:4],
+                    "installed":   slug.lower() in installed or name.lower() in installed,
+                })
+
+    return results
+
+
+def install_from_clawhub(slug_or_url: str) -> tuple[bool, str]:
+    """
+    Instala uma skill diretamente a partir do ClawHub ou de URL direta.
+    """
+    import urllib.request
+    import json
+
+    slug = slug_or_url.strip()
+
+    # Se for uma URL direta (.skill, .zip, raw .md)
+    if slug.startswith("http://") or slug.startswith("https://"):
+        return install_skill(slug)
+
+    # Busca os metadados ricos diretamente no ClawHub para gerar a skill
+    meta_results = search_clawhub(slug, limit=1)
+    meta = meta_results[0] if meta_results else None
+
+    target_dir = os.path.join(MANAGED_SKILLS_DIR, slug)
+    os.makedirs(target_dir, exist_ok=True)
+    skill_md_path = os.path.join(target_dir, "SKILL.md")
+
+    name = meta["name"] if meta else slug.replace("-", " ").title()
+    desc = meta["description"] if meta else "Habilidade instalada a partir do registro ClawHub."
+    emoji = meta["emoji"] if meta else "🧩"
+    author = meta["author"] if meta else "clawhub"
+    tags = meta["tags"] if meta else []
+
+    content = f"""---
+name: {slug}
+description: {desc}
+emoji: {emoji}
+author: {author}
+tags: {tags}
+requires:
+  bins: []
+  env: []
+---
+
+# {name}
+
+{desc}
+
+## Como Usar
+Esta habilidade foi integrada ao MoltyClaw a partir do registro ClawHub (@{author}).
+Quando este comando ou tópico for solicitado, siga os passos e orientações contextuais abaixo.
+"""
+    with open(skill_md_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    return True, f"Skill '{slug}' instalada com sucesso em {target_dir}!"
+

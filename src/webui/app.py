@@ -742,6 +742,45 @@ def install_skill_route():
         return jsonify({"success": True, "message": message})
     return jsonify({"error": message}), 500
 
+# ── Marketplace / ClawHub API ──────────────────────────────────────────────────
+
+@app.route("/api/marketplace/skills", methods=["GET"])
+def get_marketplace_skills():
+    """Retorna a lista de skills do ClawHub Marketplace (com busca opcional)."""
+    query = request.args.get("q", "").strip()
+    limit = int(request.args.get("limit", 30))
+    try:
+        results = skills.search_clawhub(query=query, limit=limit)
+        return jsonify({"skills": results})
+    except Exception as e:
+        return jsonify({"error": f"Falha na API do ClawHub: {str(e)}"}), 502
+
+@app.route("/api/marketplace/install", methods=["POST"])
+def install_marketplace_skill():
+    """Instala uma skill diretamente a partir do ClawHub."""
+    data = request.json
+    slug = data.get("slug")
+    if not slug:
+        return jsonify({"error": "Slug da skill não fornecido."}), 400
+
+    success, message = skills.install_from_clawhub(slug)
+    if success:
+        return jsonify({"success": True, "message": message})
+    return jsonify({"error": message}), 500
+
+@app.route("/api/marketplace/uninstall", methods=["POST"])
+def uninstall_marketplace_skill():
+    """Remove uma skill instalada."""
+    data = request.json
+    name = data.get("name")
+    if not name:
+        return jsonify({"error": "Nome da skill não fornecido."}), 400
+
+    success, message = skills.uninstall_skill(name)
+    if success:
+        return jsonify({"success": True, "message": message})
+    return jsonify({"error": message}), 500
+
 if __name__ == "__main__":
     host = "0.0.0.0" if os.environ.get("MOLTY_WEBUI_SHARE") == "1" else "127.0.0.1"
     

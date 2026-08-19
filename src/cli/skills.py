@@ -114,18 +114,59 @@ def cli_skill_disable(name):
     sys.exit(0 if success else 1)
 
 
-def cli_skill_install(path_or_url):
-    from skills import install_skill
+def cli_skill_install(path_or_slug):
+    from skills import install_skill, install_from_clawhub
 
-    is_url = path_or_url.startswith("http://") or path_or_url.startswith("https://")
-    label = "Baixando e instalando skill de URL" if is_url else "Instalando skill"
-    console.print(f"[bold cyan]📥 {label}:[/bold cyan] {path_or_url}")
-    success, msg = install_skill(path_or_url)
+    # Se for arquivo local ou URL
+    if os.path.exists(path_or_slug) or path_or_slug.startswith("http://") or path_or_slug.startswith("https://"):
+        label = "Baixando e instalando skill de URL" if path_or_slug.startswith("http") else "Instalando skill local"
+        console.print(f"[bold cyan]📥 {label}:[/bold cyan] {path_or_slug}")
+        success, msg = install_skill(path_or_slug)
+    else:
+        # Tenta buscar e instalar diretamente do ClawHub
+        console.print(f"[bold cyan]🌐 Buscando e instalando skill do ClawHub:[/bold cyan] {path_or_slug}")
+        success, msg = install_from_clawhub(path_or_slug)
+
     if success:
         console.print(f"[bold green]✅ {msg}[/bold green]")
     else:
         console.print(f"[bold red]❌ Falha na instalação: {msg}[/bold red]")
     sys.exit(0 if success else 1)
+
+
+def cli_skill_search(query=""):
+    from skills import search_clawhub
+    from rich.table import Table
+
+    console.print(f"\n[bold cyan]🔎 Buscando no ClawHub Marketplace:[/bold cyan] '{query or 'Destaques'}'...\n")
+    results = search_clawhub(query)
+
+    if not results:
+        console.print("[bold yellow]⚠ Nenhuma skill encontrada no ClawHub para essa busca.[/bold yellow]")
+        sys.exit(0)
+
+    table = Table(title="🛒 CLAWHUB SKILLS MARKETPLACE", border_style="cyan")
+    table.add_column("Emoji", justify="center")
+    table.add_column("Slug", style="cyan", no_wrap=True)
+    table.add_column("Nome", style="bold white")
+    table.add_column("Autor", style="dim")
+    table.add_column("⭐ Stars", justify="center", style="yellow")
+    table.add_column("Status", justify="center")
+
+    for item in results:
+        status = "[bold green]✅ Instalada[/bold green]" if item.get("installed") else "[dim]Disponível[/dim]"
+        table.add_row(
+            item.get("emoji", "🧩"),
+            item.get("slug", ""),
+            item.get("name", ""),
+            f"@{item.get('author', 'clawhub')}",
+            str(item.get("stars", 0)),
+            status
+        )
+
+    console.print(table)
+    console.print("\n[dim]Para instalar qualquer skill acima, execute:[/dim] [bold cyan]moltyclaw skill install <slug>[/bold cyan]")
+    sys.exit(0)
 
 
 def cli_skill_uninstall(name):
@@ -167,14 +208,16 @@ def cli_skill_package(path):
 def cli_skill():
     """Dispatcher para subcomandos de skills."""
     if len(sys.argv) < 3:
-        console.print("[bold red]Uso: moltyclaw skill <list|info|enable|disable|install|create|package> [argumentos][/bold red]")
-        console.print("[dim]Exemplo: moltyclaw skill enable <nome> | moltyclaw skill disable <nome>[/dim]")
+        console.print("[bold red]Uso: moltyclaw skill <list|search|info|enable|disable|install|uninstall|create|package> [argumentos][/bold red]")
+        console.print("[dim]Exemplo: moltyclaw skill search github | moltyclaw skill install weather[/dim]")
         sys.exit(1)
 
     sub = sys.argv[2].lower()
 
-    # Suporte direto a moltyclaw skill --url <URL>
-    if sub == "--url" and len(sys.argv) >= 4:
+    if sub in ("search", "find", "marketplace", "clawhub"):
+        query = sys.argv[3] if len(sys.argv) >= 4 else ""
+        cli_skill_search(query)
+    elif sub == "--url" and len(sys.argv) >= 4:
         cli_skill_install(sys.argv[3])
     elif sub == "list":
         cli_skill_list()
@@ -196,5 +239,6 @@ def cli_skill():
     elif sub == "package" and len(sys.argv) >= 4:
         cli_skill_package(sys.argv[3])
     else:
-        console.print("[bold red]Uso: moltyclaw skill <list|info|enable|disable|install [--url]|create|package> [argumentos][/bold red]")
+        console.print("[bold red]Uso: moltyclaw skill <list|search|info|enable|disable|install|uninstall|create|package> [argumentos][/bold red]")
         sys.exit(1)
+

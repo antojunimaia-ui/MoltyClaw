@@ -1,0 +1,41 @@
+<!-- Marketplace View (ClawHub Registry) -->
+<div id="view-marketplace" class="view-content" style="display: none;">
+    <header class="main-header">
+        <div class="header-left">
+            <h1 class="page-title"><i class="fa-solid fa-store" style="color: var(--accent); margin-right: 8px;"></i>Marketplace (ClawHub)</h1>
+            <p class="page-subtitle">Descubra, pesquise e instale habilidades oficiais e da comunidade do ClawHub com um clique.</p>
+        </div>
+        <div class="header-right">
+            <button class="btn-secondary" onclick="loadMarketplaceSkills()">
+                <i class="fa-solid fa-arrows-rotate"></i> Atualizar Catálogo
+            </button>
+            <a href="https://clawhub.ai" target="_blank" class="btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Explorar no ClawHub.ai
+            </a>
+        </div>
+    </header>
+
+    <div class="marketplace-view-body" style="padding: 0 40px 20px 40px;">
+        <!-- Filters & Search Bar -->
+        <div class="filters-bar" style="display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <div class="search-wrapper" style="flex: 1; min-width: 250px; position: relative;">
+                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 14px; top: 12px; color: var(--text-muted);"></i>
+                <input type="text" id="marketplace-search" placeholder="Pesquisar skills no ClawHub (ex: github, weather, scraping)..." 
+                    oninput="debounceMarketplaceSearch()" style="width: 100%; padding: 10px 14px 10px 38px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-surface); color: var(--text-main);">
+            </div>
+            
+            <div class="marketplace-categories" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="filter-pill active" onclick="filterMarketplaceCategory('all', this)">Todas</button>
+                <button class="filter-pill" onclick="filterMarketplaceCategory('dev', this)">Dev & Git</button>
+                <button class="filter-pill" onclick="filterMarketplaceCategory('automation', this)">Automação</button>
+                <button class="filter-pill" onclick="filterMarketplaceCategory('research', this)">Pesquisa</button>
+                <button class="filter-pill" onclick="filterMarketplaceCategory('productivity', this)">Produtividade</button>
+            </div>
+        </div>
+
+        <!-- Marketplace Cards Grid -->
+        <div class="marketplace-grid" id="marketplace-grid">
+            <!-- Renderizado dinamicamente via JS -->
+        </div>
+    </div>
+</div>

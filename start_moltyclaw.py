@@ -438,6 +438,13 @@ def main():
             cli_onboard()
         elif arg == "skill":
             cli_skill()
+        elif arg in ["marketplace", "clawhub", "hub"]:
+            from src.cli.skills import cli_skill_search, cli_skill_install
+            if len(sys.argv) >= 3 and sys.argv[2] == "install" and len(sys.argv) >= 4:
+                cli_skill_install(sys.argv[3])
+            else:
+                query = " ".join(sys.argv[2:]) if len(sys.argv) >= 3 else ""
+                cli_skill_search(query)
         elif arg in ["--help", "-h"]:
             _show_help()
 

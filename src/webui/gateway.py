@@ -866,6 +866,34 @@ async def add_scheduler_job(data: Dict[str, Any]):
     )
     return {"success": True, "job": job}
 
+# --- Marketplace API ---
+
+@app.get("/api/marketplace/skills")
+async def get_marketplace_skills(q: str = "", limit: int = 30):
+    try:
+        results = skills.search_clawhub(query=q, limit=limit)
+        return {"skills": results}
+    except Exception as e:
+        raise HTTPException(502, detail=f"Falha na API do ClawHub: {str(e)}")
+
+@app.post("/api/marketplace/install")
+async def install_marketplace_skill(data: Dict[str, Any]):
+    slug = data.get("slug")
+    if not slug: raise HTTPException(400, "Slug obrigatório")
+    success, message = skills.install_from_clawhub(slug)
+    if success:
+        return {"success": True, "message": message}
+    raise HTTPException(500, detail=message)
+
+@app.post("/api/marketplace/uninstall")
+async def uninstall_marketplace_skill(data: Dict[str, Any]):
+    name = data.get("name")
+    if not name: raise HTTPException(400, "Nome da skill obrigatório")
+    success, message = skills.uninstall_skill(name)
+    if success:
+        return {"success": True, "message": message}
+    raise HTTPException(500, detail=message)
+
 # --- Main ---
 
 if __name__ == "__main__":

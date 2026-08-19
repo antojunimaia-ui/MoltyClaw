@@ -9,15 +9,19 @@ const themeToggle = document.getElementById('theme-toggle');
 const themeBtns = document.querySelectorAll('.theme-btn');
 
 // Helper to escape HTML to prevent XSS (if we weren't using DOMPurify, but we are)
-const escapeHTML = (str) => str.replace(/[&<>'"]/g,
-    tag => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        "'": '&#39;',
-        '"': '&quot;'
-    }[tag] || tag)
-);
+const escapeHTML = (str) => {
+    if (!str) return '';
+    return String(str).replace(/[&<>'"]/g,
+        tag => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[tag] || tag)
+    );
+};
+const escapeHtml = escapeHTML;
 
 function formatTime() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -471,7 +475,7 @@ function switchTab(tabId) {
 }
 
 // ─── Right Panel Logic ───────────────────────────────────────────────────────
-const _rpViews = ['integrations','routing','agent','mcp','skills','heartbeat'];
+const _rpViews = ['integrations','routing','agent','mcp','skills','marketplace','heartbeat'];
 let _rpCurrentTab = null;
 let _rpOpen = false;
 
@@ -567,8 +571,9 @@ function switchRightTab(tabId) {
     else if (tabId === 'routing')   fetchBindings();
     else if (tabId === 'agent')     loadAgentList();
     else if (tabId === 'mcp')       loadMCPList();
-    else if (tabId === 'heartbeat') fetchSchedulerJobs();
     else if (tabId === 'skills')    fetchSkills();
+    else if (tabId === 'marketplace') loadMarketplaceSkills();
+    else if (tabId === 'heartbeat') fetchSchedulerJobs();
 }
 
 // Init on load
@@ -2033,6 +2038,8 @@ function switchPanel(panelId) {
         loadMCPList();
     } else if (panelId === 'skills') {
         fetchSkills();
+    } else if (panelId === 'marketplace') {
+        loadMarketplaceSkills();
     } else if (panelId === 'scheduler') {
         fetchSchedulerJobs();
     }
@@ -2042,6 +2049,190 @@ function switchPanel(panelId) {
 
 // Vincula a função ao escopo global
 window.switchPanel = switchPanel;
+
+// ─── Marketplace / ClawHub Logic ────────────────────────────────────────────
+let _marketplaceSkills = [];
+let _activeCategory = 'all';
+let _marketplaceSearchTimeout = null;
+
+async function loadMarketplaceSkills(query = '') {
+    const grid = document.getElementById('marketplace-grid');
+    if (!grid) return;
+
+    grid.innerHTML = `
+        <div style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 0; color: var(--text-muted);">
+            <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2.2rem; color: var(--accent); margin-bottom: 16px;"></i>
+            <h3 style="color: var(--text-main); margin: 0 0 8px 0; font-size: 1.1rem;">Buscando no ClawHub...</h3>
+            <p style="margin: 0; font-size: 0.85rem;">Conectando ao catálogo público de habilidades oficiais.</p>
+        </div>
+    `;
+
+    try {
+        const url = query ? `/api/marketplace/skills?q=${encodeURIComponent(query)}` : '/api/marketplace/skills';
+        const res = await fetchWithAuth(url);
+        if (!res.ok) throw new Error("Erro na requisição");
+        const data = await res.json();
+        _marketplaceSkills = data.skills || [];
+        renderMarketplaceSkills(_marketplaceSkills);
+    } catch (e) {
+        console.error("Erro ao carregar ClawHub:", e);
+        grid.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #ef4444;">
+                <i class="fa-solid fa-triangle-exclamation" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                <p style="margin: 0; font-weight: 500;">Não foi possível carregar as skills do ClawHub no momento.</p>
+                <button class="btn-secondary" onclick="loadMarketplaceSkills()" style="margin-top: 15px;">
+                    <i class="fa-solid fa-rotate-right"></i> Tentar Novamente
+                </button>
+            </div>
+        `;
+    }
+}
+
+function debounceMarketplaceSearch() {
+    clearTimeout(_marketplaceSearchTimeout);
+    _marketplaceSearchTimeout = setTimeout(() => {
+        const query = document.getElementById('marketplace-search')?.value.trim() || '';
+        loadMarketplaceSkills(query);
+    }, 350);
+}
+
+function filterMarketplaceCategory(category, btn) {
+    _activeCategory = category;
+    
+    // Atualiza pills ativas
+    document.querySelectorAll('.marketplace-categories .filter-pill').forEach(el => el.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    if (category === 'all') {
+        renderMarketplaceSkills(_marketplaceSkills);
+    } else {
+        const filtered = _marketplaceSkills.filter(s => {
+            const tags = s.tags || [];
+            return tags.some(t => t.toLowerCase().includes(category.toLowerCase()));
+        });
+        renderMarketplaceSkills(filtered);
+    }
+}
+
+function renderMarketplaceSkills(skills) {
+    const grid = document.getElementById('marketplace-grid');
+    if (!grid) return;
+
+    if (!skills || skills.length === 0) {
+        grid.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align: center; padding: 60px 0; color: var(--text-muted);">
+                <i class="fa-solid fa-box-open" style="font-size: 2.5rem; margin-bottom: 15px; opacity: 0.5;"></i>
+                <h4 style="color: var(--text-main); margin: 0 0 6px 0;">Nenhuma skill encontrada</h4>
+                <p style="font-size: 0.85rem; margin: 0;">Tente outro termo ou limpe a busca.</p>
+            </div>
+        `;
+        return;
+    }
+
+    grid.innerHTML = skills.map(s => {
+        const isInstalled = s.installed;
+        const tagsHtml = (s.tags || []).slice(0, 3).map(t => `<span class="mp-tag">${escapeHtml(t)}</span>`).join('');
+        
+        return `
+            <div class="marketplace-card ${isInstalled ? 'is-installed' : ''}" id="mp-card-${s.slug}">
+                <div class="mp-card-header">
+                    <div class="mp-emoji-box">${s.emoji || '🧩'}</div>
+                    <div class="mp-card-titles">
+                        <h3 class="mp-card-name" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</h3>
+                        <div class="mp-card-author">
+                            <span>@${escapeHtml(s.author || 'clawhub')}</span>
+                            <span class="mp-dot">•</span>
+                            <span class="mp-stars"><i class="fa-solid fa-star"></i> ${s.stars || 0}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="mp-card-desc">${s.description ? escapeHtml(s.description) : `<span style="opacity:0.5;font-style:italic;">Habilidade comunitária — ${escapeHtml(s.name || s.slug)}</span>`}</p>
+
+                <div class="mp-card-tags">
+                    ${tagsHtml}
+                </div>
+
+                <div class="mp-card-footer">
+                    <div class="mp-downloads" title="Downloads">
+                        <i class="fa-solid fa-download"></i> ${(s.downloads || 0).toLocaleString()}
+                    </div>
+                    ${isInstalled ? `
+                        <div style="display: flex; gap: 6px;">
+                            <span class="mp-badge-installed"><i class="fa-solid fa-check"></i> Instalada</span>
+                            <button class="mp-btn-uninstall" onclick="uninstallMarketplaceSkill('${s.slug}', this)" title="Desinstalar skill">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    ` : `
+                        <button class="mp-btn-install" onclick="installMarketplaceSkill('${s.slug}', this)">
+                            <i class="fa-solid fa-cloud-arrow-down"></i> Instalar
+                        </button>
+                    `}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function installMarketplaceSkill(slug, btn) {
+    if (!btn) return;
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Instalando...';
+
+    try {
+        const res = await fetchWithAuth('/api/marketplace/install', {
+            method: 'POST',
+            body: JSON.stringify({ slug })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Sucesso!';
+            setTimeout(() => {
+                loadMarketplaceSkills(document.getElementById('marketplace-search')?.value || '');
+                fetchSkills(); // Atualiza a aba de skills instaladas
+            }, 800);
+        } else {
+            alert(data.error || "Falha ao instalar skill.");
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    } catch (e) {
+        alert("Erro na conexão: " + e.message);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
+async function uninstallMarketplaceSkill(name, btn) {
+    if (!confirm(`Deseja realmente desinstalar a skill '${name}'?`)) return;
+    
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+    }
+
+    try {
+        const res = await fetchWithAuth('/api/marketplace/uninstall', {
+            method: 'POST',
+            body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            loadMarketplaceSkills(document.getElementById('marketplace-search')?.value || '');
+            fetchSkills();
+        } else {
+            alert(data.error || "Falha ao desinstalar skill.");
+            if (btn) btn.disabled = false;
+        }
+    } catch (e) {
+        alert("Erro na conexão: " + e.message);
+        if (btn) btn.disabled = false;
+    }
+}
 
 // Inicializa a aba padrão no carregamento
 document.addEventListener('DOMContentLoaded', () => {
