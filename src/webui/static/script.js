@@ -235,6 +235,10 @@ async function sendMessage() {
                         } else if (evt.type === 'tool') {
                             cumulativeText += `\n> ⚙️ [\`${evt.content}\`]\n\n`;
                             flushRender();
+                        } else if (evt.type === 'action') {
+                            if (evt.content === 'clear_chat') {
+                                setTimeout(clearSession, 1200);
+                            }
                         } else if (evt.type === 'error') {
                             cumulativeText += `\n<span style="color:red">Error API: ${evt.content}</span>`;
                             flushRender();
@@ -262,19 +266,154 @@ async function sendMessage() {
     }
 }
 
-// Enter to send
+// ─── Slash Commands Autocomplete Logic ───────────────────────────────────────
+let _availableSlashCommands = [
+    { command: "/learn", params: "<fato>", description: "Salva uma memória permanente no MEMORY.md.", icon: "fa-solid fa-brain", category: "Memória" },
+    { command: "/delegate", params: "<agente> <tarefa>", description: "Delega uma subtarefa para outro agente.", icon: "fa-solid fa-people-arrows", category: "Agentes" },
+    { command: "/skill", params: "[nome]", description: "Lista todas as skills ou consulta manual.", icon: "fa-solid fa-puzzle-piece", category: "Skills" },
+    { command: "/mcp", params: "[servidor]", description: "Exibe status e tools dos servidores MCP.", icon: "fa-solid fa-server", category: "Ferramentas" },
+    { command: "/status", params: "", description: "Status de saúde do sistema e modelo.", icon: "fa-solid fa-heart-pulse", category: "Sistema" },
+    { command: "/model", params: "[nome]", description: "Verifica ou altera o modelo LLM ativo.", icon: "fa-solid fa-microchip", category: "Modelo" },
+    { command: "/reset", params: "", description: "Limpa o histórico da conversa atual.", icon: "fa-solid fa-rotate-left", category: "Conversa" },
+    { command: "/help", params: "", description: "Exibe o catálogo completo de comandos.", icon: "fa-solid fa-circle-question", category: "Ajuda" }
+];
+let _filteredSlashCommands = [];
+let _slashActiveIndex = 0;
+let _slashPopupOpen = false;
+
+async function loadSlashCommands() {
+    try {
+        const res = await fetchWithAuth('/api/commands');
+        if (res.ok) {
+            const data = await res.json();
+            if (data.commands && data.commands.length > 0) {
+                _availableSlashCommands = data.commands;
+            }
+        }
+    } catch (e) {
+        // Usa fallback local padrão
+    }
+}
+
+function showSlashPopup(filtered) {
+    const popup = document.getElementById('slash-popup');
+    const list = document.getElementById('slash-popup-list');
+    if (!popup || !list) return;
+
+    _filteredSlashCommands = filtered;
+    _slashActiveIndex = 0;
+    _slashPopupOpen = true;
+
+    if (filtered.length === 0) {
+        hideSlashPopup();
+        return;
+    }
+
+    list.innerHTML = filtered.map((sc, idx) => `
+        <div class="slash-item ${idx === 0 ? 'active' : ''}" data-index="${idx}" onclick="selectSlashCommand(${idx})">
+            <div class="slash-item-icon">
+                <i class="${sc.icon || 'fa-solid fa-terminal'}"></i>
+            </div>
+            <div class="slash-item-info">
+                <div class="slash-item-top">
+                    <span class="slash-item-cmd">${sc.command}</span>
+                    <span class="slash-item-params">${escapeHtml(sc.params || '')}</span>
+                    <span class="slash-item-category">${escapeHtml(sc.category || 'Geral')}</span>
+                </div>
+                <p class="slash-item-desc">${escapeHtml(sc.description)}</p>
+            </div>
+        </div>
+    `).join('');
+
+    popup.style.display = 'block';
+}
+
+function hideSlashPopup() {
+    const popup = document.getElementById('slash-popup');
+    if (popup) popup.style.display = 'none';
+    _slashPopupOpen = false;
+}
+
+function selectSlashCommand(idx) {
+    const sc = _filteredSlashCommands[idx];
+    if (!sc) return;
+
+    // Se o comando aceitar argumentos, adiciona espaço no final
+    messageInput.value = sc.params ? `${sc.command} ` : `${sc.command}`;
+    hideSlashPopup();
+    messageInput.focus();
+    adjustTextareaHeight();
+}
+
+function updateSlashActiveItem() {
+    const items = document.querySelectorAll('#slash-popup-list .slash-item');
+    items.forEach((el, idx) => {
+        if (idx === _slashActiveIndex) {
+            el.classList.add('active');
+            el.scrollIntoView({ block: 'nearest' });
+        } else {
+            el.classList.remove('active');
+        }
+    });
+}
+
+// Input key & navigation handling
 messageInput.addEventListener('keydown', function (e) {
+    if (_slashPopupOpen) {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            _slashActiveIndex = (_slashActiveIndex + 1) % _filteredSlashCommands.length;
+            updateSlashActiveItem();
+            return;
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            _slashActiveIndex = (_slashActiveIndex - 1 + _filteredSlashCommands.length) % _filteredSlashCommands.length;
+            updateSlashActiveItem();
+            return;
+        } else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && _filteredSlashCommands.length > 0)) {
+            e.preventDefault();
+            selectSlashCommand(_slashActiveIndex);
+            return;
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            hideSlashPopup();
+            return;
+        }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        hideSlashPopup();
         if (!sendBtn.disabled) {
             sendMessage();
-            adjustTextareaHeight(); // Reset height after send
+            adjustTextareaHeight();
         }
     }
 });
 
-// Auto-height adjustment on typing
-messageInput.addEventListener('input', adjustTextareaHeight);
+messageInput.addEventListener('input', function () {
+    adjustTextareaHeight();
+    const val = messageInput.value;
+
+    if (val.startsWith('/') && !val.includes(' ')) {
+        const query = val.toLowerCase();
+        const filtered = _availableSlashCommands.filter(sc => sc.command.toLowerCase().startsWith(query));
+        showSlashPopup(filtered);
+    } else {
+        hideSlashPopup();
+    }
+});
+
+// Fecha o popup ao clicar fora
+document.addEventListener('click', function (e) {
+    const popup = document.getElementById('slash-popup');
+    if (popup && !popup.contains(e.target) && e.target !== messageInput) {
+        hideSlashPopup();
+    }
+});
+
+// Inicializa slash commands no carregamento
+document.addEventListener('DOMContentLoaded', loadSlashCommands);
 
 function clearSession() {
     chatContainer.innerHTML = `

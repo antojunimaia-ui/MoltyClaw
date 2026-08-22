@@ -14,11 +14,22 @@
     </div>
 
     <div class="prompt-box-area">
+        <!-- Slash Commands Autocomplete Popup -->
+        <div class="slash-popup" id="slash-popup" style="display: none;">
+            <div class="slash-popup-header">
+                <span><i class="fa-solid fa-terminal"></i> Comandos Rápidos</span>
+                <span class="slash-popup-tip">↑↓ navegar · ↵ selecionar · Esc fechar</span>
+            </div>
+            <div class="slash-popup-list" id="slash-popup-list">
+                <!-- Renderizado dinamicamente via JS -->
+            </div>
+        </div>
+
         <div class="prompt-input-box" id="prompt-box">
             <textarea
                 id="message-input"
                 class="prompt-textarea"
-                placeholder="Message MoltyClaw..."
+                placeholder="Message MoltyClaw (digite / para comandos)..."
                 rows="1"
             ></textarea>
             <div class="prompt-box-footer">

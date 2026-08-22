@@ -2577,7 +2577,7 @@ async def interactive_shell():
         border_style="cyan"
     ))
     console.print()
-    
+
     # Controla se já houve pelo menos uma resposta da IA (para exibir divisor)
     _turn_count = 0
 
@@ -2587,23 +2587,23 @@ async def interactive_shell():
             console.print("─" * console.width, style="dim")
             sys.stdout.write(" ❯ \n")
             console.print("─" * console.width, style="dim")
-            
+
             # Move o cursor 2 linhas para cima e 3 caracteres para a direita (logo após o " ❯ ")
             sys.stdout.write("\033[2A\033[3C")
             sys.stdout.flush()
-            
+
             user_input = sys.stdin.readline().strip()
-            
+
             if not user_input:
                 # Move o cursor para baixo para pular a linha inferior antes de repetir
                 sys.stdout.write("\n")
                 sys.stdout.flush()
                 continue
-                
-            # Apaga a caixa de entrada inteira (linhas 4, 3 e 2) sem invadir a resposta anterior do agente
-            sys.stdout.write("\033[2K")        # limpa a linha inferior atual (linha 4)
-            sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha de input (linha 3)
-            sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha superior (linha 2)
+
+            # Apaga a caixa de entrada inteira (linhas 3) sem invadir a resposta anterior do agente
+            sys.stdout.write("\033[2K")        # limpa a linha inferior atual
+            sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha de input
+            sys.stdout.write("\033[A\033[2K")  # sobe 1 e limpa linha superior
             sys.stdout.flush()
 
             # Linha divisória com gradiente laranja→amarelo (igual ao banner), só após a 1ª resposta da IA
@@ -2628,7 +2628,7 @@ async def interactive_shell():
             if not user_input:
                 continue
                 
-            # Interceptando comandos diretos
+            # Interceptando comandos diretos de terminal
             if user_input.startswith("!cmd "):
                 cmd = user_input[5:]
                 with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
@@ -2636,9 +2636,12 @@ async def interactive_shell():
                     result = await agent.execute_terminal_command(cmd)
                 console.print(Panel(result, title="[green]Terminal Output[/green]", border_style="green"))
                 continue
-                
+
             # Conversa padrão com a IA
+            _t0 = time.perf_counter()
             await agent.ask(user_input)
+            _elapsed = time.perf_counter() - _t0
+            console.print(f"[dim]⏱ {_elapsed:.1f}s[/dim]")
             _turn_count += 1
             
         except (KeyboardInterrupt, EOFError):

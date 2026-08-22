@@ -143,8 +143,22 @@ def chat():
             except Exception as e:
                 console.print(f"[warning]Erro na transcrição de áudio: {e}[/warning]")
 
-    if not user_msg:
-        return jsonify({"error": "Mensagem vazia."}), 400
+    # Intercepta Comandos Slash Universais (/learn, /delegate, /skill, /mcp, /status, etc.)
+    from commands import is_slash_command, handle_slash_command
+    if is_slash_command(user_msg):
+        def generate_slash_response():
+            fut = asyncio.run_coroutine_threadsafe(
+                handle_slash_command(user_msg, agent=target_agent, agent_id=req_agent_id),
+                hub.loop
+            )
+            cmd_result = fut.result(timeout=60)
+            yield f"data: {json.dumps({'type': 'token', 'content': cmd_result.get('reply', '')})}\n\n"
+            if cmd_result.get("action") == "clear_chat":
+                yield f"data: {json.dumps({'type': 'action', 'content': 'clear_chat'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        from flask import Response, stream_with_context
+        return Response(stream_with_context(generate_slash_response()), mimetype='text/event-stream')
 
     import queue as _queue
     import re
@@ -780,6 +794,30 @@ def uninstall_marketplace_skill():
     if success:
         return jsonify({"success": True, "message": message})
     return jsonify({"error": message}), 500
+
+# ── Slash Commands API ────────────────────────────────────────────────────────
+
+@app.route("/api/commands", methods=["GET"])
+def get_slash_commands():
+    """Retorna o catálogo de comandos slash para autocomplete no front."""
+    from commands import SLASH_COMMANDS
+    return jsonify({"commands": SLASH_COMMANDS})
+
+@app.route("/api/commands/execute", methods=["POST"])
+def execute_slash_command_route():
+    """Executa um comando slash diretamente."""
+    data = request.json or {}
+    text = data.get("text", "").strip()
+    agent_id = data.get("agent", "MoltyClaw")
+    
+    from commands import handle_slash_command
+    target_agent = hub.agent if agent_id == "MoltyClaw" else get_or_create_subagent(agent_id)
+    fut = asyncio.run_coroutine_threadsafe(
+        handle_slash_command(text, agent=target_agent, agent_id=agent_id),
+        hub.loop
+    )
+    res = fut.result(timeout=60)
+    return jsonify(res)
 
 if __name__ == "__main__":
     host = "0.0.0.0" if os.environ.get("MOLTY_WEBUI_SHARE") == "1" else "127.0.0.1"

@@ -28,6 +28,14 @@ from rich.console import Console
 from dotenv import load_dotenv
 from initializer import MOLTY_DIR
 
+try:
+    from env_manager import EnvManager
+except ImportError:
+    try:
+        from src.webui.env_manager import EnvManager
+    except ImportError:
+        from env_manager import EnvManager
+
 console = Console()
 load_dotenv(os.path.join(MOLTY_DIR, '.env'))
 
@@ -136,6 +144,18 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
+
+# Helper para compatibilidade de templates entre Flask e FastAPI (suporta tanto filename= quanto path=)
+def _jinja_url_for(endpoint: str, **values) -> str:
+    if endpoint == "static":
+        filename = values.get("filename") or values.get("path")
+        return f"/static/{filename}"
+    try:
+        return str(app.url_path_for(endpoint, **values))
+    except Exception:
+        return f"/{endpoint}"
+
+templates.env.globals["url_for"] = _jinja_url_for
 
 
 
@@ -290,6 +310,18 @@ async def chat(
             if text:
                 message += f"\n(Áudio Transcrito): '{text}'"
 
+    # Intercepta Comandos Slash Universais (/learn, /delegate, /skill, /mcp, /status, etc.)
+    from commands import is_slash_command, handle_slash_command
+    if is_slash_command(message):
+        async def slash_event_generator():
+            cmd_res = await handle_slash_command(message, agent=target_agent, agent_id=agent_id)
+            yield f"data: {json.dumps({'type': 'token', 'content': cmd_res.get('reply', '')})}\n\n"
+            if cmd_res.get("action") == "clear_chat":
+                yield f"data: {json.dumps({'type': 'action', 'content': 'clear_chat'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+        return StreamingResponse(slash_event_generator(), media_type="text/event-stream")
+
     # Streaming Response (SSE)
     async def event_generator():
         q = asyncio.Queue()
@@ -334,9 +366,6 @@ async def chat(
 
 @app.get("/api/integrations")
 async def get_integrations():
-    import sys
-    sys.path.append(os.path.join(BASE_DIR, "webui"))
-    from .env_manager import EnvManager
     env_mgr = EnvManager()
 
     status = {}
@@ -361,10 +390,6 @@ async def get_integrations():
 @app.get("/api/integrations/{platform}/config")
 async def get_integration_config(platform: str):
     """Retorna a configuração atual de uma integração (com tokens mascarados)"""
-    import sys
-    sys.path.append(os.path.join(BASE_DIR, "webui"))
-    from .env_manager import EnvManager
-    
     env_mgr = EnvManager()
     config = env_mgr.get_integration_config(platform)
     return config
@@ -372,9 +397,6 @@ async def get_integration_config(platform: str):
 @app.post("/api/integrations/{platform}/config")
 async def save_integration_config(platform: str, data: Dict[str, Any]):
     """Salva a configuração de uma integração no .env e já ativa automaticamente"""
-    import sys
-    sys.path.append(os.path.join(BASE_DIR, "webui"))
-    from .env_manager import EnvManager
     from dotenv import load_dotenv
     
     fields = data.get("fields", {})
@@ -893,6 +915,22 @@ async def uninstall_marketplace_skill(data: Dict[str, Any]):
     if success:
         return {"success": True, "message": message}
     raise HTTPException(500, detail=message)
+
+# --- Slash Commands API ---
+
+@app.get("/api/commands")
+async def get_slash_commands_api():
+    from commands import SLASH_COMMANDS
+    return {"commands": SLASH_COMMANDS}
+
+@app.post("/api/commands/execute")
+async def execute_slash_command_api(data: Dict[str, Any]):
+    text = data.get("text", "").strip()
+    agent_id = data.get("agent", "MoltyClaw")
+    from commands import handle_slash_command
+    target = get_or_create_agent(agent_id)
+    res = await handle_slash_command(text, agent=target, agent_id=agent_id)
+    return res
 
 # --- Main ---
 
