@@ -24,7 +24,7 @@ def _build_date_section() -> list[str]:
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-VERSION = "2026.5.4-1"
+VERSION = "2026.22.8"
 SILENT_TOKEN = "NO_REPLY"
 TOOL_FORMAT_EXAMPLE = '<tool>\n{"action": "GOTO", "param": "https://site.com"}\n</tool>'
 
