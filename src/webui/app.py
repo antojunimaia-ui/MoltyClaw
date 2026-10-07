@@ -15,14 +15,17 @@ log.setLevel(logging.ERROR) # Silenciar spams do flask no console
 # Adiciona o diretório base para ler os imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+# Adiciona src/webui ao path para env_manager
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'webui')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'webui')))
 from agent_hub import get_hub
 import skills
 from rich.console import Console
 from initializer import MOLTY_DIR
 try:
-    from env_manager import EnvManager
+    from env_manager import EnvManager  # type: ignore[import-not-found]
 except ImportError:
-    from src.webui.env_manager import EnvManager
+    from src.webui.env_manager import EnvManager  # type: ignore[import-not-found]
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 console = Console()
@@ -76,6 +79,46 @@ import re
 def serve_temp(filename):
     return send_from_directory(os.path.abspath(os.path.join(MOLTY_DIR, "temp")), filename)
 
+@app.route("/canvas/<agent_id>/<path:filename>")
+def serve_canvas(agent_id, filename):
+    if agent_id == "MoltyClaw":
+        canvas_dir = os.path.join(MOLTY_DIR, "canvas")
+    else:
+        canvas_dir = os.path.join(MOLTY_DIR, "agents", agent_id, "canvas")
+    os.makedirs(canvas_dir, exist_ok=True)
+    return send_from_directory(os.path.abspath(canvas_dir), filename)
+
+@app.route("/api/canvas/content", methods=["GET"])
+def get_canvas_content():
+    agent_id = request.args.get("agent_id", "MoltyClaw")
+    artifact_id = request.args.get("artifact_id", "")
+    ext = request.args.get("ext", "html")
+
+    if agent_id == "MoltyClaw":
+        canvas_dir = os.path.join(MOLTY_DIR, "canvas")
+    else:
+        canvas_dir = os.path.join(MOLTY_DIR, "agents", agent_id, "canvas")
+
+    filename = f"{artifact_id}.{ext}" if not artifact_id.endswith(f".{ext}") else artifact_id
+    fpath = os.path.join(canvas_dir, filename)
+
+    if not os.path.exists(fpath):
+        return jsonify({"success": False, "error": f"Arquivo '{filename}' não encontrado."}), 404
+
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            code = f.read()
+        return jsonify({
+            "success": True,
+            "filename": filename,
+            "artifact_id": artifact_id,
+            "ext": ext,
+            "content": code,
+            "url": f"/canvas/{agent_id}/{filename}"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 agent_instances = {}
 
 def get_or_create_agent(agent_id="MoltyClaw"):
@@ -103,8 +146,9 @@ def get_or_create_agent(agent_id="MoltyClaw"):
 
         new_agent = MoltyClaw(name=name, agent_id=agent_id)
         # O sub-agente no WebUI compartilha o browser do hub (via CDP)
-        fut = asyncio.run_coroutine_threadsafe(new_agent.init_browser(), hub.loop)
-        fut.result(timeout=30)
+        if hub.loop is not None:
+            fut = asyncio.run_coroutine_threadsafe(new_agent.init_browser(), hub.loop)
+            fut.result(timeout=30)
         
         agent_instances[agent_id] = new_agent
         
@@ -136,6 +180,8 @@ def chat():
         ext = filename.split(".")[-1].lower()
         if ext in ['mp3', 'ogg', 'wav', 'm4a']:
             try:
+                if hub.loop is None or target_agent is None or not hasattr(target_agent, 'transcribe_audio'):
+                    raise RuntimeError("Loop ou agente indisponível para transcrição")
                 fut = asyncio.run_coroutine_threadsafe(target_agent.transcribe_audio(filepath), hub.loop)
                 text = fut.result(timeout=60)
                 if text:
@@ -147,6 +193,9 @@ def chat():
     from commands import is_slash_command, handle_slash_command
     if is_slash_command(user_msg):
         def generate_slash_response():
+            if hub.loop is None:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Loop do agente não disponível'})}\n\n"
+                return
             fut = asyncio.run_coroutine_threadsafe(
                 handle_slash_command(user_msg, agent=target_agent, agent_id=req_agent_id),
                 hub.loop
@@ -177,6 +226,9 @@ def chat():
 
         async def run_ask():
             try:
+                if target_agent is None:
+                    q.put(("error", "Agente não disponível"))
+                    return
                 res = await target_agent.ask(prompt=user_msg, silent=False, stream_callback=stream_cb, tool_callback=tool_cb)
                 if res and isinstance(res, str) and "[AUDIO_REPLY:" in res:
                     match = re.search(r'\[AUDIO_REPLY:\s*([^\]]+)\]', res)
@@ -187,7 +239,10 @@ def chat():
             except Exception as e:
                 q.put(("error", str(e)))
 
-        asyncio.run_coroutine_threadsafe(run_ask(), hub.loop)
+        if hub.loop is not None:
+            asyncio.run_coroutine_threadsafe(run_ask(), hub.loop)
+        else:
+            q.put(("error", "Loop do agente não disponível"))
 
     def generate():
         while True:
@@ -404,7 +459,7 @@ def toggle_integration(action):
         return jsonify({"success": True})
     return jsonify({"error": "Falha na operação"}), 500
 
-@app.route("/api/agent/<file>", methods=["GET", "POST"])
+@app.route("/api/agent/<file>", methods=["GET", "POST"])  # type: ignore[arg-type]
 def manage_agent_file(file):
     allowed_files = {
         "memory": "MEMORY.md",
@@ -460,7 +515,7 @@ def manage_agent_file(file):
             f.write(content)
         return jsonify({"success": True})
 
-@app.route("/api/bindings", methods=["GET", "POST"])
+@app.route("/api/bindings", methods=["GET", "POST"])  # type: ignore[arg-type]
 def manage_bindings():
     from routing import load_bindings, save_bindings
     if request.method == "GET":
@@ -557,6 +612,17 @@ def delete_agent(agent_id):
         return jsonify({"success": True})
     return jsonify({"error": "Agente não encontrado."}), 404
 
+@app.route("/api/agent/banner", methods=["GET"])
+def agent_banner():
+    """Banner ANSI Shadow dinâmico a partir do IDENTITY.md (`- **Nome**:`)."""
+    agent_id = request.args.get("agent", "MoltyClaw")
+    try:
+        from agent_display import get_banner
+    except ImportError:
+        from src.agent_display import get_banner
+    return jsonify(get_banner(agent_id))
+
+
 @app.route("/api/agent/import_context", methods=["POST"])
 def import_context():
     if not hub.ready:
@@ -601,6 +667,8 @@ Retorne o conteúdo revisado do MEMORY.md:
 """
 
     try:
+        if hub.agent is None or hub.loop is None:
+            return jsonify({"error": "Agente ou loop não disponível."}), 503
         fut = asyncio.run_coroutine_threadsafe(
             hub.agent.ask(prompt=assimilation_prompt, silent=True),
             hub.loop
@@ -811,7 +879,9 @@ def execute_slash_command_route():
     agent_id = data.get("agent", "MoltyClaw")
     
     from commands import handle_slash_command
-    target_agent = hub.agent if agent_id == "MoltyClaw" else get_or_create_subagent(agent_id)
+    target_agent = hub.agent if agent_id == "MoltyClaw" else get_or_create_agent(agent_id)
+    if hub.loop is None:
+        return jsonify({"error": "Loop do agente não disponível"}), 503
     fut = asyncio.run_coroutine_threadsafe(
         handle_slash_command(text, agent=target_agent, agent_id=agent_id),
         hub.loop

@@ -47,6 +47,7 @@ dependencies = [
     "questionary",
     "google-generativeai",
     "ollama",
+    "pyfiglet",
 ]
 
 [project.urls]

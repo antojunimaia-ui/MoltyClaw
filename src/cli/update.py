@@ -4,6 +4,7 @@ MoltyClaw CLI — Update & Reset Memory
 import os
 import sys
 import json
+import subprocess
 from . import console, MOLTY_DIR, Panel, Prompt, HAS_QUESTIONARY, MOLTY_STYLE
 
 try:
@@ -40,8 +41,8 @@ def cli_update():
     except Exception as e:
         console.print(f"[bold yellow]⚠ Falha ao consultar GitHub Releases: {e}[/bold yellow]")
         console.print("[dim]Realizando git pull como fallback...[/dim]")
-        os.system("git pull")
-        os.system("pip install -r requirements.txt")
+        subprocess.run(["git", "pull"], check=False)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=False)
         console.print("[bold green]✅ Atualização via fallback concluída![/bold green]")
         sys.exit(0)
 
@@ -108,9 +109,9 @@ def cli_update():
             sys.exit(0)
 
     console.print("\n[dim]Puxando as novidades do repositório oficial...[/dim]")
-    os.system("git pull")
+    subprocess.run(["git", "pull"], check=False)
     console.print("[dim]Verificando e instalando novas dependências...[/dim]")
-    os.system("pip install -r requirements.txt")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=False)
 
     try:
         with open(VERSION_FILE, 'w', encoding='utf-8') as f:

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MoltyClaw Gateway Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=18">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=22">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.0/css/all.min.css">
     <!-- Marked.js for markdown rendering -->
@@ -35,6 +35,9 @@
                 {% include 'views/scheduler.html' %}
             </main>
 
+            <!-- Canvas Live Split-Screen View -->
+            {% include 'partials/canvas_panel.html' %}
+
             <!-- Resize handle between chat and right panel -->
             <div class="panel-resizer" id="panel-resizer"></div>
 
@@ -50,7 +53,7 @@
     </div>
 
     <!-- Main Client Script -->
-    <script src="{{ url_for('static', filename='script.js') }}?v=18"></script>
+    <script src="{{ url_for('static', filename='script.js') }}?v=24"></script>
 </body>
 
 </html>

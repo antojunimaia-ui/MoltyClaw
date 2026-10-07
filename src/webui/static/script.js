@@ -65,7 +65,15 @@ async function fetchWithAuth(url, options = {}) {
     return response;
 }
 
+function markChatActive() {
+    const vc = document.getElementById('view-chat');
+    if (vc && !vc.classList.contains('has-messages')) {
+        vc.classList.add('has-messages');
+    }
+}
+
 function appendUserMessage(text, imgData = null) {
+    markChatActive();
     const row = document.createElement('div');
     row.className = 'message-row user-row';
 
@@ -88,6 +96,7 @@ function appendUserMessage(text, imgData = null) {
 }
 
 function appendAssistantMessage(htmlContent) {
+    markChatActive();
     const row = document.createElement('div');
     row.className = 'message-row assistant-row';
 
@@ -111,6 +120,7 @@ function adjustTextareaHeight() {
 }
 
 function createAssistantMessage() {
+    markChatActive();
     const row = document.createElement('div');
     row.className = 'message-row assistant-row';
     const bubble = document.createElement('div');
@@ -140,6 +150,21 @@ function renderMarkdownWithMedia(text) {
         return `<div class="image-wrapper" style="margin-top: 15px; margin-bottom: 15px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; display: inline-block; max-width: 100%;">
             <div style="background: #f8fafc; padding: 8px 12px; font-size: 10px; color: #64748b; font-family: monospace; border-bottom: 1px solid #e2e8f0;">📸 Captura de Tela (${filename.trim()})</div>
             <a href="/temp/${filename.trim()}" target="_blank"><img src="/temp/${filename.trim()}" style="width: 100%; display: block; max-height: 400px; object-fit: cover;"></a>
+        </div>`;
+    });
+
+    // Converte chamadas de Canvas Sync em Card interativo que abre o Split View
+    tempHtml = tempHtml.replace(/<!--\s*MOLTY_CANVAS_SYNC:([^:]+):([^:]+):([^\s>]+)\s*-->/g, (match, agentId, artifactId, ext) => {
+        const cleanAgent = agentId.trim();
+        const cleanArt = artifactId.trim();
+        const cleanExt = ext.trim();
+        return `<div class="canvas-artifact-chip" onclick="openCanvasSplit('${cleanAgent}', '${cleanArt}', '${cleanExt}')">
+            <div class="canvas-chip-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="canvas-chip-info">
+                <span class="canvas-chip-name">${cleanArt}.${cleanExt}</span>
+                <span class="canvas-chip-type">Live Canvas Preview · Clique para abrir no Split View</span>
+            </div>
+            <button class="canvas-chip-btn"><i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir Split</button>
         </div>`;
     });
 
@@ -231,6 +256,11 @@ async function sendMessage() {
                         const evt = JSON.parse(dataStr);
                         if (evt.type === 'token') {
                             cumulativeText += evt.content;
+                            const canvasMatch = cumulativeText.match(/<!--\s*MOLTY_CANVAS_SYNC:([^:]+):([^:]+):([^\s>]+)\s*-->/);
+                            if (canvasMatch && window._lastOpenedCanvasId !== canvasMatch[2]) {
+                                window._lastOpenedCanvasId = canvasMatch[2];
+                                openCanvasSplit(canvasMatch[1].trim(), canvasMatch[2].trim(), canvasMatch[3].trim());
+                            }
                             if (!renderTimer) renderTimer = setTimeout(flushRender, 100);
                         } else if (evt.type === 'tool') {
                             cumulativeText += `\n> ⚙️ [\`${evt.content}\`]\n\n`;
@@ -246,6 +276,10 @@ async function sendMessage() {
                             if (renderTimer) {
                                 clearTimeout(renderTimer);
                                 flushRender();
+                            }
+                            const canvasMatch = cumulativeText.match(/<!--\s*MOLTY_CANVAS_SYNC:([^:]+):([^:]+):([^\s>]+)\s*-->/);
+                            if (canvasMatch) {
+                                openCanvasSplit(canvasMatch[1].trim(), canvasMatch[2].trim(), canvasMatch[3].trim());
                             }
                         }
                     } catch (e) {
@@ -412,21 +446,70 @@ document.addEventListener('click', function (e) {
     }
 });
 
-// Inicializa slash commands no carregamento
-document.addEventListener('DOMContentLoaded', loadSlashCommands);
+// Calibra a largura do texto ASCII para cobrir exatamente a largura da promptbox
+function fitAsciiToPromptbox() {
+    const backdrop = document.getElementById('prompt-ascii-backdrop');
+    const ascii = backdrop ? backdrop.querySelector('.chat-ascii') : null;
+    const promptBox = document.getElementById('prompt-box');
+    if (!backdrop || !ascii || !promptBox) return;
+
+    ascii.style.transform = 'none';
+    const boxWidth = promptBox.offsetWidth;
+    const asciiWidth = ascii.scrollWidth || ascii.offsetWidth;
+
+    if (boxWidth > 0 && asciiWidth > 0) {
+        // Encolhe nomes largos p/ caber, mas nunca dá zoom em nomes curtos
+        const scale = Math.min(boxWidth / asciiWidth, 1);
+        ascii.style.transform = `scale(${scale})`;
+        ascii.style.transformOrigin = 'center center';
+    }
+}
+
+// Banner ASCII dinâmico (ANSI Shadow) a partir do IDENTITY.md do agente
+async function loadAsciiBanner(agentId) {
+    const asciiEl = document.getElementById('chat-ascii');
+    const id = agentId || (document.getElementById('chat-agent-select-nav') || {}).value || 'MoltyClaw';
+    try {
+        const res = await fetchWithAuth(`/api/agent/banner?agent=${encodeURIComponent(id)}`);
+        const data = await res.json();
+        if (data && data.ascii && asciiEl) {
+            asciiEl.textContent = data.ascii;
+        }
+        const displayName = (data && data.name) || id;
+        const input = document.getElementById('message-input');
+        if (input) input.placeholder = `Message ${displayName} (digite / para comandos)...`;
+    } catch (e) {
+        console.warn('ASCII banner: usando fallback estático', e);
+    }
+    requestAnimationFrame(fitAsciiToPromptbox);
+}
+
+// Troca de agente via navbar (antes apontava para função inexistente)
+function updateChatAgent() {
+    const sel = document.getElementById('chat-agent-select-nav') || document.getElementById('chat-agent-select');
+    loadAsciiBanner(sel ? sel.value : 'MoltyClaw');
+}
+
+// Inicializa slash commands e calibração de escala no carregamento
+document.addEventListener('DOMContentLoaded', () => {
+    loadSlashCommands();
+    loadAsciiBanner('MoltyClaw');
+    fitAsciiToPromptbox();
+    const navSel = document.getElementById('chat-agent-select-nav');
+    if (navSel) navSel.addEventListener('change', updateChatAgent);
+    const promptBoxEl = document.getElementById('prompt-box');
+    if (promptBoxEl && window.ResizeObserver) {
+        new ResizeObserver(() => fitAsciiToPromptbox()).observe(promptBoxEl);
+    }
+});
+
+window.addEventListener('resize', fitAsciiToPromptbox);
 
 function clearSession() {
-    chatContainer.innerHTML = `
-        <div class="chat-empty-state" id="chat-empty-state">
-            <pre class="chat-ascii" aria-hidden="true">
-███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗
-████╗ ████║██╔═══██╗██║  ╚══██╔══╝╚██╗ ██╔╝██╔════╝██║     ██╔══██╗██║    ██║
-██╔████╔██║██║   ██║██║     ██║    ╚████╔╝ ██║     ██║     ███████║██║ █╗ ██║
-██║╚██╔╝██║██║   ██║██║     ██║     ╚██╔╝  ██║     ██║     ██╔══██║██║███╗██║
-██║ ╚═╝ ██║╚██████╔╝███████╗██║      ██║   ╚██████╗███████╗██║  ██║╚███╔███╔╝
-╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝      ╚═╝    ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝</pre>
-            <p class="chat-empty-hint">Session cleared. Send a message to start again</p>
-        </div>`;
+    chatContainer.innerHTML = '';
+    const vc = document.getElementById('view-chat');
+    if (vc) vc.classList.remove('has-messages');
+    requestAnimationFrame(fitAsciiToPromptbox);
 }
 
 // ─── Mobile Sidebar Functions (kept as no-ops for compat) ───────────────────
@@ -669,25 +752,32 @@ function _initRightPanel() {
 }
 
 function toggleRightPanel() {
+    const layout  = document.querySelector('.app-layout');
     const panel   = document.getElementById('right-panel');
     const resizer = document.getElementById('panel-resizer');
     if (_rpOpen) {
         panel.classList.add('hidden');
         panel.classList.remove('open');
+        if (layout) layout.classList.remove('right-panel-open');
         resizer.style.display = 'none';
         _rpOpen = false;
     } else {
         switchRightTab(_rpCurrentTab || 'integrations');
     }
+    if (typeof fitAsciiToPromptbox === 'function') {
+        requestAnimationFrame(fitAsciiToPromptbox);
+    }
 }
 
 function switchRightTab(tabId) {
+    const layout  = document.querySelector('.app-layout');
     const panel   = document.getElementById('right-panel');
     const resizer = document.getElementById('panel-resizer');
 
     if (!_rpOpen) {
         panel.classList.remove('hidden');
         panel.classList.add('open');
+        if (layout) layout.classList.add('right-panel-open');
         resizer.style.display = 'block';
         _rpOpen = true;
     }
@@ -2378,4 +2468,178 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedPanel = localStorage.getItem('active-panel') || 'files';
     switchPanel(savedPanel);
 });
+
+// ─── Canvas Live Split-Screen Engine ────────────────────────────────────────
+let _currentCanvas = { agentId: 'MoltyClaw', artifactId: null, ext: 'html', content: '' };
+
+async function openCanvasSplit(agentId, artifactId, ext) {
+    _currentCanvas.agentId = agentId || 'MoltyClaw';
+    _currentCanvas.artifactId = artifactId;
+    _currentCanvas.ext = (ext || 'html').toLowerCase();
+
+    const panel = document.getElementById('canvas-split-panel');
+    const resizer = document.getElementById('canvas-split-resizer');
+    const nameEl = document.getElementById('canvas-filename');
+    const badgeEl = document.getElementById('canvas-badge');
+    const linkEl = document.getElementById('canvas-external-link');
+    const iframe = document.getElementById('canvas-iframe');
+    const loader = document.getElementById('canvas-loader');
+    const codeEl = document.getElementById('canvas-code-text');
+
+    if (!panel) return;
+
+    // Em telas muito estreitas (mobile), recolhe o right panel para priorizar o canvas
+    const rightPanel = document.getElementById('right-panel');
+    if (rightPanel && !rightPanel.classList.contains('hidden') && window.innerWidth < 768) {
+        if (typeof toggleRightPanel === 'function') toggleRightPanel();
+    }
+
+    panel.style.display = 'flex';
+    if (resizer) resizer.style.display = 'block';
+
+    const fullFilename = `${_currentCanvas.artifactId}.${_currentCanvas.ext}`;
+    if (nameEl) nameEl.textContent = fullFilename;
+    if (badgeEl) badgeEl.textContent = _currentCanvas.ext.toUpperCase();
+
+    const fileUrl = `/canvas/${_currentCanvas.agentId}/${fullFilename}`;
+    if (linkEl) linkEl.href = fileUrl;
+
+    if (loader) loader.style.display = 'flex';
+
+    try {
+        const res = await fetchWithAuth(`/api/canvas/content?agent_id=${encodeURIComponent(_currentCanvas.agentId)}&artifact_id=${encodeURIComponent(_currentCanvas.artifactId)}&ext=${encodeURIComponent(_currentCanvas.ext)}`);
+        const data = await res.json();
+        if (data.success) {
+            _currentCanvas.content = data.content;
+            if (codeEl) codeEl.textContent = data.content;
+
+            if (_currentCanvas.ext === 'md' || _currentCanvas.ext === 'markdown') {
+                const mdHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px;line-height:1.7;color:#1e293b;background:#ffffff;max-width:820px;margin:auto;}pre{background:#0f172a;color:#f8fafc;padding:16px;border-radius:8px;overflow:auto;}code{color:#ff6a00;background:rgba(255,106,0,0.08);padding:2px 5px;border-radius:4px;}h1,h2,h3{color:#0f172a;border-bottom:1px solid #e2e8f0;padding-bottom:8px;}</style></head><body>${DOMPurify.sanitize(marked.parse(data.content))}</body></html>`;
+                iframe.srcdoc = mdHtml;
+            } else {
+                iframe.removeAttribute('srcdoc');
+                iframe.src = `${fileUrl}?t=${Date.now()}`;
+            }
+        } else {
+            iframe.removeAttribute('srcdoc');
+            iframe.src = `${fileUrl}?t=${Date.now()}`;
+        }
+    } catch (e) {
+        console.warn("Carregando iframe direto:", e);
+        if (iframe) {
+            iframe.removeAttribute('srcdoc');
+            iframe.src = `${fileUrl}?t=${Date.now()}`;
+        }
+    } finally {
+        if (loader) loader.style.display = 'none';
+        switchCanvasTab('preview');
+        if (typeof fitAsciiToPromptbox === 'function') {
+            requestAnimationFrame(fitAsciiToPromptbox);
+        }
+    }
+}
+
+function closeCanvasSplit() {
+    const panel = document.getElementById('canvas-split-panel');
+    const resizer = document.getElementById('canvas-split-resizer');
+    if (panel) panel.style.display = 'none';
+    if (resizer) resizer.style.display = 'none';
+    if (typeof fitAsciiToPromptbox === 'function') {
+        requestAnimationFrame(fitAsciiToPromptbox);
+    }
+}
+
+function switchCanvasTab(tab) {
+    const previewBtn = document.getElementById('canvas-tab-preview-btn');
+    const codeBtn = document.getElementById('canvas-tab-code-btn');
+    const iframe = document.getElementById('canvas-iframe');
+    const codePane = document.getElementById('canvas-code-pane');
+
+    if (tab === 'code') {
+        if (codeBtn) codeBtn.classList.add('active');
+        if (previewBtn) previewBtn.classList.remove('active');
+        if (iframe) iframe.style.display = 'none';
+        if (codePane) codePane.style.display = 'block';
+    } else {
+        if (previewBtn) previewBtn.classList.add('active');
+        if (codeBtn) codeBtn.classList.remove('active');
+        if (iframe) iframe.style.display = 'block';
+        if (codePane) codePane.style.display = 'none';
+    }
+}
+
+function reloadCanvasPreview() {
+    if (_currentCanvas.artifactId) {
+        openCanvasSplit(_currentCanvas.agentId, _currentCanvas.artifactId, _currentCanvas.ext);
+    }
+}
+
+function copyCanvasCode() {
+    if (!_currentCanvas.content) return;
+    navigator.clipboard.writeText(_currentCanvas.content).then(() => {
+        const copyBtn = document.querySelector('.canvas-toolbar-right button[onclick="copyCanvasCode()"]');
+        if (copyBtn) {
+            const orig = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fa-solid fa-check" style="color:#22c55e;"></i>';
+            setTimeout(() => { copyBtn.innerHTML = orig; }, 1500);
+        }
+    });
+}
+
+// Resizer interativo do Canvas Split-Screen (bidirecional esquerda/direita)
+(function initCanvasResizer() {
+    document.addEventListener('DOMContentLoaded', () => {
+        const resizer = document.getElementById('canvas-split-resizer');
+        const panel = document.getElementById('canvas-split-panel');
+        if (!resizer || !panel) return;
+
+        let isDragging = false;
+
+        resizer.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            resizer.classList.add('dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const layout = document.querySelector('.app-layout');
+            const containerWidth = layout?.offsetWidth || window.innerWidth;
+            const isLeft = layout && (layout.classList.contains('right-panel-open') || (!document.getElementById('right-panel')?.classList.contains('hidden')));
+
+            let newWidth;
+            if (isLeft) {
+                // Canvas posicionado à esquerda: resizer arrastado à direita do Canvas
+                const layoutRect = layout ? layout.getBoundingClientRect() : { left: 0 };
+                newWidth = e.clientX - layoutRect.left;
+            } else {
+                // Canvas posicionado à direita: resizer arrastado à esquerda do Canvas
+                const layoutRect = layout ? layout.getBoundingClientRect() : { right: window.innerWidth };
+                newWidth = layoutRect.right - e.clientX;
+            }
+
+            if (newWidth >= 280 && newWidth <= containerWidth * 0.70) {
+                panel.style.flex = 'none';
+                panel.style.width = newWidth + 'px';
+                if (typeof fitAsciiToPromptbox === 'function') {
+                    fitAsciiToPromptbox();
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                resizer.classList.remove('dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                if (typeof fitAsciiToPromptbox === 'function') {
+                    fitAsciiToPromptbox();
+                }
+            }
+        });
+    });
+})();
+
 

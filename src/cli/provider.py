@@ -27,7 +27,7 @@ def _fetch_kodacloud_models():
             data = json.loads(resp.read().decode())
             return data.get("models", [])
     except Exception as e:
-        console.print(f"[dim yellow]⚠ Koda Cloud inacessível ({e}). Usando lista de fallback.[/dim yellow]")
+        console.print(f"[dim yellow]Aviso: Koda Cloud inacessivel ({e}). Usando lista de fallback.[/dim yellow]")
         return [
             "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview",
             "mistral-small-2503", "codestral-2501", "devstral-medium-2507",
@@ -73,8 +73,148 @@ def _fetch_gemini_models(api_key: str):
         return results if results else GEMINI_FALLBACK
 
     except Exception as e:
-        console.print(f"[dim yellow]⚠ Não foi possível buscar modelos Gemini ({e}). Usando lista de fallback.[/dim yellow]")
+        console.print(f"[dim yellow]Aviso: Nao foi possivel buscar modelos Gemini ({e}). Usando lista de fallback.[/dim yellow]")
         return GEMINI_FALLBACK
+
+
+def _fetch_mistral_models(api_key: str):
+    """Busca modelos disponíveis da API Mistral em tempo real."""
+    MISTRAL_FALLBACK = [
+        ("mistral-small-latest",  "Rápido e eficiente"),
+        ("mistral-medium-latest", "Balanceado"),
+        ("mistral-large-latest",  "Máxima capacidade"),
+        ("pixtral-large-latest",  "Visão + Texto"),
+        ("codestral-latest",      "Code generation"),
+        ("mistral-embed",         "Embeddings"),
+    ]
+    if not api_key:
+        return MISTRAL_FALLBACK
+    import urllib.request, urllib.error
+    try:
+        req = urllib.request.Request(
+            "https://api.mistral.ai/v1/models",
+            headers={"Authorization": f"Bearer {api_key}", "User-Agent": "moltyclaw/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode())
+        results = []
+        for m in data.get("data", []):
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            # mistral returns owned_by mistralai
+            desc = m.get("description", "") or m.get("owned_by", "Mistral")
+            if len(desc) > 50:
+                desc = desc[:47] + "..."
+            results.append((mid, desc))
+        return results if results else MISTRAL_FALLBACK
+    except Exception as e:
+        console.print(f"[dim yellow]Aviso: Nao foi possivel buscar modelos Mistral ({e}). Usando lista de fallback.[/dim yellow]")
+        return MISTRAL_FALLBACK
+
+
+def _fetch_openrouter_models():
+    """Busca modelos disponíveis da API OpenRouter (pública, sem key)."""
+    OPENROUTER_FALLBACK = [
+        ("google/gemini-2.0-flash-exp:free",  "Gemini 2.0 (Grátis)"),
+        ("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B"),
+        ("anthropic/claude-3.5-sonnet",       "Claude 3.5 Sonnet"),
+        ("google/gemini-pro-1.5",             "Gemini Pro 1.5"),
+        ("mistralai/mistral-large",           "Mistral Large"),
+    ]
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/models",
+            headers={"User-Agent": "moltyclaw/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode())
+        results = []
+        for m in data.get("data", [])[:60]:
+            mid = m.get("id") or m.get("canonical_slug") or ""
+            if not mid:
+                continue
+            name = m.get("name", mid)
+            # use short name as description
+            if len(name) > 50:
+                name = name[:47] + "..."
+            results.append((mid, name))
+        return results if results else OPENROUTER_FALLBACK
+    except Exception as e:
+        console.print(f"[dim yellow]Aviso: Nao foi possivel buscar modelos OpenRouter ({e}). Usando lista de fallback.[/dim yellow]")
+        return OPENROUTER_FALLBACK
+
+
+def _fetch_opencode_models():
+    """Busca modelos disponíveis da API OpenCode Zen."""
+    OPENCODE_FALLBACK = [
+        ("deepseek-v4-flash-free", "DeepSeek V4 Flash (Grátis)"),
+        ("deepseek-v4-flash",      "DeepSeek V4 Flash"),
+        ("deepseek-v4-pro",        "DeepSeek V4 Pro"),
+        ("gpt-5.5",                "GPT-5.5"),
+        ("gpt-5.6-luna",           "GPT-5.6 Luna"),
+        ("claude-sonnet-5",        "Claude Sonnet 5"),
+        ("gemini-3.5-flash",       "Gemini 3.5 Flash"),
+    ]
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            "https://opencode.ai/zen/v1/models",
+            headers={"User-Agent": "moltyclaw/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode())
+        results = []
+        for m in data.get("data", []):
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            owned = m.get("owned_by", "opencode")
+            # description = owned + model id
+            desc = f"{owned} — {mid}"
+            if len(desc) > 50:
+                desc = desc[:47] + "..."
+            results.append((mid, desc))
+        # sort to keep flash-free on top if present
+        results.sort(key=lambda x: (0 if "free" in x[0] else 1, x[0]))
+        return results if results else OPENCODE_FALLBACK
+    except Exception as e:
+        console.print(f"[dim yellow]Aviso: Nao foi possivel buscar modelos OpenCode ({e}). Usando lista de fallback.[/dim yellow]")
+        return OPENCODE_FALLBACK
+
+
+def _fetch_ollama_models():
+    """Busca modelos instalados localmente no Ollama."""
+    OLLAMA_FALLBACK = [
+        ("llama3",    "Llama 3 8B"),
+        ("llama3.1",  "Llama 3.1 8B"),
+        ("mistral",   "Mistral 7B"),
+        ("codellama", "Code Llama"),
+        ("phi3",      "Phi-3 Mini"),
+    ]
+    import urllib.request
+    # host configurable via OLLAMA_HOST
+    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    try:
+        req = urllib.request.Request(f"{host.rstrip('/')}/api/tags", headers={"User-Agent": "moltyclaw/1.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+        results = []
+        for m in data.get("models", []):
+            mid = m.get("name", "").split(":")[0]
+            if not mid:
+                continue
+            details = m.get("details", {})
+            fam = details.get("family", "")
+            desc = f"{fam} — {m.get('name','')}" if fam else m.get("name", mid)
+            if len(desc) > 50:
+                desc = desc[:47] + "..."
+            results.append((mid, desc))
+        return results if results else OLLAMA_FALLBACK
+    except Exception:
+        # silent fallback — Ollama often not running
+        return OLLAMA_FALLBACK
 
 
 def _read_env_key(env_path: str, key: str) -> str:
@@ -167,6 +307,7 @@ def cli_provider():
         console.print(f"\n[bold green]Provider atual:[/bold green] {providers[current_provider]['name']} ({current_provider})")
 
     if HAS_QUESTIONARY:
+        assert questionary is not None
         choices = [f"{p_id} - {p_info['name']}" for p_id, p_info in providers.items()]
         selection = questionary.select(
             "Selecione um provider:",
@@ -231,55 +372,32 @@ def cli_model():
             return m.split("/")[-1].replace(":free", " (Free)").replace("-", " ").title()
         return [(m, _desc(m)) for m in models]
 
+    # Feedback visual - fetch é síncrono e pode demorar 2-6s
+    console.print(f"[dim]Buscando modelos para [cyan]{current_provider}[/cyan]...[/dim]")
+
+    # Fetch lazy: só busca do provider atual (evita warnings de providers não usados)
+    _provider_fetchers = {
+        "mistral":    lambda: _fetch_mistral_models(_read_env_key(env_path, "MISTRAL_API_KEY")),
+        "gemini":     lambda: _fetch_gemini_models(_read_env_key(env_path, "GEMINI_API_KEY")),
+        "openrouter": lambda: _fetch_openrouter_models(),
+        "opencode":   lambda: _fetch_opencode_models(),
+        "kodacloud":  lambda: _as_tuples(_fetch_kodacloud_models()),
+        "ollama":     lambda: _fetch_ollama_models(),
+    }
+    _provider_names = {
+        "mistral": "Mistral AI",
+        "gemini": "Google Gemini",
+        "openrouter": "OpenRouter",
+        "opencode": "OpenCode Zen",
+        "kodacloud": "Koda Cloud",
+        "ollama": "Ollama (Local)",
+    }
+    # Só executa fetch do provider atual
+    _fetched_models = _provider_fetchers.get(current_provider, lambda: [])()
     models_by_provider = {
-        "mistral": {
-            "name": "Mistral AI",
-            "models": [
-                ("mistral-small-latest",  "Rápido e eficiente"),
-                ("mistral-medium-latest", "Balanceado"),
-                ("mistral-large-latest",  "Máxima capacidade"),
-                ("pixtral-large-latest",  "Visão + Texto"),
-            ]
-        },
-        "gemini": {
-            "name": "Google Gemini",
-            "models": _fetch_gemini_models(_read_env_key(env_path, "GEMINI_API_KEY"))
-        },
-        "openrouter": {
-            "name": "OpenRouter",
-            "models": [
-                ("google/gemini-2.0-flash-exp:free",         "Gemini 2.0 (Grátis)"),
-                ("meta-llama/llama-3.3-70b-instruct",        "Llama 3.3 70B"),
-                ("anthropic/claude-3.5-sonnet",              "Claude 3.5 Sonnet"),
-                ("google/gemini-pro-1.5",                    "Gemini Pro 1.5"),
-                ("mistralai/mistral-large",                  "Mistral Large"),
-            ]
-        },
-        "opencode": {
-            "name": "OpenCode Zen",
-            "models": [
-                ("deepseek-v4-flash-free",   "DeepSeek V4 Flash (Grátis)"),
-                ("deepseek-v4-flash",        "DeepSeek V4 Flash"),
-                ("deepseek-v4-pro",          "DeepSeek V4 Pro"),
-                ("gpt-5.5",                  "GPT-5.5"),
-                ("gpt-5.6-luna",             "GPT-5.6 Luna"),
-                ("claude-sonnet-5",          "Claude Sonnet 5"),
-                ("gemini-3.5-flash",         "Gemini 3.5 Flash"),
-            ]
-        },
-        "kodacloud": {
-            "name": "Koda Cloud",
-            "models": _as_tuples(_fetch_kodacloud_models())
-        },
-        "ollama": {
-            "name": "Ollama (Local)",
-            "models": [
-                ("llama3",     "Llama 3 8B"),
-                ("llama3.1",   "Llama 3.1 8B"),
-                ("mistral",    "Mistral 7B"),
-                ("codellama",  "Code Llama"),
-                ("phi3",       "Phi-3 Mini"),
-            ]
+        current_provider: {
+            "name": _provider_names.get(current_provider, current_provider.title()),
+            "models": _fetched_models
         }
     }
 
@@ -299,9 +417,9 @@ def cli_model():
     table.add_column("Descrição", style="dim")
     table.add_column("Status", style="green")
 
-    for model_id, description in provider_info["models"]:
+    for idx, (model_id, description) in enumerate(provider_info["models"]):
         status = "🟢 ATIVO" if model_id == current_model else ""
-        table.add_row(str(provider_info["models"].index((model_id, description)) + 1), model_id, description, status)
+        table.add_row(str(idx + 1), model_id, description, status)
 
     console.print(table)
 
@@ -309,6 +427,7 @@ def cli_model():
         console.print(f"\n[bold green]Modelo atual:[/bold green] {current_model}")
 
     if HAS_QUESTIONARY:
+        assert questionary is not None
         choices = [f"{m[0]} - {m[1]}" for m in provider_info["models"]]
         selection = questionary.select(
             "Selecione um modelo:",

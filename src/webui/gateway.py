@@ -28,13 +28,16 @@ from rich.console import Console
 from dotenv import load_dotenv
 from initializer import MOLTY_DIR
 
+# Adiciona src/webui ao path para env_manager
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
+
 try:
-    from env_manager import EnvManager
+    from env_manager import EnvManager  # type: ignore[import-not-found]
 except ImportError:
     try:
-        from src.webui.env_manager import EnvManager
+        from src.webui.env_manager import EnvManager  # type: ignore[import-not-found]
     except ImportError:
-        from env_manager import EnvManager
+        from env_manager import EnvManager  # type: ignore[import-not-found]
 
 console = Console()
 load_dotenv(os.path.join(MOLTY_DIR, '.env'))
@@ -276,8 +279,8 @@ async def chat(
     if not message:
         try:
             form_data = await request.form()
-            message = form_data.get("message")
-            agent_id = form_data.get("agent_id", "MoltyClaw")
+            message = str(form_data.get("message") or "")
+            agent_id = str(form_data.get("agent_id") or "MoltyClaw")
         except:
             # Tentar pegar do corpo JSON se não for form
             try:
@@ -313,8 +316,9 @@ async def chat(
     # Intercepta Comandos Slash Universais (/learn, /delegate, /skill, /mcp, /status, etc.)
     from commands import is_slash_command, handle_slash_command
     if is_slash_command(message):
+        agent_id_safe: str = agent_id or "MoltyClaw"
         async def slash_event_generator():
-            cmd_res = await handle_slash_command(message, agent=target_agent, agent_id=agent_id)
+            cmd_res = await handle_slash_command(message, agent=target_agent, agent_id=agent_id_safe)
             yield f"data: {json.dumps({'type': 'token', 'content': cmd_res.get('reply', '')})}\n\n"
             if cmd_res.get("action") == "clear_chat":
                 yield f"data: {json.dumps({'type': 'action', 'content': 'clear_chat'})}\n\n"
@@ -584,7 +588,9 @@ def _start_integration(name: str, agent_id: str = "MoltyClaw") -> bool:
         agent_env = os.path.join(MOLTY_DIR, "agents", agent_id, ".env")
         if os.path.exists(agent_env):
             from dotenv import dotenv_values
-            env.update(dotenv_values(agent_env))
+            # Filtra None para evitar erro de tipo em MutableMapping.update
+            env_values: dict[str, str] = {k: v for k, v in dotenv_values(agent_env).items() if v is not None}
+            env.update(env_values)
 
     procs = []
     for base_cmd in cmd_map[name]:
@@ -757,6 +763,43 @@ async def delete_agent_api(agent_id: str):
         return {"success": True}
     return {"error": "Não encontrado"}
 
+@app.get("/api/agent/banner")
+async def agent_banner_api(agent: str = "MoltyClaw"):
+    """Banner ANSI Shadow dinâmico a partir do IDENTITY.md (`- **Nome**:`)."""
+    from agent_display import get_banner
+    return get_banner(agent)
+
+
+@app.get("/api/canvas/content")
+async def canvas_content_api(agent_id: str = "MoltyClaw", artifact_id: str = "", ext: str = "html"):
+    """Lê artefato do canvas (mesmo contrato do Flask app.py)."""
+    base = MOLTY_DIR if agent_id == "MoltyClaw" else os.path.join(MOLTY_DIR, "agents", agent_id)
+    filename = f"{artifact_id}.{ext}" if not artifact_id.endswith(f".{ext}") else artifact_id
+    if ".." in filename or filename.startswith("/"):
+        raise HTTPException(400, "Nome de arquivo inválido")
+    fpath = os.path.join(base, "canvas", filename)
+    if not os.path.exists(fpath):
+        raise HTTPException(404, f"Arquivo '{filename}' não encontrado.")
+    with open(fpath, "r", encoding="utf-8") as f:
+        code = f.read()
+    return {"success": True, "filename": filename, "artifact_id": artifact_id,
+            "ext": ext, "content": code, "url": f"/canvas/{agent_id}/{filename}"}
+
+
+@app.get("/canvas/{agent_id}/{filename}")
+async def serve_canvas_file(agent_id: str, filename: str):
+    """Serve arquivo do canvas (espelha /canvas/<agent> do Flask)."""
+    if ".." in filename or filename.startswith("/"):
+        raise HTTPException(400, "Nome de arquivo inválido")
+    base = MOLTY_DIR if agent_id == "MoltyClaw" else os.path.join(MOLTY_DIR, "agents", agent_id)
+    canvas_dir = os.path.join(base, "canvas")
+    os.makedirs(canvas_dir, exist_ok=True)
+    fpath = os.path.join(canvas_dir, filename)
+    if not os.path.exists(fpath):
+        raise HTTPException(404, "Arquivo não encontrado.")
+    return FileResponse(fpath)
+
+
 @app.get("/api/agent/{file_type}")
 async def get_agent_file(file_type: str, agent: str = "MoltyClaw"):
     allowed = {"memory": "MEMORY.md", "soul": "SOUL.md", "identity": "IDENTITY.md", "user": "USER.md", "bootstrap": "BOOTSTRAP.md"}
@@ -808,6 +851,8 @@ async def import_context_api(data: Dict[str, str]):
     prompt = f"REGRAS DE ASSIMILAÇÃO:\n1. Preserve fatos.\n2. Não duplique.\nRetorne apenas o novo MARKDOWN revisado para o MEMORY.md.\n\nATUAL:\n{current_memory}\n\nIMPORTADO:\n{imported_data}"
     
     try:
+        if master_agent is None:
+            raise HTTPException(status_code=503, detail="Agente mestre não está pronto.")
         new_content = await master_agent.ask(prompt=prompt, silent=True)
         new_content = new_content.replace("```markdown", "").replace("```", "").strip()
         with open(memory_path, "w", encoding="utf-8") as f: f.write(new_content)

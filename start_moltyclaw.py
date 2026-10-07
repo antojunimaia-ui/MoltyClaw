@@ -10,8 +10,10 @@ import time
 
 if sys.platform == 'win32':
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except AttributeError:
+        import io
+        if isinstance(sys.stdout, io.TextIOWrapper):
+            sys.stdout.reconfigure(encoding='utf-8')
+    except (AttributeError, TypeError):
         pass
 
 from src.initializer import initialize_moltyclaw, MOLTY_DIR
@@ -162,7 +164,7 @@ def _handle_gateway():
             console.print("[dim]ℹ️  Nenhuma integração selecionada — gateway só WebUI.[/dim]")
 
     console.print("[bold magenta]🔌 Iniciando MoltyClaw Gateway (FastAPI Hub)...[/bold magenta]")
-    os.system("python src/webui/gateway.py")
+    subprocess.run([sys.executable, "src/webui/gateway.py"], check=False)
     sys.exit(0)
 
 
@@ -292,7 +294,7 @@ def _interactive_menu():
             os.environ["MOLTY_WEBUI_SHARE"] = "1"
 
         ensure_provider_api_key()
-        os.system("python src/webui/app.py")
+        subprocess.run([sys.executable, "src/webui/app.py"], check=False)
         sys.exit(0)
 
     # Terminal & Conectores
@@ -368,6 +370,9 @@ def _interactive_menu():
 
     _molty_path = os.path.join(os.path.dirname(__file__), "src", "moltyclaw.py")
     _spec = importlib.util.spec_from_file_location("moltyclaw_main", _molty_path)
+    if _spec is None or _spec.loader is None:
+        console.print("[bold red]Erro: não foi possível carregar o módulo moltyclaw.[/bold red]")
+        sys.exit(1)
     _mod = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(_mod)
 
@@ -395,7 +400,7 @@ def main():
         if arg in ["--config", "-c"]:
             console.print("[bold cyan]📝 Abrindo arquivo .env para configuração...[/bold cyan]")
             env_path = os.path.join(MOLTY_DIR, '.env')
-            os.system(f'notepad "{env_path}"')
+            subprocess.run(["notepad", env_path], check=False)
             sys.exit(0)
         elif arg == "web":
             import webbrowser

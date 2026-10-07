@@ -1,0 +1,61 @@
+<!-- Canvas Split-Screen Live Preview -->
+<div class="canvas-split-resizer" id="canvas-split-resizer" style="display: none;"></div>
+<aside class="canvas-split-panel" id="canvas-split-panel" style="display: none;">
+    <!-- Canvas Top Toolbar -->
+    <div class="canvas-toolbar">
+        <div class="canvas-toolbar-left">
+            <div class="canvas-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="canvas-meta">
+                <span class="canvas-filename" id="canvas-filename">canvas_artifact</span>
+                <span class="canvas-badge" id="canvas-badge">HTML</span>
+            </div>
+        </div>
+
+        <div class="canvas-toolbar-center">
+            <div class="canvas-tab-toggle">
+                <button class="canvas-tab-btn active" id="canvas-tab-preview-btn" onclick="switchCanvasTab('preview')">
+                    <i class="fa-solid fa-eye"></i> Preview
+                </button>
+                <button class="canvas-tab-btn" id="canvas-tab-code-btn" onclick="switchCanvasTab('code')">
+                    <i class="fa-solid fa-code"></i> Código
+                </button>
+            </div>
+        </div>
+
+        <div class="canvas-toolbar-right">
+            <button class="canvas-action-btn" onclick="copyCanvasCode()" title="Copiar código">
+                <i class="fa-regular fa-copy"></i>
+            </button>
+            <button class="canvas-action-btn" onclick="reloadCanvasPreview()" title="Recarregar preview">
+                <i class="fa-solid fa-rotate-right"></i>
+            </button>
+            <a id="canvas-external-link" href="#" target="_blank" class="canvas-action-btn" title="Abrir em tela cheia">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            </a>
+            <button class="canvas-action-btn canvas-close-btn" onclick="closeCanvasSplit()" title="Fechar Split View">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas Viewport Body -->
+    <div class="canvas-viewport" id="canvas-viewport">
+        <!-- Live HTML/SVG Sandbox Preview Frame -->
+        <iframe
+            id="canvas-iframe"
+            class="canvas-iframe"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        ></iframe>
+
+        <!-- Code View Mode -->
+        <div class="canvas-code-pane" id="canvas-code-pane" style="display: none;">
+            <pre class="canvas-pre"><code id="canvas-code-text" class="canvas-code"></code></pre>
+        </div>
+
+        <!-- Canvas Loading Overlay -->
+        <div class="canvas-loader" id="canvas-loader" style="display: none;">
+            <i class="fa-solid fa-circle-notch fa-spin"></i>
+            <span>Atualizando Canvas em tempo real...</span>
+        </div>
+    </div>
+</aside>

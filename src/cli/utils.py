@@ -48,16 +48,31 @@ def cli_research(query):
     import asyncio
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from moltyclaw import MoltyClaw
+    from rich.markdown import Markdown
 
     async def run():
         bot = MoltyClaw("MoltyResearcher", agent_id="MoltyClaw")
-        prompt = f"Faça uma pesquisa minuciosa na internet sobre o tema: '{query}'. ATENÇÃO: Você DEVE usar a tag <tool> com JSON para chamar a ferramenta DDG_SEARCH (e GOTO se precisar ler algo) AGORA MESMO para buscar as informações. Somente DEPOIS de obter os resultados, você deve dar a resposta final detalhada."
+        prompt = (
+            f"Faça uma pesquisa minuciosa na internet sobre o tema: '{query}'. "
+            f"Você pode usar DDG_SEARCH e GOTO/READ_PAGE para ler páginas. "
+            f"Quando terminar de ler e tiver as informações suficientes, escreva um resumo detalhado, "
+            f"claro e completo em português, respondendo à dúvida com todas as datas e fatos relevantes encontrados."
+        )
 
-        await bot.ask(prompt)
+        res = await bot.ask(prompt)
         await bot.close_browser()
+        return res
 
     try:
-        asyncio.run(run())
+        summary = asyncio.run(run())
+        if summary and summary.strip() and summary.strip() != "...":
+            console.print("\n")
+            console.print(Panel(
+                Markdown(summary.strip()),
+                title=f"[bold green]📋 Resumo: {query}[/bold green]",
+                border_style="cyan",
+                padding=(1, 2)
+            ))
         console.print("\n[bold green]✅ Pesquisa e resumo concluídos pela IA![/bold green]")
     except Exception as e:
         console.print(f"[bold red]Erro durante a pesquisa:[/bold red] {e}")

@@ -1,19 +1,20 @@
 <!-- Chat View -->
 <div id="view-chat" class="view-content active">
     <div class="chat-container" id="chat-container">
-        <div class="chat-empty-state" id="chat-empty-state">
-            <pre class="chat-ascii" aria-hidden="true">
-███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗
+        <!-- Mensagens são inseridas dinamicamente aqui -->
+    </div>
+
+    <div class="prompt-box-area" id="prompt-box-area">
+        <!-- ASCII Banner posicionado atrás da promptbox com fade-out de cima pra baixo -->
+        <div class="prompt-ascii-backdrop" id="prompt-ascii-backdrop" aria-hidden="true">
+            <pre class="chat-ascii" id="chat-ascii">███╗   ███╗ ██████╗ ██╗  ████████╗██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗
 ████╗ ████║██╔═══██╗██║  ╚══██╔══╝╚██╗ ██╔╝██╔════╝██║     ██╔══██╗██║    ██║
 ██╔████╔██║██║   ██║██║     ██║    ╚████╔╝ ██║     ██║     ███████║██║ █╗ ██║
 ██║╚██╔╝██║██║   ██║██║     ██║     ╚██╔╝  ██║     ██║     ██╔══██║██║███╗██║
 ██║ ╚═╝ ██║╚██████╔╝███████╗██║      ██║   ╚██████╗███████╗██║  ██║╚███╔███╔╝
 ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝      ╚═╝    ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝</pre>
-            <p class="chat-empty-hint">Send a message to start the session</p>
         </div>
-    </div>
 
-    <div class="prompt-box-area">
         <!-- Slash Commands Autocomplete Popup -->
         <div class="slash-popup" id="slash-popup" style="display: none;">
             <div class="slash-popup-header">

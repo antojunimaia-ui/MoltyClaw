@@ -21,8 +21,9 @@ SpeechRecognition
 flask
 mcp
 atproto
-questionary
-google-generativeai
-ollama
+    questionary
+    google-generativeai
+    ollama
+    pyfiglet
 requests
 PyGithub
